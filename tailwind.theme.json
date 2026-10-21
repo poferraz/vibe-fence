@@ -1,0 +1,119 @@
+{
+  "theme": {
+    "extend": {
+      "colors": {
+        "primary": "#0066ff",
+        "on-primary": "#ffffff",
+        "secondary": "#8b8fa3",
+        "tertiary": "#00d4aa",
+        "on-tertiary": "#0a0a0f",
+        "neutral": "#0a0a0f",
+        "neutral-soft": "#14141f",
+        "surface": "#ffffff14",
+        "surface-strong": "#ffffff1f",
+        "border-subtle": "#ffffff1a",
+        "danger": "#ff3366",
+        "on-danger": "#ffffff",
+        "warning": "#ffaa00",
+        "on-warning": "#0a0a0f",
+        "success": "#00d4aa",
+        "on-success": "#0a0a0f"
+      },
+      "fontFamily": {
+        "h1": [
+          "Inter"
+        ],
+        "h2": [
+          "Inter"
+        ],
+        "h3": [
+          "Inter"
+        ],
+        "body-md": [
+          "Inter"
+        ],
+        "body-sm": [
+          "Inter"
+        ],
+        "label-caps": [
+          "Inter"
+        ],
+        "code": [
+          "JetBrains Mono"
+        ],
+        "code-sm": [
+          "JetBrains Mono"
+        ]
+      },
+      "fontSize": {
+        "h1": [
+          "2.5rem",
+          {
+            "letterSpacing": "-0.02em",
+            "fontWeight": "700"
+          }
+        ],
+        "h2": [
+          "1.5rem",
+          {
+            "letterSpacing": "-0.01em",
+            "fontWeight": "600"
+          }
+        ],
+        "h3": [
+          "1.125rem",
+          {
+            "fontWeight": "600"
+          }
+        ],
+        "body-md": [
+          "0.9375rem",
+          {
+            "fontWeight": "400"
+          }
+        ],
+        "body-sm": [
+          "0.8125rem",
+          {
+            "fontWeight": "400"
+          }
+        ],
+        "label-caps": [
+          "0.6875rem",
+          {
+            "letterSpacing": "0.08em",
+            "fontWeight": "600"
+          }
+        ],
+        "code": [
+          "0.8125rem",
+          {
+            "fontWeight": "400"
+          }
+        ],
+        "code-sm": [
+          "0.75rem",
+          {
+            "fontWeight": "400"
+          }
+        ]
+      },
+      "borderRadius": {
+        "sm": "8px",
+        "md": "12px",
+        "lg": "16px",
+        "xl": "24px",
+        "full": "9999px"
+      },
+      "spacing": {
+        "xs": "4px",
+        "sm": "8px",
+        "md": "16px",
+        "lg": "24px",
+        "xl": "32px",
+        "2xl": "48px",
+        "3xl": "64px"
+      }
+    }
+  }
+}

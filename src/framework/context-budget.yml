@@ -14,19 +14,19 @@ total_tokens: 128000
 budgets:
   # Static invariants: AGENTS.md router (≤400 tokens), .fence/invariants.md, skill pointers
   # S-01 — AGENTS.md ≤400 tokens; S-03 — keep invariants at context boundaries
-  static: 800          # TODO: enforce via tools/validate.ts — fail if AGENTS.md exceeds 400 tokens
+  static: 800          # Spec: enforced via tools/validate.ts — fail if AGENTS.md exceeds 400 tokens
   # Dynamic retrieval: PageRank vibe-map, file reads, search results
-  dynamic: 4000        # TODO: wire Byte-Capped Pipeline — per-task vibe-map ≤1k tokens (M2 item)
+  dynamic: 4000        # TODO(M2): wire Byte-Capped Pipeline — per-task vibe-map ≤1k tokens
   # Conversation history: last-5 pruning, checkpoint re-anchoring
-  history: 6000        # TODO: implement last-5 pruning + compaction re-anchor at boundaries
+  history: 6000        # Spec: last-5 pruning + compaction re-anchor at boundaries
   # Headroom reserved for model output + image tokens (GEM-02 P2)
-  headroom: 2000       # TODO: image tokens billed here; do not inject images alongside AGENTS.md invariants
+  headroom: 2000       # Spec: image tokens billed here; do not inject images alongside AGENTS.md invariants
 
 # --- Shell pipe cap ---
 # S-03 — byte-cap shell outputs at 4 KB (4000 bytes)
 pipe:
   byte_cap: 4000       # enforced as `head -c 4000` on every shell tool output
-  # TODO: wrap all shell exec in byte-capped helper — truncate + emit [truncated N bytes] marker
+  # TODO(M2): wrap all shell exec in byte-capped helper — truncate + emit [truncated N bytes] marker
 
 # --- Progressive disclosure levels ---
 # S-02 — name+description at startup, full body on match
@@ -35,20 +35,20 @@ disclosure:
   L1:
     description: "metadata-only: skill name + one-line description"
     max_tokens: 50
-    # TODO: emit L1 index at session start from .agents/skills/**/SKILL.md frontmatter
+    # Spec: emit L1 index at session start from .agents/skills/**/SKILL.md frontmatter
   L2:
     description: "matched skill summary + applicability predicate"
     max_tokens: 300
-    # TODO: load L2 on keyword/intent match — never preload all skills
+    # Spec: load L2 on keyword/intent match — never preload all skills
   L3:
     description: "full skill body — only after explicit user/agent request"
     max_tokens: 1000
-    # TODO: L3 requires confirmed intent; log L3 loads to .fence/state/budgets.json for telemetry
+    # Spec: L3 requires confirmed intent; log L3 loads to .fence/state/budgets.json for telemetry
 
 # --- Image / multimodal note (GEM-02 P2) ---
 # When prompt includes image mockup/screenshot, bill image tokens against history headroom above.
 # Do not inject image bytes into static window alongside AGENTS.md invariants.
-# TODO: flag as P2 research until Chroma/NoLiMa measurement exists for mixed prompts.
+# Spec(P2): flag as research until Chroma/NoLiMa measurement exists for mixed prompts.
 
 # --- Telemetry (S-03 per-task telemetry) ---
 telemetry:
@@ -58,7 +58,7 @@ telemetry:
     - tool_output_tokens
     - history_tokens
     - loop_length
-  # TODO: emit to .fence/state/budgets.json per task; used for A/B isolation+combination checks (S-07)
+  # TODO(M3): emit to .fence/state/budgets.json per task; used for A/B isolation+combination checks (S-07)
 
 # --- State eviction (GEM-02 P2) ---
 eviction:
@@ -66,4 +66,4 @@ eviction:
   per_task_keys:       # ephemeral keys pruned at checkpoint boundaries
     - last-5-observation
     - verifier-ephemeral
-  # TODO: implement TTL+LRU prune in tools/validate.ts — see src/framework/dial.ts for state eviction note
+  # Spec: TTL+LRU prune in tools/validate.ts — see src/framework/dial.ts for state eviction note

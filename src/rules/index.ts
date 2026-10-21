@@ -6,16 +6,19 @@
 
 export { check as checkBill01, BILL01_ID } from "./bill-01.js";
 export { check as checkPrv09, PRV09_ID } from "./prv-09.js";
+export { check as checkNet01, NET01_ID } from "./net-01.js";
 
 import { check as checkBill01 } from "./bill-01.js";
 import { check as checkPrv09 } from "./prv-09.js";
+import { check as checkNet01 } from "./net-01.js";
 import type { CheckCtx as BillCtx } from "./bill-01.js";
 import type { CheckCtx as PrvCtx } from "./prv-09.js";
+import type { CheckCtx as NetCtx } from "./net-01.js";
 
 export type Verdict = "pass" | "fail" | "unknown" | "not-applicable";
 
 // Union of ctx shapes — all checkers accept { content?, filePath?, projectRoot?, fileList? }
-export type CheckCtx = BillCtx & PrvCtx;
+export type CheckCtx = BillCtx & PrvCtx & NetCtx;
 
 export interface RuleEntry {
   id: string;
@@ -37,6 +40,12 @@ export const REGISTRY: Record<string, RuleEntry> = {
     severity: "block",
     description: "Fixture hygiene — real PII/secrets in fixtures/test-data must be synthetic",
     check: checkPrv09 as RuleEntry["check"],
+  },
+  "NET-01": {
+    id: "NET-01",
+    severity: "block",
+    description: "curl|sh pipe-to-shell hard-block — curl/wget piped to sh/bash/zsh (S-09)",
+    check: checkNet01 as RuleEntry["check"],
   },
 };
 

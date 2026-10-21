@@ -179,7 +179,18 @@ export function postinstallGuard(projectRoot: string = process.cwd()): void {
  * TODO: implement scan — regex for [\u200B-\u200D\uFEFF\u202A-\u202E\u2060-\u206F]
  * TODO: integrate into verifyAttestation pre-check — fail before hash compare if invisible chars found
  */
-export function scanInvisibleUnicode(_content: string): { clean: boolean; findings: string[] } {
-  // TODO: implement per minimax A-02 / A-50 — tools/scan_invisible.py equivalent in TS
-  return { clean: true, findings: [] };
+const INVISIBLE_RE = /[\u200B-\u200D\uFEFF\u202A-\u202E\u2060-\u206F]/g;
+
+export function scanInvisibleUnicode(content: string): { clean: boolean; findings: string[] } {
+  const findings: string[] = [];
+  let match: RegExpExecArray | null;
+  // Reset lastIndex in case of reuse (global regex state)
+  INVISIBLE_RE.lastIndex = 0;
+  while ((match = INVISIBLE_RE.exec(content)) !== null) {
+    const ch = match[0];
+    const offset = match.index;
+    const cp = ch.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0");
+    findings.push(`U+${cp} at offset ${offset}`);
+  }
+  return { clean: findings.length === 0, findings };
 }

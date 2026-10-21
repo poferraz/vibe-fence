@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>vibe-fence Phase 0 Synthesis Explorer | Dual-Synthesis Intelligence Hub</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    /* Smooth transitions and scrollbars */
+    * {
+      box-sizing: border-box;
+    }
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 9999px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.125rem 0.5rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      line-height: 1rem;
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-[var(--background)] text-[var(--foreground)] antialiased p-4 md:p-8 font-sans selection:bg-[var(--primary)] selection:text-[var(--primary-foreground)]">
+
+  <!-- Main Container -->
+  <div class="max-w-7xl mx-auto space-y-8">
+
+    <!-- Top Header & Banner -->
+    <header class="bg-[var(--card)] text-[var(--card-foreground)] border border-[var(--border)] rounded-2xl p-6 md:p-8 shadow-sm relative overflow-hidden">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+        <div>
+          <div class="flex flex-wrap items-center gap-2 mb-3">
+            <span class="badge bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">Phase 0 Complete</span>
+            <span class="badge bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">Dual Independent Syntheses</span>
+            <span class="badge bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">6 Research Streams</span>
+            <span class="badge bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">Non-Technical Edition</span>
+          </div>
+          <h1 class="text-2xl md:text-4xl font-extrabold tracking-tight text-[var(--foreground)]">
+            vibe-fence Intelligence Explorer
+          </h1>
+          <p class="text-[var(--muted-foreground)] text-sm md:text-base mt-2 max-w-3xl leading-relaxed">
+            Comparing <span class="font-semibold text-[var(--foreground)]">Synthesis 1</span> (Session 1 Cross-Model) vs. <span class="font-semibold text-[var(--foreground)]">Synthesis 2</span> (Independent — 6 contributors). Everything you need to know about making AI vibe-coding safe, intuitive, and blisteringly fast without getting bogged down in code jargon.
+          </p>
+        </div>
+
+        <!-- Quick Status Card -->
+        <div class="flex items-center gap-3 bg-[var(--secondary)] p-3.5 rounded-xl border border-[var(--border)] self-start md:self-auto shrink-0">
+          <div class="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-600 dark:text-emerald-400 font-bold text-lg">
+            ✓
+          </div>
+          <div class="text-left">
+            <div class="text-xs text-[var(--muted-foreground)] font-medium">Consensus Level</div>
+            <div class="text-sm font-bold text-[var(--foreground)]">134→103 dedup · 10 contradictions · 8 blind spots</div>
+            <div class="text-xs text-amber-600 dark:text-amber-400 font-semibold">10 contested Qs carried as evals — <a href="./synthesis/_CONSISTENCY.md" class="underline">_CONSISTENCY.md §2–§4</a></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <nav class="flex flex-wrap items-center gap-2 pt-6 mt-6 border-t border-[var(--border)]">
+        <button onclick="switchTab('big-picture')" id="tab-btn-big-picture" class="tab-btn px-4 py-2 rounded-lg text-sm font-semibold transition-all bg-[var(--primary)] text-[var(--primary-foreground)] shadow-sm">
+          💡 The Big Picture (ELI5)
+        </button>
+        <button onclick="switchTab('duel')" id="tab-btn-duel" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium transition-all text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--muted)]">
+          ⚔️ Synthesis 1 vs 2 Duel
+        </button>
+        <button onclick="switchTab('streams')" id="tab-btn-streams" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium transition-all text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--muted)]">
+          📚 6 Stream Breakdowns
+        </button>
+        <button onclick="switchTab('simulators')" id="tab-btn-simulators" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium transition-all text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--muted)]">
+          🎛️ Interactive Sandboxes
+        </button>
+        <button onclick="switchTab('roadmap')" id="tab-btn-roadmap" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium transition-all text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--muted)]">
+          🚀 Phase 1 Action Blueprint
+        </button>
+      </nav>
+    </header>
+
+    <!-- TAB 1: THE BIG PICTURE (ELI5) -->
+    <main id="tab-big-picture" class="tab-content space-y-6">
+      
+      <!-- Metaphor Hero Box -->
+      <section class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-6 md:p-8">
+        <div class="max-w-3xl">
+          <span class="badge bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 mb-3">The Problem</span>
+          <h2 class="text-xl md:text-3xl font-bold text-[var(--foreground)]">
+            Vibe-coding right now is like giving a Ferrari to a teenager with no brakes.
+          </h2>
+          <p class="text-[var(--muted-foreground)] text-sm md:text-base mt-3 leading-relaxed">
+            AI coding agents (Cursor, Codex, OpenCode, Hermes) are miraculous. A non-technical creator can type <em>"build me a marketplace for dog walkers"</em> and get real code in minutes. But under the hood, three catastrophic things happen every day:
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mt-6">
+          <div class="p-5 rounded-xl bg-[var(--secondary)] border border-[var(--border)]">
+            <div class="text-2xl mb-2">💣</div>
+            <h3 class="font-bold text-[var(--foreground)] text-base">The Invisible Blast Radius</h3>
+            <p class="text-xs md:text-sm text-[var(--muted-foreground)] mt-2 leading-relaxed">
+              The AI accidentally deletes a database table, exposes private API keys to the public internet, or installs an unverified package that steals passwords.
+            </p>
+          </div>
+          <div class="p-5 rounded-xl bg-[var(--secondary)] border border-[var(--border)]">
+            <div class="text-2xl mb-2">😴</div>
+            <h3 class="font-bold text-[var(--foreground)] text-base">"Are You Sure?" Fatigue</h3>
+            <p class="text-xs md:text-sm text-[var(--muted-foreground)] mt-2 leading-relaxed">
+              Harnesses interrupt you 50 times with technical dialogs. Non-technical users suffer from <strong>93% habituation</strong>: you just click "Yes" blindly without reading until disaster strikes.
+            </p>
+          </div>
+          <div class="p-5 rounded-xl bg-[var(--secondary)] border border-[var(--border)]">
+            <div class="text-2xl mb-2">📜</div>
+            <h3 class="font-bold text-[var(--foreground)] text-base">The "Sticky Note" Illusion</h3>
+            <p class="text-xs md:text-sm text-[var(--muted-foreground)] mt-2 leading-relaxed">
+              Developers think putting rules in a markdown file (<code class="text-xs font-mono bg-[var(--muted)] px-1 rounded">AGENTS.md</code>) keeps them safe. When the AI gets confused or context is long, it ignores the note completely.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- The Solution: 4 Pillars of vibe-fence -->
+      <section>
+        <div class="mb-4">
+          <span class="badge bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 mb-2">The Solution</span>
+          <h2 class="text-xl md:text-2xl font-bold text-[var(--foreground)]">The 4 Pillars of vibe-fence</h2>
+          <p class="text-[var(--muted-foreground)] text-sm">How vibe-fence makes vibe-coding completely safe, educational, and fun.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          
+          <!-- Pillar 1 -->
+          <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+            <div>
+              <div class="flex items-center gap-3 mb-3">
+                <span class="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-sm">1</span>
+                <h3 class="font-bold text-lg text-[var(--foreground)]">The Bouncer at the Door (Hooks)</h3>
+              </div>
+              <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
+                Instead of hoping the AI follows polite text rules, vibe-fence stations an unbypassable programmatic guard (<strong class="text-[var(--foreground)]">PreToolUse hooks</strong>) between the AI and your computer. If the AI tries to run <code class="text-xs font-mono bg-[var(--muted)] px-1 rounded">rm -rf</code> or push secrets to GitHub, the bouncer blocks the execution before it even starts.
+              </p>
+            </div>
+            <div class="mt-4 pt-4 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)]">
+              💡 <em>Plain English:</em> A real steel deadbolt on your front door instead of a "Please don't break in" sticky note.
+            </div>
+          </div>
+
+          <!-- Pillar 2 -->
+          <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+            <div>
+              <div class="flex items-center gap-3 mb-3">
+                <span class="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-sm">2</span>
+                <h3 class="font-bold text-lg text-[var(--foreground)]">The Magic Undo Time Machine</h3>
+              </div>
+              <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
+                Rather than stopping you to ask technical permission for every harmless change, vibe-fence lets the AI fly in <strong>Turbo Mode</strong>. Before any big action, it silently takes a microscopic snapshot of your project. If you dislike what the AI did, one click or typing <code class="text-xs font-mono bg-[var(--muted)] px-1 rounded">undo</code> restores your project immediately.
+              </p>
+            </div>
+            <div class="mt-4 pt-4 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)]">
+              💡 <em>Plain English:</em> Driving at top speed with Formula-1 safety nets, instant rollback, and airbags.
+            </div>
+          </div>
+
+          <!-- Pillar 3 -->
+          <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+            <div>
+              <div class="flex items-center gap-3 mb-3">
+                <span class="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-600 dark:text-purple-400 flex items-center justify-center font-bold text-sm">3</span>
+                <h3 class="font-bold text-lg text-[var(--foreground)]">The Teaching Dial (Sweller's Law)</h3>
+              </div>
+              <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
+                Beginners need encouraging explanations; experienced creators want fast execution without chatter. The Teaching Dial (<strong class="text-[var(--foreground)]">Max → Med → Min → Silent</strong>) shifts the companion persona smoothly from an empathetic teacher who explains concepts simply, to a silent executioner who stays out of your way.
+              </p>
+            </div>
+            <div class="mt-4 pt-4 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)]">
+              💡 <em>Plain English:</em> Training wheels that lift off gently as you learn to balance, without you falling off.
+            </div>
+          </div>
+
+          <!-- Pillar 4 -->
+          <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+            <div>
+              <div class="flex items-center gap-3 mb-3">
+                <span class="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-sm">4</span>
+                <h3 class="font-bold text-lg text-[var(--foreground)]">One Single Rulebook (Universal Sync)</h3>
+              </div>
+              <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
+                Whether you open Cursor today, OpenCode tomorrow, or Claude Code on your laptop, you only define your project's identity once in <code class="text-xs font-mono bg-[var(--muted)] px-1 rounded">.fence/app-profile.json</code> + <code class="text-xs font-mono bg-[var(--muted)] px-1 rounded">src/framework/context-budget.yml</code> via <code class="text-xs font-mono bg-[var(--muted)] px-1 rounded">tools/generate.ts</code>. vibe-fence keeps Cursor/OpenCode/Claude settings in sync.
+              </p>
+            </div>
+            <div class="mt-4 pt-4 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)]">
+              💡 <em>Plain English:</em> Universal adapter plug so your safety works on any tool anywhere in the world.
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+    </main>
+
+    <!-- TAB 2: SYNTHESIS 1 VS 2 DUEL -->
+    <main id="tab-duel" class="tab-content hidden space-y-6">
+      
+      <!-- Comparison Overview -->
+      <section class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-6 md:p-8">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+          <div>
+            <span class="badge bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 mb-2">Comparative Analysis</span>
+            <h2 class="text-xl md:text-3xl font-bold text-[var(--foreground)]">Synthesis 1 vs Synthesis 2: How They Compare</h2>
+            <p class="text-[var(--muted-foreground)] text-sm mt-1">Comparing the independent findings across both synthesis operations.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="filterComparison('all')" class="cmp-filter-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-[var(--primary)] text-[var(--primary-foreground)]">All (9)</button>
+            <button onclick="filterComparison('agreed')" class="cmp-filter-btn px-3 py-1.5 rounded-lg text-xs font-medium text-[var(--muted-foreground)] hover:bg-[var(--muted)]">100% Agreed (6)</button>
+            <button onclick="filterComparison('unique')" class="cmp-filter-btn px-3 py-1.5 rounded-lg text-xs font-medium text-[var(--muted-foreground)] hover:bg-[var(--muted)]">Unique Insights (3)</button>
+          </div>
+        </div>
+
+        <!-- Comparison Matrix Table -->
+        <div class="overflow-x-auto border border-[var(--border)] rounded-xl">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-[var(--secondary)] text-[var(--muted-foreground)] border-b border-[var(--border)] font-semibold text-xs">
+              <tr>
+                <th class="p-4 w-1/4">Evaluation Dimension</th>
+                <th class="p-4 w-1/3">Synthesis 1 (Session 1 Cross-Model)</th>
+                <th class="p-4 w-1/3">Synthesis 2 (Independent — 6 contributors)<br><span class="text-xs font-normal opacity-70">gemini-3.8-flash · gemini-4-argon · muse-spark · deepseek-v4.1-flash · minimax-m3.1-flash · gpt-6 — <a href="./INDEX.md" class="underline">INDEX.md</a></span></th>
+                <th class="p-4 w-28 text-center">Consensus</th>
+              </tr>
+            </thead>
+            <tbody id="comparison-table-body" class="divide-y divide-[var(--border)] text-xs md:text-sm">
+              
+              <tr class="cmp-row" data-type="agreed">
+                <td class="p-4 font-semibold text-[var(--foreground)]">
+                  Safety Enforcement Mechanism
+                  <div class="text-xs text-[var(--muted-foreground)] font-normal mt-0.5">Where safety actually lives</div>
+                </td>
+                <td class="p-4 text-[var(--muted-foreground)]">
+                  PreToolUse client hooks. Text prompts in <code class="bg-[var(--muted)] px-1 rounded font-mono">AGENTS.md</code> decay to 0% enforcement at high context.
+                </td>
+                <td class="p-4 text-[var(--muted-foreground)]">
+                  PreToolUse hooks with exit code tripwires. Confirms declarative files are purely advisory.
+                </td>
+                <td class="p-4 text-center">
+                  <span class="badge bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">100% Match</span>
+                </td>
+              </tr>
+
+              <tr class="cmp-row" data-type="agreed">
+                <td class="p-4 font-semibold text-[var(--foreground)]">
+                  Context Budgeting Limit
+                  <div class="text-xs text-[var(--muted-foreground)] font-normal mt-0.5">Optimal size for agent prompt</div>
+                </td>
+                <td class="p-4 text-[var(--muted-foreground)]">
+                  Under 400 tokens / 150 lines. Large instruction files add +23% API cost with negative accuracy (Gloaguen et al. ETH Zurich).
+                </td>
+                <td class="p-4 text-[var(--muted-foreground)]">
+                  Under 150 lines / 400 tokens. "Map, not manual" philosophy. Cites identical Gloaguen ETH Zurich benchmark.
+                </td>
+                <td class="p-4 text-center">
+                  <span class="badge bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">100% Match</span>
+                </td>
+              </tr>
+
+              <tr class="cmp-row" data-type="agreed">
+                <td class="p-4 font-semibold text-[var(--foreground)]">
+                  Code Self-Critique / Reflection
+                  <div class="text-xs text-[var(--muted-foreground)] font-normal mt-0.5">Can an AI check its own work?</div>
+                </td>
+                <td class="p-4 text-[var(--muted-foreground)]">
+                  Placebo without runtime execution. Cites Huang et al. ICLR 2024 showing LLMs cannot self-correct without tests.
+                </td>
+                <td class="p-4 text-[var(--muted-foreground)]">
+                  Agrees completely: repeated sampling only works when filtered by test suites (Reflexion & CodeT). Test execution is non-negotiable.
+                </td>
+                <td class="p-4 text-center">
+                  <span class="badge bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">100% Match</span>
+                </td>
+              </tr>
+
+              <tr class="cmp-row" data-type="agreed">
+                <td class="p-4 font-semibold text-[var(--foreground)]">
+                  Teachable Turbo & Rollbacks
+                  <div class="text-xs text-[var(--muted-foreground)] font-normal mt-0.5">How to let creators move fast</div>
+                </td>
+                <td class="p-4 text-[var(--muted-foreground)]">
+                  Confirmation prompts fail due to 93% habituation. Silent git commits before every action + instant single-step undo.
+                </td>
+                <td class="p-4 text-[var(--muted-foreground)]">
+                  Automated <code class="bg-[var(--muted)] px-1 rounded font-mono">checkpoint: [action]</code> + <code class="bg-[var(--muted)] px-1 rounded font-mono">npx vibe-fence undo</code>. Confirmation dialogs only on irreversibles.
+                </td>
+                <td class="p-4 text-center">
+                  <span class="badge bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">100% Match</span>
+                </td>
+              </tr>
+
+              <tr class="cmp-row" data-type="agreed">
+                <td class="p-4 font-semibold text-[var(--foreground)]">
+                  Instructional Fading Dial
+                  <div class="text-xs text-[var(--muted-foreground)] font-normal mt-0.5">Cognitive load adaptation</div>
+                </td>
+                <td class="p-4 text-[var(--muted-foreground)]">
+                  4-tier dial (<code class="bg-[var(--muted)] px-1 rounded font-mono">max → med → min → silent</code>) grounded in Cognitive Load Theory (Sweller 1988) & Expertise Reversal (Kalyuga 2007).
+                </td>
+                <td class="p-4 text-[var(--muted-foreground)]">
+                  Identical 4-level schema with companion persona adjustments. Prevents micromanagement fatigue.
+                </td>
+                <td class="p-4 text-center">
+                  <span class="badge bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">100% Match</span>
+                </td>
+              </tr>
+
+              <tr class="cmp-row" data-type="agreed">
+                <td class="p-4 font-semibold text-[var(--foreground)]">
+                  Meta AI Models Allocation
+                  <div class="text-xs text-[var(--muted-foreground)] font-normal mt-0.5">Role of Muse Spark, Wonder, Image</div>
+                </td>
+                <td class="p-4 text-[var(--muted-foreground)]">
+                  Muse Spark for fast voice/coaching; Muse Wonder for planning escalation; Muse Image for synthetic UI mockup generation.
+                </td>
+                <td class="p-4 text-[var(--muted-foreground)]">
+                  Muse Spark 1.3 as real-time companion voice; Muse Wonder for architectural decisions; Muse Image for instant UI previews.
+                </td>
+                <td class="p-4 text-center">
+                  <span class="badge bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">100% Match</span>
+                </td>
+              </tr>
+
+              <tr class="cmp-row" data-type="unique">
+                <td class="p-4 font-semibold text-[var(--foreground)]">
+                  Scaffold Interference (CCI Proof)
+                  <div class="text-xs text-[var(--muted-foreground)] font-normal mt-0.5">Combinatorial feature clash</div>
+                </td>
+                <td class="p-4 text-[var(--muted-foreground)]">
+                  <strong class="text-[var(--foreground)]">CCI factorial (2⁵=32 subsets, 118 configs, 32k evals):</strong> all-in 5-component scaffold beaten by proper subset in every condition; Planning Shapley value negative. Added requirements inflate reasoning tokens +14–22% (Gloaguen ablation). Every addition must be A/B’d in isolation and combination (S-07).
+                </td>
+                <td class="p-4 text-[var(--muted-foreground)]">
+                  Focused on practical feature pairing and warning against combining verbose linter logs with large prompts.
+                </td>
+                <td class="p-4 text-center">
+                  <span class="badge bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">Synthesis 1 Gem</span>
+                </td>
+              </tr>
+
+              <tr class="cmp-row" data-type="unique">
+                <td class="p-4 font-semibold text-[var(--foreground)]">
+                  Educational Field Evidence
+                  <div class="text-xs text-[var(--muted-foreground)] font-normal mt-0.5">Real human learning data</div>
+                </td>
+                <td class="p-4 text-[var(--muted-foreground)]">
+                  Emphasized cognitive theory (Sweller, Kalyuga) and question-asking constraints (max 1 question per turn).
+                </td>
+                <td class="p-4 text-[var(--muted-foreground)]">
+                  <strong class="text-[var(--foreground)]">Bastani et al., PNAS 2025-06-25, n≈1,000:</strong> High-school math — GPT Base +48% during practice, −17% vs controls after removal; hint-first tutor +127% with no post-removal penalty. Transfer to coding is <em>contested</em>. <a href="https://doi.org/10.1073/pnas.2422633122" class="underline">DOI 10.1073/pnas.2422633122</a>
+                </td>
+                <td class="p-4 text-center">
+                  <span class="badge bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">Synthesis 2 Gem</span>
+                </td>
+              </tr>
+
+              <tr class="cmp-row" data-type="unique">
+                <td class="p-4 font-semibold text-[var(--foreground)]">
+                  Dynamic App Profiles
+                  <div class="text-xs text-[var(--muted-foreground)] font-normal mt-0.5">Local vs Shared vs Public security</div>
+                </td>
+                <td class="p-4 text-[var(--muted-foreground)]">
+                  Security focused on TrojanForge injection patterns and AST sanitization of bash payloads.
+                </td>
+                <td class="p-4 text-[var(--muted-foreground)]">
+                  <strong class="text-[var(--foreground)]">Actionable 3-Profile System:</strong> Explicitly defined <code class="bg-[var(--muted)] px-1 rounded font-mono">local-toy</code>, <code class="bg-[var(--muted)] px-1 rounded font-mono">shared-team</code>, and <code class="bg-[var(--muted)] px-1 rounded font-mono">public-launch</code> permission sets.
+                </td>
+                <td class="p-4 text-center">
+                  <span class="badge bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">Synthesis 2 Gem</span>
+                </td>
+              </tr>
+
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Takeaway Box -->
+        <div class="mt-6 p-5 rounded-xl bg-[var(--secondary)] border border-[var(--border)] flex flex-col md:flex-row items-center justify-between gap-4">
+          <div class="text-sm">
+            <span class="font-bold text-[var(--foreground)]">The Verdict:</span> Both syntheses arrived at identical architectural conclusions, independently validating the safety, containment, and educational design. Synthesis 1 brings rigorous verification proofs, while Synthesis 2 delivers human-centered learning evidence and clean profile abstractions.
+          </div>
+          <span class="badge bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 px-3 py-1 text-xs shrink-0 font-bold">Core architecture settled — 10 contested risks as A/B evals</span>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- TAB 3: 6 STREAM BREAKDOWNS -->
+    <main id="tab-streams" class="tab-content hidden space-y-6">
+      
+      <!-- Stream Navigation Pills -->
+      <div class="flex flex-wrap items-center gap-2">
+        <button onclick="selectStream(1)" id="st-btn-1" class="st-btn px-3 py-2 rounded-lg text-xs font-semibold bg-[var(--primary)] text-[var(--primary-foreground)]">01. Harnesses</button>
+        <button onclick="selectStream(2)" id="st-btn-2" class="st-btn px-3 py-2 rounded-lg text-xs font-medium text-[var(--muted-foreground)] hover:bg-[var(--muted)]">02. Verification</button>
+        <button onclick="selectStream(3)" id="st-btn-3" class="st-btn px-3 py-2 rounded-lg text-xs font-medium text-[var(--muted-foreground)] hover:bg-[var(--muted)]">03. Elicitation</button>
+        <button onclick="selectStream(4)" id="st-btn-4" class="st-btn px-3 py-2 rounded-lg text-xs font-medium text-[var(--muted-foreground)] hover:bg-[var(--muted)]">04. Turbo & Safe</button>
+        <button onclick="selectStream(5)" id="st-btn-5" class="st-btn px-3 py-2 rounded-lg text-xs font-medium text-[var(--muted-foreground)] hover:bg-[var(--muted)]">05. Transpilation</button>
+        <button onclick="selectStream(6)" id="st-btn-6" class="st-btn px-3 py-2 rounded-lg text-xs font-medium text-[var(--muted-foreground)] hover:bg-[var(--muted)]">06. Meta Models</button>
+      </div>
+
+      <!-- STREAM CONTAINER (Content swaps dynamically via JS) -->
+      <section id="stream-card-container" class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-6 md:p-8 space-y-6">
+        <!-- Rendered by JS -->
+      </section>
+
+    </main>
+
+    <!-- TAB 4: INTERACTIVE SANDBOXES -->
+    <main id="tab-simulators" class="tab-content hidden space-y-8">
+      
+      <!-- Simulator 1: The Teaching Dial -->
+      <section class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-6 md:p-8">
+        <div class="max-w-2xl mb-6">
+          <span class="badge bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 mb-2">Interactive Sandbox 1</span>
+          <h2 class="text-xl md:text-2xl font-bold text-[var(--foreground)]">The Teaching Dial Simulator</h2>
+          <p class="text-[var(--muted-foreground)] text-sm mt-1">
+            See how vibe-fence automatically adjusts its tone, pedagogical depth, and hand-holding based on your chosen dial setting.
+          </p>
+        </div>
+
+        <!-- Dial Buttons -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+          <button onclick="setDial('max')" id="dial-btn-max" class="dial-btn p-3 rounded-xl border border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)] text-left transition-all">
+            <div class="font-bold text-sm">Level 4: Max</div>
+            <div class="text-xs opacity-80 mt-0.5">The Patient Coach</div>
+          </button>
+          <button onclick="setDial('med')" id="dial-btn-med" class="dial-btn p-3 rounded-xl border border-[var(--border)] bg-[var(--secondary)] text-[var(--foreground)] text-left transition-all hover:border-[var(--primary)]">
+            <div class="font-bold text-sm">Level 3: Med</div>
+            <div class="text-xs text-[var(--muted-foreground)] mt-0.5">The Guide</div>
+          </button>
+          <button onclick="setDial('min')" id="dial-btn-min" class="dial-btn p-3 rounded-xl border border-[var(--border)] bg-[var(--secondary)] text-[var(--foreground)] text-left transition-all hover:border-[var(--primary)]">
+            <div class="font-bold text-sm">Level 2: Min</div>
+            <div class="text-xs text-[var(--muted-foreground)] mt-0.5">The Co-Pilot</div>
+          </button>
+          <button onclick="setDial('silent')" id="dial-btn-silent" class="dial-btn p-3 rounded-xl border border-[var(--border)] bg-[var(--secondary)] text-[var(--foreground)] text-left transition-all hover:border-[var(--primary)]">
+            <div class="font-bold text-sm">Level 1: Silent</div>
+            <div class="text-xs text-[var(--muted-foreground)] mt-0.5">Invisible Guardian</div>
+          </button>
+        </div>
+
+        <!-- Prompt scenario -->
+        <div class="p-4 rounded-xl bg-[var(--secondary)] border border-[var(--border)] mb-4">
+          <span class="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">User Request to AI:</span>
+          <p class="text-sm font-medium text-[var(--foreground)] mt-1">"I want to add a login button to the top right of my app."</p>
+        </div>
+
+        <!-- Simulated Response Box -->
+        <div class="p-5 rounded-xl border border-[var(--border)] bg-[var(--card)] relative shadow-sm">
+          <div class="flex items-center justify-between mb-3">
+            <span id="dial-badge" class="badge bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+              Tone: Explanatory & Pedagogical
+            </span>
+            <span id="dial-metric" class="text-xs text-[var(--muted-foreground)] font-mono">Cognitive Support: 100% | Interruptions: 0</span>
+          </div>
+          <div id="dial-response-text" class="text-sm leading-relaxed space-y-3">
+            <!-- Populated via JS -->
+          </div>
+        </div>
+      </section>
+
+      <!-- Simulator 2: Teachable Turbo Action Gatekeeper -->
+      <section class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-6 md:p-8">
+        <div class="max-w-2xl mb-6">
+          <span class="badge bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 mb-2">Interactive Sandbox 2</span>
+          <h2 class="text-xl md:text-2xl font-bold text-[var(--foreground)]">Teachable Turbo Action Gatekeeper</h2>
+          <p class="text-[var(--muted-foreground)] text-sm mt-1">
+            Test how vibe-fence balances speed and security: safe changes fly through with silent checkpoints, while destructive actions hit unbypassable tripwires.
+          </p>
+        </div>
+
+        <!-- Action Selector -->
+        <div class="mb-4">
+          <label class="block text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider mb-2">Select an action for the AI to perform:</label>
+          <select id="turbo-select" onchange="runTurboSim()" class="w-full md:w-auto p-3 rounded-xl bg-[var(--secondary)] border border-[var(--border)] text-sm text-[var(--foreground)] font-medium focus:outline-none focus:ring-2 focus:ring-[var(--primary)]">
+            <option value="css">1. Change the button color to deep emerald (CSS Edit)</option>
+            <option value="component">2. Create a new `UserProfile.tsx` component file</option>
+            <option value="safe_pkg">3. Install popular library `lodash-es` via npm</option>
+            <option value="sketchy_pkg">4. Install unknown typosquatted package `reacct-auth-core`</option>
+            <option value="drop_db">5. Execute SQL command: `DROP TABLE users;`</option>
+            <option value="secret_leak">6. Hardcode `STRIPE_SECRET_KEY="sk_live_..."` in a client file</option>
+            <option value="force_push">7. Run `git push --force origin main`</option>
+          </select>
+        </div>
+
+        <!-- Result Card -->
+        <div id="turbo-result-card" class="p-5 rounded-xl border border-[var(--border)] bg-[var(--card)] transition-all">
+          <!-- Populated by JS -->
+        </div>
+      </section>
+
+    </main>
+
+    <!-- TAB 5: PHASE 1 ACTION BLUEPRINT -->
+    <main id="tab-roadmap" class="tab-content hidden space-y-6">
+      
+      <section class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-6 md:p-8">
+        <div class="max-w-3xl mb-6">
+          <span class="badge bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 mb-2">The Action Plan</span>
+          <h2 class="text-xl md:text-3xl font-bold text-[var(--foreground)]">From Research to Working Software</h2>
+          <p class="text-[var(--muted-foreground)] text-sm md:text-base mt-2 leading-relaxed">
+            With Phase 0 complete and verified across two independent syntheses, here is the plain-English execution plan for building the vibe-fence scaffold in Phase 1.
+          </p>
+        </div>
+
+        <p class="text-xs text-[var(--muted-foreground)] mt-2">Milestones are scaffold sequencing, not calendar weeks — from <a href="./synthesis/FINAL.md#4-actions-grouped-by-milestone" class="underline font-mono">synthesis/FINAL.md §4</a> + <a href="./synthesis-independent/FINAL.md" class="underline font-mono">independent FINAL §4</a>.</p>
+        <!-- Milestones Grid — sourced from FINAL.md §4 -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+          
+          <!-- M1 — Project skeleton -->
+          <div class="p-6 rounded-2xl bg-[var(--secondary)] border border-[var(--border)] space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="badge bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">M1 — Project skeleton</span>
+              <span class="text-xs font-mono text-[var(--muted-foreground)]">scaffold</span>
+            </div>
+            <h3 class="font-bold text-lg text-[var(--foreground)]">Skeleton, Router & Trusted Channel</h3>
+            <ul class="text-sm text-[var(--muted-foreground)] leading-relaxed list-disc list-inside space-y-1">
+              <li><code class="bg-[var(--muted)] px-1 rounded font-mono text-xs">src/</code> sole editable authority → <code class="bg-[var(--muted)] px-1 rounded font-mono text-xs">dist/</code> disposable; <code class="bg-[var(--muted)] px-1 rounded font-mono text-xs">tools/{generate,validate,install}.ts</code> enforce parity + ≤400-token budget</li>
+              <li><code class="bg-[var(--muted)] px-1 rounded font-mono text-xs">docs/fence/INDEX.md</code> router + <code class="bg-[var(--muted)] px-1 rounded font-mono text-xs">description-agent</code> frontmatter</li>
+              <li><code class="bg-[var(--muted)] px-1 rounded font-mono text-xs">.fence/</code> single-owner state tree (queue, dial, lessons, verdicts, budgets)</li>
+              <li><code class="bg-[var(--muted)] px-1 rounded font-mono text-xs">.fence/app-profile.json</code> — <code>local</code>/<code>shared</code>/<code>public</code> deriving 14→+15→+26 <code>block</code> tiers</li>
+              <li>Trusted-channel hardening: hash attestation, overwrite refusal, Unicode scan, <code class="bg-[var(--muted)] px-1 rounded font-mono text-xs">&lt;untrusted-content&gt;</code> envelope, <code class="bg-[var(--muted)] px-1 rounded font-mono text-xs">tools/</code> outside agent write-scope</li>
+            </ul>
+            <div class="pt-3 border-t border-[var(--border)] text-xs text-[var(--foreground)] font-medium">
+              Deliverable: <code class="font-mono text-xs">.fence/app-profile.json</code> · <code class="font-mono text-xs">docs/fence/INDEX.md</code> · <code class="font-mono text-xs">tools/{generate,validate,install}.ts</code>
+            </div>
+          </div>
+
+          <!-- M2 — Framework primitives -->
+          <div class="p-6 rounded-2xl bg-[var(--secondary)] border border-[var(--border)] space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="badge bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">M2 — Framework primitives</span>
+              <span class="text-xs font-mono text-[var(--muted-foreground)]">primitives</span>
+            </div>
+            <h3 class="font-bold text-lg text-[var(--foreground)]">Budgets, Checks & Adapter Profiles</h3>
+            <ul class="text-sm text-[var(--muted-foreground)] leading-relaxed list-disc list-inside space-y-1">
+              <li><code class="bg-[var(--muted)] px-1 rounded font-mono text-xs">AGENTS.md</code> ≤400 tokens asserted in <code class="bg-[var(--muted)] px-1 rounded font-mono text-xs">tools/validate.ts</code>; <code class="bg-[var(--muted)] px-1 rounded font-mono text-xs">src/framework/context-budget.yml</code> (4 KB caps, L1/L2/L3, ACID artefacts)</li>
+              <li><code class="bg-[var(--muted)] px-1 rounded font-mono text-xs">.fence/check</code> silent Reflexion circuit; step budget + WIP=1 Kanban; Architect→Editor gate; 2-strikes breaker</li>
+              <li>Per-runtime adapters <code class="bg-[var(--muted)] px-1 rounded font-mono text-xs">src/adapters/{claude,codex,cursor,opencode,hermes}.yml</code>; byte-capped PageRank <code>vibe-map</code></li>
+              <li>Deterministic <code class="bg-[var(--muted)] px-1 rounded font-mono text-xs">src/config/severity-policy.json</code>; teaching dial as orthogonal axis (<code class="bg-[var(--muted)] px-1 rounded font-mono text-xs">.fence/state/dial.json</code>)</li>
+              <li>Containment + reversibility + batched review (S-10); bands by guarantee <code>guarded→assisted→autonomous→open</code> — user-facing “Turbo” forbidden</li>
+            </ul>
+            <div class="pt-3 border-t border-[var(--border)] text-xs text-[var(--foreground)] font-medium">
+              Deliverable: <code class="font-mono text-xs">src/framework/context-budget.yml</code> · <code class="font-mono text-xs">src/config/severity-policy.json</code> · <code class="font-mono text-xs">src/adapters/*.yml</code> · <code class="font-mono text-xs">.fence/state/dial.json</code>
+            </div>
+          </div>
+
+          <!-- M3 — Skill definitions -->
+          <div class="p-6 rounded-2xl bg-[var(--secondary)] border border-[var(--border)] space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="badge bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">M3 — Skill definitions</span>
+              <span class="text-xs font-mono text-[var(--muted-foreground)]">skills</span>
+            </div>
+            <h3 class="font-bold text-lg text-[var(--foreground)]">vibe-guard · vibe-plan · vibe-teach</h3>
+            <ul class="text-sm text-[var(--muted-foreground)] leading-relaxed list-disc list-inside space-y-1">
+              <li>SKILL.md progressive disclosure; <code class="bg-[var(--muted)] px-1 rounded font-mono text-xs">vibe-guard</code> rule records <code class="bg-[var(--muted)] px-1 rounded font-mono text-xs">.fence/rules/&lt;id&gt;.json</code> (7-field schema, pass/fail/unknown/not-applicable)</li>
+              <li>Priority guardrail packets: dual-layer secrets (gitleaks + Push Protection), <code class="bg-[var(--muted)] px-1 rounded font-mono text-xs">NEXT_PUBLIC_</code> shape lint, Zod + <code>pg $1</code> + semgrep, RLS <code>USING (true)</code> linter, lockfile/SBOM</li>
+              <li><code class="bg-[var(--muted)] px-1 rounded font-mono text-xs">vibe-plan</code> 2-option teachable fork + <code class="bg-[var(--muted)] px-1 rounded font-mono text-xs">vibe-teach</code> card (What changed · Why · Your call · How we’ll know)</li>
+              <li>Elicitation <code>1→verify→best-of-k≤5</code>; <code class="bg-[var(--muted)] px-1 rounded font-mono text-xs">.fence/state/lessons.json</code>; trust ladder <code>compile→lint→tests×2→generated→judge-for-prose</code></li>
+            </ul>
+            <div class="pt-3 border-t border-[var(--border)] text-xs text-[var(--foreground)] font-medium">
+              Deliverable: <code class="font-mono text-xs">.fence/rules/&lt;id&gt;.json</code> · <code class="font-mono text-xs">.fence/state/lessons.json</code> · guardrail packet
+            </div>
+          </div>
+
+          <!-- M4 — Adapters + installer -->
+          <div class="p-6 rounded-2xl bg-[var(--secondary)] border border-[var(--border)] space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="badge bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">M4 — Adapters + installer</span>
+              <span class="text-xs font-mono text-[var(--muted-foreground)]">adapters</span>
+            </div>
+            <h3 class="font-bold text-lg text-[var(--foreground)]">Muse Spark 1.3 · Muse Wonder 1.0 · fence init</h3>
+            <ul class="text-sm text-[var(--muted-foreground)] leading-relaxed list-disc list-inside space-y-1">
+              <li><code class="bg-[var(--muted)] px-1 rounded font-mono text-xs">npx vibe-fence init</code> idempotent &lt;3s (merge-never-clobber, receipt + tour, <code>fence doctor</code>/<code>fence validate</code>); Muse Code reference adapter</li>
+              <li>Muse Spark 1.3 via <code>POST /v1/responses</code> stateless encrypted replay + Muse Wonder 1.0 swap; <code>silent</code>=skip model call</li>
+              <li>Minimal <code>PreToolUse</code>/<code>PreToolExecution</code> surface (FP budget); <code>fence look</code> Playwright→Spark; canary hook proof + version-pinned SDK</li>
+              <li>Glimmer 30B privacy literal; adversarial bench + before/after eval table + cost telemetry; instruction-file sanitizer</li>
+            </ul>
+            <div class="pt-3 border-t border-[var(--border)] text-xs text-[var(--foreground)] font-medium">
+              Deliverable: <code class="font-mono text-xs">npx vibe-fence init</code> · canary proof · <code>fence look</code> · privacy literal · eval table
+            </div>
+          </div>
+
+        </div>
+        <div class="mt-6 p-4 rounded-xl border border-amber-500/30 bg-amber-500/5 text-xs md:text-sm">
+          <span class="font-bold text-amber-700 dark:text-amber-300">⛔ What Phase 1 Must NOT Do</span>
+          <span class="text-[var(--muted-foreground)]"> — No user-facing “Turbo” (name bands by guarantee), no LLM judge gating, no greedy stacking, no permission prompts as safety story. See <a href="./synthesis/FINAL.md#6-what-phase-1-must-not-do" class="underline">FINAL.md §6 (14 rules)</a>.</span>
+        </div>
+
+        <!-- Launch Command Banner -->
+        <div class="mt-8 p-6 rounded-2xl bg-[var(--primary)] text-[var(--primary-foreground)] flex flex-col md:flex-row items-center justify-between gap-4">
+          <div>
+            <div class="font-bold text-lg">Ready to initialize Phase 1?</div>
+            <div class="text-sm opacity-90 mt-1">Both research syntheses are locked in the repository. We can start scaffolding Milestone 1 anytime.</div>
+          </div>
+          <button onclick="switchTab('big-picture')" class="px-5 py-2.5 rounded-xl bg-[var(--background)] text-[var(--foreground)] font-bold text-sm hover:opacity-90 transition-all shrink-0">
+            Review Big Picture First
+          </button>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="text-center text-xs text-[var(--muted-foreground)] py-6 border-t border-[var(--border)] space-y-2">
+      <div>vibe-fence Research Hub • Phase 0 Completed on 2026-10-20 • Generated with Antigravity UI System</div>
+      <div>Comparing <code class="font-mono">docs/research/synthesis/</code> and <code class="font-mono">docs/research/synthesis-independent/</code></div>
+    </footer>
+
+  </div>
+
+  <!-- Client-side Logic -->
+  <script>
+    // Tab switching
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('bg-[var(--primary)]', 'text-[var(--primary-foreground)]', 'font-semibold', 'shadow-sm');
+        btn.classList.add('text-[var(--muted-foreground)]', 'font-medium');
+      });
+
+      const activeTab = document.getElementById(`tab-${tabId}`);
+      const activeBtn = document.getElementById(`tab-btn-${tabId}`);
+      if (activeTab) activeTab.classList.remove('hidden');
+      if (activeBtn) {
+        activeBtn.classList.add('bg-[var(--primary)]', 'text-[var(--primary-foreground)]', 'font-semibold', 'shadow-sm');
+        activeBtn.classList.remove('text-[var(--muted-foreground)]', 'font-medium');
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // Comparison filter
+    function filterComparison(type) {
+      document.querySelectorAll('.cmp-filter-btn').forEach(btn => {
+        btn.classList.remove('bg-[var(--primary)]', 'text-[var(--primary-foreground)]', 'font-semibold');
+        btn.classList.add('text-[var(--muted-foreground)]', 'font-medium');
+      });
+      event.target.classList.add('bg-[var(--primary)]', 'text-[var(--primary-foreground)]', 'font-semibold');
+      event.target.classList.remove('text-[var(--muted-foreground)]', 'font-medium');
+
+      const rows = document.querySelectorAll('.cmp-row');
+      rows.forEach(row => {
+        if (type === 'all' || row.getAttribute('data-type') === type) {
+          row.classList.remove('hidden');
+        } else {
+          row.classList.add('hidden');
+        }
+      });
+    }
+
+    // Stream Data
+    const streamData = {
+      1: {
+        number: "01",
+        title: "Agent Harnesses & Scaffolding",
+        subtitle: "How coding agents (Cursor, Codex, OpenCode, Hermes) actually run and interact with your computer",
+        metaphor: "The Engine & The Dashboard",
+        problem: "Agents blindly run shell commands. If you write 'don't delete files' in an instruction file, the AI ignores it when it gets confused.",
+        metric: "Cost increases by 23% and accuracy drops when instructions exceed 400 tokens (ETH Zurich 2026).",
+        solution: "vibe-fence uses PreToolUse hooks as an unbypassable gatekeeper, with strict context budgeting under 150 lines.",
+        session1: "Highlighted hook telemetry, subagent delegation friction, and mathematical proof of prompt degradation.",
+        session2: "Added concrete ACI command paging, tool-call schema filtering, and terminal execution sandboxing.",
+        action: "Build a single pre-tool hook daemon and compress AGENTS.md to an index map with no boilerplate."
+      },
+      2: {
+        number: "02",
+        title: "Verification & Automated Testing",
+        subtitle: "How to know if the code actually works without having to write complex tests yourself",
+        metaphor: "The Safety Inspector",
+        problem: "Asking an AI 'Did you check your work?' is a psychological placebo. Without running tests, it just claims everything is fine (Huang et al., ICLR 2024).",
+        metric: "Intrinsically self-critiqued code without tests yielded 0% accuracy gains across 1,000+ benchmarked coding tasks.",
+        solution: "vibe-fence runs headless test synthesizers (Reflexion & CodeT) in the background to automatically verify code against expected outputs.",
+        session1: "Focused on CodeT execution loops, automated test generation, and test-suite filtering.",
+        session2: "Focused on human-friendly test summaries: translating obscure test error stacks into plain English explanations.",
+        action: "Create automated verification loops that silently run before any feature is marked 'done'."
+      },
+      3: {
+        number: "03",
+        title: "Non-Technical Elicitation & Teaching",
+        subtitle: "How the companion speaks with you, discovers what you want, and explains concepts simply",
+        metaphor: "The Patient Coach",
+        problem: "Agents either overwhelm non-technical users with 10 technical questions at once, or guess wildly and build the wrong thing.",
+        metric: "Bastani et al., PNAS 2025-06-25, n≈1,000 high-school math: GPT Base +48% in practice / −17% after removal; hint-first tutor +127% no penalty. Transfer to coding contested.",
+        solution: "One question per turn, everyday metaphors instead of technical terms, and a dynamic 4-tier dial that fades out as you gain confidence.",
+        session1: "Focused on Cognitive Load Theory, Sweller's cognitive architecture, and prompt length regulation.",
+        session2: "Integrated PNAS 2025 AI-Tutor empirical classroom field data and interactive visual wireframe elicitation.",
+        action: "Implement the companion persona with a hard rule of max 1 question per turn."
+      },
+      4: {
+        number: "04",
+        title: "Teachable Turbo & Containment",
+        subtitle: "How to let the AI build fast without constantly interrupting you or burning down your project",
+        metaphor: "The Airbag & The Instant Replay",
+        problem: "Asking users 'Do you want to run this command?' 50 times causes 93% habituation—users click 'Yes' without reading.",
+        metric: "93% habituation rate on repeated confirmation dialogs in software safety studies.",
+        solution: "Auto-approve safe actions with silent git snapshots; only trigger modal tripwires on truly dangerous actions (drop db, force push, key leak).",
+        session1: "Analyzed git worktree sandboxing, shell AST interceptors, and TrojanForge prompt injection defenses.",
+        session2: "Designed 3 practical App Profiles (local-toy, shared-team, public-launch) with explicit permission matrices.",
+        action: "Implement silent git checkpoints on every action + 'npx vibe-fence undo' panic button."
+      },
+      5: {
+        number: "05",
+        title: "Rule Formats & Transpilation",
+        subtitle: "Writing your project rules once and having them work across Cursor, Claude, OpenCode, and Copilot",
+        metaphor: "The Universal Translator",
+        problem: "Every AI tool requires a different config file (.cursorrules, CLAUDE.md, AGENTS.md), leading to out-of-sync settings.",
+        metric: "CCI factorial: 2⁵=32 subsets / 118 configs / 32k evals — all-in scaffold beaten by proper subset every condition; Planning Shapley negative. Reasoning tokens +14–22% per added requirement.",
+        solution: "Single source via <code>src/</code> + <code>.fence/app-profile.json</code> compiled by <code>tools/generate.ts</code> into tool-native configs — <code>AGENTS.md</code> ≤400 tokens, Cursor/OpenCode/Claude in sync.",
+        session1: "Detailed AST schema transpilation and cross-tool syntax normalizers.",
+        session2: "Added automated lint checks that warn users whenever rule files exceed 150 lines or 400 tokens.",
+        action: "Build the dual-transpiler CLI command to compile configs in under 200ms."
+      },
+      6: {
+        number: "06",
+        title: "Meta AI Models & Tooling",
+        subtitle: "Using specialized models (Muse Spark, Wonder, Image) for the tasks they excel at",
+        metaphor: "The Specialized Dream Team",
+        problem: "Using a giant, slow reasoning model to say 'Hello!' is slow and costly; using a tiny model to design architecture leads to bugs.",
+        metric: "Depth > breadth — one deep Spark integration beats bolted-on SAM (Cerebral Valley rubric: Impact 30% + Tooling 25%). M4 ships canary proof that hooks loaded.",
+        solution: "Muse Spark for real-time companion chat, Muse Wonder for architectural escalations, and Muse Image for instant mockup generation.",
+        session1: "Scoped SAM 3.1 accurately to single-concept click-to-teach UI inspection rather than full-page semantic parsing.",
+        session2: "Aligned model roles: Spark 1.3 as everyday companion, Wonder 1.0 as the senior architect escalations desk.",
+        action: "Wire up model router with Muse Spark companion prompting and Wonder escalation triggers."
+      }
+    };
+
+    function selectStream(num) {
+      document.querySelectorAll('.st-btn').forEach(btn => {
+        btn.classList.remove('bg-[var(--primary)]', 'text-[var(--primary-foreground)]', 'font-semibold');
+        btn.classList.add('text-[var(--muted-foreground)]', 'font-medium');
+      });
+      const activeBtn = document.getElementById(`st-btn-${num}`);
+      if (activeBtn) {
+        activeBtn.classList.add('bg-[var(--primary)]', 'text-[var(--primary-foreground)]', 'font-semibold');
+        activeBtn.classList.remove('text-[var(--muted-foreground)]', 'font-medium');
+      }
+
+      const data = streamData[num];
+      const container = document.getElementById('stream-card-container');
+      container.innerHTML = `
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-[var(--border)]">
+          <div>
+            <div class="flex items-center gap-2 mb-2">
+              <span class="badge bg-primary/10 text-[var(--foreground)] border border-[var(--border)]">Stream ${data.number}</span>
+              <span class="badge bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">${data.metaphor}</span>
+            </div>
+            <h2 class="text-xl md:text-3xl font-bold text-[var(--foreground)]">${data.title}</h2>
+            <p class="text-[var(--muted-foreground)] text-sm mt-1 max-w-2xl">${data.subtitle}</p>
+          </div>
+          <div class="p-3.5 rounded-xl bg-[var(--secondary)] border border-[var(--border)] self-start md:self-auto shrink-0 max-w-xs">
+            <div class="text-xs text-[var(--muted-foreground)] font-medium">Empirical Fact</div>
+            <div class="text-xs md:text-sm font-semibold text-[var(--foreground)] mt-1">${data.metric}</div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="p-5 rounded-xl bg-rose-500/5 border border-rose-500/20">
+            <div class="flex items-center gap-2 mb-2 text-rose-600 dark:text-rose-400 font-bold text-sm">
+              <span>⚠️ What Breaks Without vibe-fence</span>
+            </div>
+            <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">${data.problem}</p>
+          </div>
+
+          <div class="p-5 rounded-xl bg-emerald-500/5 border border-emerald-500/20">
+            <div class="flex items-center gap-2 mb-2 text-emerald-600 dark:text-emerald-400 font-bold text-sm">
+              <span>🛡️ How vibe-fence Solves It</span>
+            </div>
+            <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">${data.solution}</p>
+          </div>
+        </div>
+
+        <!-- Synthesis Duel in this Stream -->
+        <div class="p-5 rounded-xl bg-[var(--secondary)] border border-[var(--border)] space-y-3">
+          <h4 class="font-bold text-sm text-[var(--foreground)]">Synthesis 1 vs Synthesis 2 Take on Stream ${data.number}</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs md:text-sm">
+            <div class="p-3 rounded-lg bg-[var(--card)] border border-[var(--border)]">
+              <span class="font-bold text-[var(--foreground)] block mb-1">Synthesis 1 Focus:</span>
+              <span class="text-[var(--muted-foreground)]">${data.session1}</span>
+            </div>
+            <div class="p-3 rounded-lg bg-[var(--card)] border border-[var(--border)]">
+              <span class="font-bold text-[var(--foreground)] block mb-1">Synthesis 2 Focus:</span>
+              <span class="text-[var(--muted-foreground)]">${data.session2}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Phase 1 Action -->
+        <div class="pt-4 border-t border-[var(--border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs md:text-sm">
+          <div>
+            <span class="font-bold text-[var(--foreground)]">Phase 1 Concrete Action: </span>
+            <span class="text-[var(--muted-foreground)]">${data.action}</span>
+          </div>
+          <span class="badge bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shrink-0">Ready for Scaffold</span>
+        </div>
+      `;
+    }
+
+    // Dial Simulator
+    const dialData = {
+      max: {
+        badge: "Tone: The Patient Coach (Max Scaffolding)",
+        metric: "Cognitive Support: 100% | Hand-holding: High | Interruptions: 0",
+        text: `
+          <p><strong class="text-[var(--foreground)]">Companion:</strong> "Awesome! Adding a login button is a classic first step. Let's think of it like putting a front door on your house.</p>
+          <p>Before I drop it into the top right corner, who will be logging in? Is this for regular users with email/password, or would you like Google 1-tap sign-in?"</p>
+          <div class="p-3 rounded-lg bg-[var(--secondary)] border border-[var(--border)] text-xs text-[var(--muted-foreground)]">
+            💡 <em>Notice:</em> vibe-fence uses an intuitive house analogy, asks only <strong>1 question</strong>, and offers friendly multiple choices instead of asking about auth tokens or JWT libraries.
+          </div>
+        `
+      },
+      med: {
+        badge: "Tone: The Helpful Guide (Medium)",
+        metric: "Cognitive Support: 60% | Hand-holding: Moderate | Speed: Fast",
+        text: `
+          <p><strong class="text-[var(--foreground)]">Companion:</strong> "I'll add a 'Sign In' button in your top navigation header using clean Tailwind styling.</p>
+          <p>Would you like this to open a popup login modal, or redirect to a dedicated login page?"</p>
+          <div class="p-3 rounded-lg bg-[var(--secondary)] border border-[var(--border)] text-xs text-[var(--muted-foreground)]">
+            💡 <em>Notice:</em> Shorter explanation, focuses directly on UI behavior options without lecturing.
+          </div>
+        `
+      },
+      min: {
+        badge: "Tone: The Agile Co-Pilot (Minimum)",
+        metric: "Cognitive Support: 25% | Hand-holding: Low | Speed: Very Fast",
+        text: `
+          <p><strong class="text-[var(--foreground)]">Companion:</strong> "Adding the login button to <code class="font-mono bg-[var(--muted)] px-1 rounded text-xs">src/components/Header.tsx</code> and hooking it to the auth modal now.</p>
+          <p>Created checkpoint <code class="font-mono bg-[var(--muted)] px-1 rounded text-xs">checkpoint: add-header-login-btn</code>. Done!"</p>
+          <div class="p-3 rounded-lg bg-[var(--secondary)] border border-[var(--border)] text-xs text-[var(--muted-foreground)]">
+            💡 <em>Notice:</em> Direct execution with an invisible rollback checkpoint. No chat delays.
+          </div>
+        `
+      },
+      silent: {
+        badge: "Tone: Invisible Guardian (Silent Mode)",
+        metric: "Cognitive Support: 0% | Hand-holding: None | Speed: Instant",
+        text: `
+          <p><strong class="text-[var(--foreground)]">Companion:</strong> <em>[Silent Execution]</em></p>
+          <div class="font-mono text-xs text-emerald-600 dark:text-emerald-400 bg-[var(--secondary)] p-3 rounded-lg border border-[var(--border)]">
+            ✓ git snapshot: c9f1a02 (checkpoint: add login button)<br>
+            ✓ edited src/components/Header.tsx (+14 lines)<br>
+            ✓ zero safety violations detected
+          </div>
+          <div class="p-3 rounded-lg bg-[var(--secondary)] border border-[var(--border)] text-xs text-[var(--muted-foreground)]">
+            💡 <em>Notice:</em> Pure code output. Only safety trips will wake the guardian up.
+          </div>
+        `
+      }
+    };
+
+    function setDial(level) {
+      document.querySelectorAll('.dial-btn').forEach(btn => {
+        btn.classList.remove('border-[var(--primary)]', 'bg-[var(--primary)]', 'text-[var(--primary-foreground)]');
+        btn.classList.add('border-[var(--border)]', 'bg-[var(--secondary)]', 'text-[var(--foreground)]');
+        const desc = btn.querySelector('div:last-child');
+        if (desc) desc.classList.add('text-[var(--muted-foreground)]');
+      });
+
+      const activeBtn = document.getElementById(`dial-btn-${level}`);
+      if (activeBtn) {
+        activeBtn.classList.remove('border-[var(--border)]', 'bg-[var(--secondary)]', 'text-[var(--foreground)]');
+        activeBtn.classList.add('border-[var(--primary)]', 'bg-[var(--primary)]', 'text-[var(--primary-foreground)]');
+        const desc = activeBtn.querySelector('div:last-child');
+        if (desc) desc.classList.remove('text-[var(--muted-foreground)]');
+      }
+
+      const item = dialData[level];
+      document.getElementById('dial-badge').innerText = item.badge;
+      document.getElementById('dial-metric').innerText = item.metric;
+      document.getElementById('dial-response-text').innerHTML = item.text;
+    }
+
+    // Turbo Simulator Data
+    const turboScenarios = {
+      css: {
+        verdict: "AUTO-APPROVED (Silent Turbo)",
+        color: "emerald",
+        badge: "Safe Cosmetic Edit",
+        title: "Button Color Update",
+        checkpoint: "checkpoint: update button color to emerald",
+        dialog: "None. vibe-fence takes a silent 5ms git checkpoint and executes immediately.",
+        why: "CSS edits cannot delete data, leak credentials, or harm systems. Asking confirmation here creates habituation fatigue.",
+        undo: "If you dislike the shade, type 'undo' and your previous color is back instantly."
+      },
+      component: {
+        verdict: "AUTO-APPROVED (Silent Turbo)",
+        color: "emerald",
+        badge: "Safe Code Generation",
+        title: "Create UserProfile.tsx",
+        checkpoint: "checkpoint: scaffold UserProfile.tsx",
+        dialog: "None. Automatically scoped within the src/ directory.",
+        why: "New local file creation has an empty blast radius. No confirmation required.",
+        undo: "Typing 'undo' deletes the newly created file and restores git head cleanly."
+      },
+      safe_pkg: {
+        verdict: "AUTO-APPROVED WITH CHECKPOINT",
+        color: "emerald",
+        badge: "Verified Package",
+        title: "npm install lodash-es",
+        checkpoint: "checkpoint: npm install lodash-es",
+        dialog: "None. Package is checked against the allowlist of high-reputation, vetted libraries.",
+        why: "Package has millions of weekly downloads and zero known supply-chain vulnerabilities.",
+        undo: "Undo rolls back package.json and deletes the downloaded module in one tap."
+      },
+      sketchy_pkg: {
+        verdict: "BLOCKED (Hard Tripwire)",
+        color: "rose",
+        badge: "Security Threat Blocked",
+        title: "npm install reacct-auth-core",
+        checkpoint: "None (Blocked before execution)",
+        dialog: "⚠️ WARNING: Typosquatting risk detected for 'reacct-auth-core'. This package was registered 3 days ago and has only 4 downloads.",
+        why: "vibe-fence's package guardian catches typosquatting and malicious injection attempts before your shell touches npm.",
+        undo: "N/A — blocked pre-execution. Your machine remained 100% clean."
+      },
+      drop_db: {
+        verdict: "BLOCKED (Critical Tripwire)",
+        color: "rose",
+        badge: "Data Loss Prevention",
+        title: "DROP TABLE users;",
+        checkpoint: "Emergency DB Dump Created",
+        dialog: "🛑 CRITICAL ACTION: The AI is attempting to permanently erase the 'users' database table. This action destroys user data.",
+        why: "vibe-fence classifies database drops as irreversible destructive operations. Auto-approval is strictly forbidden.",
+        undo: "Requires user typing the app name to unlock, and takes an automatic pre-drop SQLite/Postgres dump."
+      },
+      secret_leak: {
+        verdict: "BLOCKED (Secret Guard Tripwire)",
+        color: "rose",
+        badge: "Credential Leak Blocked",
+        title: "Hardcoded Stripe Secret Key in Client",
+        checkpoint: "None (File write rejected)",
+        dialog: "🔒 SECURITY ALERT: The AI tried to save a live secret key (`sk_live_...`) into a public frontend file. This would expose your Stripe account to anyone viewing the website.",
+        why: "vibe-fence runs an AST secret scanner on every proposed file edit. Secret keys are blocked and redirected to .env.",
+        undo: "vibe-fence automatically creates an entry in .env.local and rewrites the code to reference process.env safely."
+      },
+      force_push: {
+        verdict: "BLOCKED (History Destruction)",
+        color: "rose",
+        badge: "Git Destructive Command",
+        title: "git push --force origin main",
+        checkpoint: "None (Command rejected by bouncer)",
+        dialog: "🛑 FORBIDDEN: Force-pushing to main can overwrite your team's code history. The PreToolUse hook rejected this command.",
+        why: "Force pushes are hard-coded illegal actions in the default vibe-fence profile.",
+        undo: "Use a regular push or a feature branch instead."
+      }
+    };
+
+    function runTurboSim() {
+      const select = document.getElementById('turbo-select');
+      const key = select.value;
+      const data = turboScenarios[key];
+      const card = document.getElementById('turbo-result-card');
+
+      const isSafe = data.color === 'emerald';
+      const badgeClass = isSafe 
+        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' 
+        : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20';
+
+      card.innerHTML = `
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[var(--border)]">
+          <div class="flex items-center gap-3">
+            <span class="w-8 h-8 rounded-full ${isSafe ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/20 text-rose-600 dark:text-rose-400'} flex items-center justify-center font-bold text-sm">
+              ${isSafe ? '✓' : '✗'}
+            </span>
+            <div>
+              <span class="badge ${badgeClass}">${data.badge}</span>
+              <h3 class="font-bold text-base text-[var(--foreground)] mt-1">${data.verdict}</h3>
+            </div>
+          </div>
+          <span class="text-xs font-mono text-[var(--muted-foreground)]">Action: ${data.title}</span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 text-xs md:text-sm">
+          <div class="p-4 rounded-xl bg-[var(--secondary)] border border-[var(--border)] space-y-1">
+            <span class="font-bold text-[var(--foreground)] block">User Experience:</span>
+            <p class="text-[var(--muted-foreground)]">${data.dialog}</p>
+          </div>
+          <div class="p-4 rounded-xl bg-[var(--secondary)] border border-[var(--border)] space-y-1">
+            <span class="font-bold text-[var(--foreground)] block">Why vibe-fence behaves this way:</span>
+            <p class="text-[var(--muted-foreground)]">${data.why}</p>
+          </div>
+        </div>
+
+        <div class="mt-4 p-3 rounded-lg bg-[var(--secondary)] border border-[var(--border)] flex items-center justify-between text-xs">
+          <div><strong class="text-[var(--foreground)]">Magic Undo Protection:</strong> <span class="text-[var(--muted-foreground)]">${data.undo}</span></div>
+          <span class="font-mono text-[var(--muted-foreground)] text-xs hidden sm:inline">${data.checkpoint}</span>
+        </div>
+      `;
+    }
+
+    // Initialize Default State
+    document.addEventListener('DOMContentLoaded', () => {
+      selectStream(1);
+      setDial('max');
+      runTurboSim();
+    });
+  </script>
+</body>
+</html>

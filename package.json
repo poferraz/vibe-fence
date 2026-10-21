@@ -1,0 +1,17 @@
+{
+  "name": "vibe-fence",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Drop-in harness that makes any AI coding agent behave like a senior-dev companion for non-technical vibe-coders.",
+  "scripts": {
+    "build": "bun run tools/generate.ts",
+    "validate": "bun run tools/validate.ts",
+    "deploy": "bun run tools/install.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "latest"
+  }
+}

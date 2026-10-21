@@ -1,0 +1,16 @@
+{
+  "model": "gemini-4-argon",
+  "provider": "Google Gemini Deep Research (web app)",
+  "date": "2026-10-20",
+  "streams_completed": [
+    "01",
+    "02",
+    "03"
+  ],
+  "streams_skipped": [
+    "04",
+    "05",
+    "06"
+  ],
+  "notes": "3 streams via Deep Research web app. Originals are .docx with embedded images; converted to .md for synthesis. Streams 04-06 not run in this model."
+}

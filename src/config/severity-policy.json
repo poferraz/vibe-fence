@@ -1,0 +1,70 @@
+{
+  "_comment": "src/config/severity-policy.json — S-09 deterministic severity policy + 04 D-07 app-profile escalation. Canonical: no check→nudge, check+irreversible→block, check+reversible→warn, unknown≠pass. Per FINAL-v2 §2 S-09 + 04 S-11/S-14 + deepseek decision tree.",
+  "version": 1,
+  "description": "Deterministic function: every block has a command returning a verdict (S-05). Severity is policy from declared intent (.fence/app-profile.json local/shared/public → 14/29/55 blocks). AI-specific rules block even at local.",
+  "function": {
+    "_note": "S-11/S-14 + deepseek §1/§6 — no deterministic check → nudge (never a gate); check+irreversible/high-blast → block (before action); check+reversible → warn (queue + fix-now-or-next-digest).",
+    "rules": [
+      {
+        "condition": "no deterministic check exists",
+        "severity": "nudge",
+        "gate": false,
+        "note": "Prose advice, not a guardrail — never a block (S-05: no deterministic check → never a block)"
+      },
+      {
+        "condition": "check exists + irreversible or high blast radius",
+        "severity": "block",
+        "gate": true,
+        "gate_timing": "before_action",
+        "note": "Fail closed before mutation — secrets, credential exfiltration, irreversible DB drops"
+      },
+      {
+        "condition": "check exists + reversible",
+        "severity": "warn",
+        "gate": false,
+        "queue": true,
+        "note": "Queue + fix-now-or-next-digest — lint, headers, non-critical hygiene"
+      }
+    ]
+  },
+  "outcomes": {
+    "_note": "Four-outcome model per gpt-6 implication 1 (ASVS 5.0.0) — unknown≠pass (S-05/S-09). Missing evidence is unknown, not pass.",
+    "values": ["pass", "fail", "unknown", "not-applicable"],
+    "unknown_is_pass": false,
+    "on_unknown": "emit unknown with reason — never pass (preserve S-05 invariant)",
+    "on_not_applicable": "skip — rule does not apply to this project shape"
+  },
+  "app_profile": {
+    "_note": "S-09 — severity derived from .fence/app-profile.json intent declaration (minimax §9.1). One-fact-one-location: user declares intent once, harness derives every rule's severity.",
+    "tiers": ["local", "shared", "public"],
+    "block_counts": {
+      "local": 14,
+      "shared": 29,
+      "public": 55
+    },
+    "ai_specific_always_block": true,
+    "ai_specific_note": "AI-specific rules (agent identity, MCP pin, slopsquat, LLM-output sanitization) are block even at local — compromise vector is the agent, not the user (S-09)",
+    "csp_discipline": "Report-Only first; enforce when violations = 0 (S-09 / minimax A-15)",
+    "secrets_discipline": "warn until allowlist exists, then block (04 D-03 / minimax two-phase)",
+    "devDependencies_heuristic": "warn (not block) until triage pipeline lands — C-07a / GEM-05"
+  },
+  "examples": {
+    "_note": "Illustrative — not exhaustive. Real rules live in .fence/rules/<id>.json per gpt-6 implication 1.",
+    "nudge": ["conventional-commits on solo repo", "file-size ceiling", "prose advice without check"],
+    "warn": ["missing CSP header (Report-Only)", "lint violation reversible", "devDep audit high"],
+    "block": ["secret in commit", "NEXT_PUBLIC_ secret without allowlist", "missing RLS on public table", "lifecycle script without allowlist"],
+    "unknown": ["scanner offline", "remote RLS check without network — run fence verify-remote when connected"]
+  },
+  "suppression": {
+    "_note": "Every block must have a documented suppression path with a reason string (04 D-03 / minimax §10).",
+    "allowlist_files": ["secret-scan-allowlist.json", "csrf-exempt.json", "dependency-policy.json"],
+    "requires_reason": true,
+    "mitigation_expiry": "mitigations require rule + evidence + scope + owner + expiry/recheck; dep change invalidates stale decisions (gpt-6 implication 9)"
+  },
+  "TODO": [
+    "Wire to .fence/rules/<id>.json — each rule declares {id, applicability, severity, source, check_adapter, affected_action, evidence_schema, repair_workflow} (gpt-6 implication 1)",
+    "Enforce unknown≠pass in fence check — unknown findings must not be counted as pass in CI gate (S-05)",
+    "Add framework detection — NEXT_PUBLIC_/VITE_/PUBLIC_ prefix varies by framework (Next.js/Vite/Astro)",
+    "Implement four-outcome reporting in CI — pass/fail/unknown/not-applicable as distinct states"
+  ]
+}

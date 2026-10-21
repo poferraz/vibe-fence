@@ -1,0 +1,8 @@
+{
+  "model": "deepseek-v4.1-flash",
+  "provider": "Hermes desktop app via ollama-launch (model id deepseek-v4.1-flash:1017-cloud)",
+  "date": "2026-10-20",
+  "streams_completed": ["01", "02", "03", "04", "05", "06"],
+  "streams_skipped": [],
+  "notes": "All 6 streams. Distinctive angles: 01 = three tiers of enforceability (context files vs rules/skills vs hooks) + the 14.8% security gap in agent context files; 02 = ranked causal levers with the AGENTS.md null result (no success gain, +20% inference cost) as the headline; 03 = verification over consensus for code (best-of-N + test filter); 04 = 26 rules where only deterministic+irreversible may block; 05 = teaching dial decoupled from autonomy, turbo rebuilt on containment; 06 = Muse Spark as companion voice with 'fence look' as the demo. Stream 06 docs host (dev.meta.ai) blocked automated fetches - capability claims come from first-party blogs, pricing unverified."
+}

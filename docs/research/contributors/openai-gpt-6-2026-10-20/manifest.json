@@ -1,0 +1,12 @@
+{
+  "model": "gpt-6",
+  "provider": "OpenAI via Codex desktop",
+  "date": "2026-10-20",
+  "streams_completed": [
+    "01",
+    "04",
+    "06"
+  ],
+  "streams_skipped": [],
+  "notes": "Completed stream 01: 26 harness families, 64 cited primary sources, nine coverage gaps, and 15 copy/avoid/invent implications. Completed stream 04: 48 guardrails across five categories, 59 primary sources, eight gaps, and 14 copy/avoid/invent implications; severity and enforcement designs are proposals. Stream 04 was selected by the fewest-contributions rule. Documentation research only; no live installations, deployments, or security bypass tests. Stream 01 paper findings were checked through abstracts and version records, not reproduced. Model family follows the session identity; a more specific backend revision is not exposed. Completed stream 06: 29 sources, nine gaps and 12 implications; concrete Spark/Muse Code integration proposal, conditional media roles, hosted/offline distinctions and provisional hackathon rules."
+}

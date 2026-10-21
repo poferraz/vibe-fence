@@ -1,0 +1,25 @@
+# dependencies
+node_modules/
+
+# build output (generated, disposable)
+dist/
+
+# harness state (single-owner, never committed)
+.fence/
+
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# editor / os
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/settings.json
+
+# bun / tooling caches
+bun.lock
+bun.lockb
+tools/out/

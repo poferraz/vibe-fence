@@ -4,8 +4,15 @@ node_modules/
 # build output (generated, disposable)
 dist/
 
-# harness state (single-owner, never committed)
-.fence/
+# harness state — single-owner, mostly gitignored; .fence/app-profile.json IS commitable (S-09, Task 2)
+.fence/*
+!.fence/app-profile.json
+# explicitly ignored harness artefacts (also appended by installer on init)
+.fence/.integrity.json
+.fence/events.ndjson
+.fence/state/
+.fence/verdicts/
+.fence/queue.json
 
 # env / secrets
 .env

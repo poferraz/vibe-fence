@@ -160,24 +160,53 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
     }
   }
 
-  // 5. .fence/app-profile.json — with runtime field (GEM-02)
+  // 5. .fence/app-profile.json — copy canonical template src/templates/app-profile.json + record runtime (Task 2 S-09, GEM-02)
   {
     const p = join(projectRoot, ".fence", "app-profile.json");
+    const templateCandidates = [
+      join(resolve(import.meta.dir, ".."), "src", "templates", "app-profile.json"),
+      join(resolve(import.meta.dir, ".."), "dist", "templates", "app-profile.json"),
+    ];
+    const loadTemplate = (): Record<string, unknown> | null => {
+      for (const cand of templateCandidates) {
+        if (existsSync(cand)) {
+          try { return JSON.parse(readFileSync(cand, "utf-8") as string) as Record<string, unknown>; } catch {}
+        }
+      }
+      return null;
+    };
     if (!existsSync(p) && !opts.dryRun) {
       assertWithinProjectRoot(projectRoot, p);
-      writeFileSync(p, JSON.stringify({
+      const tpl = loadTemplate();
+      const base = tpl ?? {
         version: 1,
-        profile: "local",
+        tier: "local",
+        block_counts: { local: 14, shared: 29, public: 55 },
+        _fallback: "inline — template not found",
+      };
+      const out: Record<string, unknown> = {
+        ...base,
+        version: (base["version"] as number) ?? 1,
+        tier: (base["tier"] as string) ?? (base["profile"] as string) ?? "local",
         runtime: probe.runtime,
-        createdAt: new Date().toISOString(),
-      }, null, 2) + "\n", "utf-8");
+        block_counts: (base["block_counts"] as unknown) ?? { local: 14, shared: 29, public: 55 },
+        updatedAt: new Date().toISOString(),
+      };
+      if (!out["profile"]) out["profile"] = out["tier"];
+      delete out["_fallback"];
+      delete out["_comment"];
+      writeFileSync(p, JSON.stringify(out, null, 2) + "\n", "utf-8");
       filesWritten.push(".fence/app-profile.json");
-    } else if (existsSync(p) && probe.runtime === "webcontainer" && !opts.dryRun) {
-      // Patch runtime field on existing profile if WebContainer detected
+    } else if (existsSync(p) && !opts.dryRun) {
       try {
         const ex = JSON.parse(readFileSync(p, "utf-8") as string) as Record<string, unknown>;
-        if (ex["runtime"] !== probe.runtime) {
-          ex["runtime"] = probe.runtime;
+        let mutated = false;
+        if (ex["runtime"] !== probe.runtime) { ex["runtime"] = probe.runtime; mutated = true; }
+        if (!ex["tier"] && ex["profile"]) { ex["tier"] = ex["profile"]; mutated = true; }
+        if (!ex["profile"] && ex["tier"]) { ex["profile"] = ex["tier"]; mutated = true; }
+        if (!ex["block_counts"]) { ex["block_counts"] = { local: 14, shared: 29, public: 55 }; mutated = true; }
+        if (mutated) {
+          ex["updatedAt"] = new Date().toISOString();
           writeFileSync(p, JSON.stringify(ex, null, 2) + "\n", "utf-8");
         }
       } catch {}

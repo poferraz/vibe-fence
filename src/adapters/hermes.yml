@@ -1,0 +1,35 @@
+# src/adapters/hermes.yml — Hermes Agent runtime profile (REFERENCE override)
+# Authority: src/adapters/types.ts (inline ADAPTERS array is canonical per GEM-03).
+# This YML is a data mirror for tooling/inspection; types.ts remains the single source of truth.
+# Spec: FINAL-v4 S-02 (Skills), S-03 (Context budget), S-13 (Muse routing), C-03 (ACI by model tier).
+# Linked budget: src/framework/context-budget.yml — adapters override total_tokens per-runtime.
+
+name: hermes
+label: Hermes Agent
+runtime: hermes
+
+window:
+  total_tokens: 128000
+  note: "Hermes default window; S-03 caps (static/dynamic/history/headroom) scale against this"
+
+skillsDir: ~/.hermes/skills
+agentsMapping:
+  canonical: AGENTS.md
+  runtimePaths:
+    - AGENTS.md
+    - .hermes/AGENTS.md
+  precedence: "AGENTS.md canonical; .hermes/AGENTS.md project-local overrides"
+
+hookSurface:
+  hooks:
+    - PreToolUse
+    - PostToolUse
+  fpBudgetNotes: "Minimal — PreToolUse/PostToolUse; FP budget per S-10/C-01"
+
+# C-03: Hermes Agent can run frontier (Muse Spark/Wonder) or weaker local models;
+# keep frontier default, document weak-model escalation.
+modelHint:
+  tier: frontier
+  surface: thin
+  description: "Hermes with frontier (Muse Spark/Wonder): thin hooks suffice; local/weak path escalates to rich surface per C-03"
+  fallback: "Weak-tier Hermes session: enable additional PreToolExecution validation and filtered ACI"

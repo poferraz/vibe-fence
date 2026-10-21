@@ -1,0 +1,35 @@
+# src/adapters/antigravity.yml — Antigravity (Google) runtime profile (REFERENCE override)
+# Authority: src/adapters/types.ts (inline ADAPTERS array is canonical per GEM-03).
+# This YML is a data mirror for tooling/inspection; types.ts remains the single source of truth.
+# Spec: FINAL-v4 S-02 (Skills), S-03 (Context budget), S-13 (Muse routing), C-03 (ACI by model tier).
+# Linked budget: src/framework/context-budget.yml — adapters override total_tokens per-runtime.
+
+name: antigravity
+label: Antigravity
+runtime: antigravity
+
+window:
+  total_tokens: 1000000
+  note: "Antigravity/Gemini large window; S-03 caps (static/dynamic/history/headroom) scale against this"
+
+skillsDir: ~/.gemini/antigravity/skills
+agentsMapping:
+  canonical: AGENTS.md
+  runtimePaths:
+    - .agents/rules/antigravity.md
+    - AGENTS.md
+  precedence: "AGENTS.md canonical; .agents/rules/antigravity.md overrides for Antigravity runtime"
+
+hookSurface:
+  hooks:
+    - PreToolUse
+    - PostToolUse
+  fpBudgetNotes: "Minimal — .agents/ overrides only; FP budget per S-10/C-01"
+
+# C-03: Antigravity runs Gemini (frontier) — thin surface; Gemini 1M window allows
+# larger dynamic/history budgets but static cap (AGENTS.md ≤400 tok) is invariant (S-01).
+modelHint:
+  tier: frontier
+  surface: thin
+  description: "Antigravity/Gemini frontier: thin bash surface; large window enables bigger dynamic budgets but static ≤400 tok invariant per S-01/S-03"
+  fallback: "If routed to weak Gemini tier, enrich hookSurface with additional checks per C-03"

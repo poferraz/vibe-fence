@@ -180,7 +180,7 @@ export async function runFenceLook(opts: FenceLookOptions): Promise<FenceLookVer
 async function hasCapability(name: string): Promise<boolean> {
   if (name === "playwright") {
     try {
-      await import("playwright");
+      await import("playwright" as any);
       return true;
     } catch {
       return false;

@@ -1,6 +1,7 @@
 # RECONCILE.md — M1–M4 Scaffold Reconciliation
 
-_Date: 2026-10-20 · Reconciler pass · Source: `docs/research/synthesis/FINAL-v4 (Deep-Read Vault Expansion, 221 lines, 2026-10-21).md` §4 M1–M4 + §7 + GEMS→files map (l.122)_
+_Date: 2026-10-21 · Closeout pass · Source: `docs/research/synthesis/FINAL-v4 (Deep-Read Vault Expansion, 221 lines, 2026-10-21).md` §4 M1–M4 + §7 + GEMS→files map (l.122)_
+_Previous pass: 2026-10-20 · This pass: close reconciler gaps — M1–M4 scaffold landed (10 scaffold commits `a412bdb..447f0f6` excl. `c9457f5` reference doc)_
 
 ## Scope
 
@@ -11,28 +12,28 @@ Verify every file in FINAL-v4 (Deep-Read Vault Expansion, 221 lines, 2026-10-21)
 | # | GEMS→files entry | Expected path(s) | On disk? | Owner | Note |
 |---|-----------------|-----------------|----------|-------|------|
 | 1 | integrity (P0, M1) | `src/framework/integrity.ts` | ✅ | M1 agent | SHA-256 + FENCE_SYNC_TOKEN + postinstall guard |
-| 2 | WebContainer (P1, M1) | `tools/install.ts` | ✅ **landed post-snapshot — M4** | M4 | Probe `process.versions.webcontainer` + `runtime` in app-profile — verified (M4 install.ts 15K) |
-| 3 | eviction (P2, M2) | `.fence/state/*.json` + `context-budget.yml` | ⚠️ partial | M2 parallel | `context-budget.yml` ✅, `.fence/state/*.json` ⏳ (owned by `npx vibe-fence init`, not src — will be created at install time) |
-| 4 | portability (P1, M2) | `src/adapters/*.yml` | ❌ **missing (`.ts` ok)** | M2/M4 parallel | `types.ts` + 6 `.ts` adapters ✅; 5 `.yml` profiles pending (GEM-03 — consider merging into `types.ts` adapter config vs separate YAML) |
-| 5 | remote RLS (P1, M3) | `src/framework/verify-remote.ts` | ❌ **missing** | M3 parallel | `pg_policies` introspection; `unknown` on offline |
-| 6 | BILL-01 (P1, M3) | `src/rules/bill-01.ts` | ❌ **missing** | M3 parallel | No `src/rules/` dir on disk |
-| 7 | PRV-09 (P1, M3) | `src/rules/prv-09.ts` + `tools/anonymize.ts` | ❌ **missing** | M3 parallel | Fixture anonymizer both files absent |
-| 8 | SAM (P1, M4) | `src/framework/sam.ts` | ✅ **landed post-snapshot — M4** | M4 | Contract + `SAM_SINGLE_CONCEPT_VIOLATION` — verified (sam.ts 7K + sam-guard 5/5 pass) |
-| 9 | Wonder routing (P1, M4) + Standard-mode default (P0, M4) | `src/framework/meta-client.ts` | ✅ **landed post-snapshot — M4** | M4 | `POST /v1/responses` + dual-tier + pricing caps + Standard default — verified (meta-client.ts 12K) |
-| 10 | Visceral Delta (P0, M4) | `docs/PLAN.md` §Hackathon + `docs/research/synthesis/DEMO-SCRIPT.md` | ✅ (this pass) | Reconciler | `PLAN.md` had Hackathon §3 already; `DEMO-SCRIPT.md` **created this pass** |
-| 11 | verifier (P1, M2/M3) | `src/framework/verifier.ts` | ✅ | M2 parallel | Ephemeral `// @fence-ephemeral` + trust ladder |
+| 2 | WebContainer (P1, M1) | `tools/install.ts` | ✅ landed — M4 | M4 | Probe `process.versions.webcontainer` + `runtime` in app-profile — verified (M4 install.ts 15K) |
+| 3 | eviction (P2, M2) | `.fence/state/*.json` + `context-budget.yml` | ✅ / ⏳ expected | M2 parallel | `context-budget.yml` ✅, `.fence/state/*.json` ⏳ expected runtime-generated (created by `npx vibe-fence init` at install time — gitignored per `.gitignore:.fence/state/`) |
+| 4 | portability (P1, M2) | `src/adapters/*.yml` | ✅ landed — `839c75b` | M2/M4 parallel | 5 `.yml` profiles landed (`antigravity.yml`, `claude.yml`, `cursor.yml`, `hermes.yml`, `opencode.yml`) + `types.ts` + 6 `.ts` adapters |
+| 5 | remote RLS (P1, M3) | `src/framework/verify-remote.ts` | ✅ landed — `f10187f` | M3 parallel | `pg_policies` introspection; `unknown` on offline — verified (5.4K) |
+| 6 | BILL-01 (P1, M3) | `src/rules/bill-01.ts` | ✅ landed — `f10187f` | M3 parallel | Landed with `src/rules/index.ts` registry |
+| 7 | PRV-09 (P1, M3) | `src/rules/prv-09.ts` + `tools/anonymize.ts` | ✅ landed — `f10187f` + `6e16019` | M3 parallel | `prv-09.ts` (4.8K) + `anonymize.ts` (11K) landed |
+| 8 | SAM (P1, M4) | `src/framework/sam.ts` | ✅ landed — M4 | M4 | Contract + `SAM_SINGLE_CONCEPT_VIOLATION` — verified (sam.ts 7K + sam-guard 5/5 pass) |
+| 9 | Wonder routing (P1, M4) + Standard-mode default (P0, M4) | `src/framework/meta-client.ts` | ✅ landed — M4 | M4 | `POST /v1/responses` + dual-tier + pricing caps + Standard default — verified (meta-client.ts 12K) |
+| 10 | Visceral Delta (P0, M4) | `docs/PLAN.md` §Hackathon + `docs/research/synthesis/DEMO-SCRIPT.md` | ✅ | Reconciler | `PLAN.md` had Hackathon §3 already; `DEMO-SCRIPT.md` created 2026-10-20 |
+| 11 | verifier (P1, M2/M3) | `src/framework/verifier.ts` | ✅ | M2 parallel | Ephemeral `// @fence-ephemeral` + trust ladder + compile tier (`7eac991` GEM-11) |
 
 **Additional scaffold gaps (outside GEMS map but in M1–M4 checklists):**
 
 | Path | Expected | On disk? | Note |
 |------|----------|----------|------|
-| `AGENTS.md` (≤400 tokens) | M1/M2 router | ❌ **missing** | Must be generated via `tools/generate.ts` + asserted in `validate.ts` |
-| `.fence/app-profile.json` | S-09 tiers 14/29/55 | ❌ | Created by `npx vibe-fence init` (M4) |
-| `.fence/.integrity.json` + `.fence/hooks/postinstall-guard.sh` | GEM-01 P0 | ❌ | Attestation store + guard |
-| `src/framework/billing-guard.ts` | GEM-05 P2 | ❌ | `withBudgetCap({maxCalls,maxCostUsd})` |
-| `src/schemas/` | JSON schemas | ⚠️ empty dir | Expected schema files for rules/config |
-| `src/templates/` | scaffolds | ⚠️ empty dir | Expected per GEM-05/P0 |
-| `tests/` | fixtures/bench | ❌ | Adversarial bench (M4) |
+| `AGENTS.md` (≤400 tokens) | M1/M2 router | ✅ landed — `b9fde76` | Generated/maintained as ≤400-token router — present (936 B) |
+| `.fence/app-profile.json` | S-09 tiers 14/29/55 | ✅ template + ⏳ runtime | Template: `src/templates/app-profile.json` ✅ (`a412bdb`); runtime copy ` .fence/app-profile.json` is expected runtime-generated by `npx vibe-fence init` (`.gitignore:!.fence/app-profile.json` — committable on init, not pre-seeded) |
+| `.fence/.integrity.json` + `src/templates/postinstall-guard.sh` | GEM-01 P0 | ✅ landed — `7177bbb` | Attestation store is runtime-generated (`.gitignore:.fence/.integrity.json`); guard template at `src/templates/postinstall-guard.sh` + `src/framework/integrity.ts` (8K) landed |
+| `src/framework/billing-guard.ts` | GEM-05 P2 | ✅ landed — `f10187f` | `withBudgetCap({maxCalls,maxCostUsd})` — verified (4.1K) |
+| `src/schemas/` | JSON schemas | ⚠️ empty dir | Expected schema files for rules/config — deferred (not in GEMS→files map l.122) |
+| `src/templates/` | scaffolds | ✅ landed | `app-profile.json` + `postinstall-guard.sh` present |
+| `tests/` | fixtures/bench | ✅ landed — `e86a3d1` | Adversarial bench stub + `sam-guard.test.ts` (5/5 pass) |
 
 _Existing scaffold verified present: `src/adapters/types.ts`, `src/config/severity-policy.json`, `src/framework/{integrity,context-budget.yml,circuit-breaker,verifier,dial,git}.ts`, `src/skills/{vibe-init,vibe-guard,vibe-plan,vibe-teach}/SKILL.md`, `tools/{generate,validate}.ts`, `docs/project/{INDEX,PRD}.md`._
 
@@ -44,6 +45,7 @@ _Existing scaffold verified present: `src/adapters/types.ts`, `src/config/severi
 | Docs gap: BRIEF | `docs/project/BRIEF.md` | **Created** from `FINAL-v4 (Deep-Read Vault Expansion, 221 lines, 2026-10-21).md` + `PLAN.md` + project template (was absent; no overwrite) |
 | GEM-10 P0: Visceral Delta | `docs/research/synthesis/DEMO-SCRIPT.md` | **Created** — standalone 0:00→3:00 script + production checklist + 5-step rubric + 5×4 eval table extracted from FINAL-v4 (Deep-Read Vault Expansion, 221 lines, 2026-10-21) §7 + `INDEPENDENT-GEMS.md` GEM-10 (GEMS→files map required deliverable) |
 | Build parity | `dist/` | Generated via `bun run tools/generate.ts` → 18 files + `PROVENANCE.md` (needed for `validate.ts`) |
+| **Closeout (2026-10-21)** | `docs/project/STATUS.md` + `docs/project/RECONCILE.md` | **Patched** — flipped stale ❌ entries to ✅ where files now exist (`src/adapters/*.yml`, `verify-remote.ts`, `billing-guard.ts`, `bill-01.ts`/`prv-09.ts`, `anonymize.ts`, `AGENTS.md`, `.fence/app-profile.json` template, `.integrity` guard); marked `.fence/` runtime state as expected runtime-generated; ran `bunx tsc --noEmit` (0) + `bun run validate` (ok) |
 
 _Not touched (parallel-agent owned): `src/skills/*`, `src/framework/*`, `src/adapters/*`, `src/config/*`, `tools/*.ts` — reconciler only created missing docs + ran checks._
 
@@ -51,21 +53,20 @@ _Not touched (parallel-agent owned): `src/skills/*`, `src/framework/*`, `src/ada
 
 | Check | Result |
 |-------|--------|
-| `npx tsc --noEmit` | ✅ pass (exit 0, tsc 7.0.2) |
+| `npx tsc --noEmit` / `bunx tsc --noEmit` | ✅ pass (exit 0, 2026-10-21 closeout) |
 | `bun run tools/generate.ts` | ✅ `dist: 18 files from src/` |
-| `bun run tools/validate.ts` | ✅ `validate: ok` (after generate); note: `node` path is `bun`-only (`import.meta.dir`) — run via `bun` |
+| `bun run tools/validate.ts` / `bun run validate` | ✅ `validate: ok` (2026-10-21) |
 | `.gitignore` covers `dist/` | ✅ `dist/` |
-| `.gitignore` covers `.fence/` | ✅ `.fence/` |
+| `.gitignore` covers `.fence/` | ✅ `.fence/` (with `!.fence/app-profile.json` carve-out for S-09) |
 | `.gitignore` covers `bun.lock` | ✅ `bun.lock` + `bun.lockb` |
-| `git status` | `main` no commits yet; all files untracked (expected pre-init) |
+| `git status` | `main` — `a412bdb..447f0f6` scaffold landed (10 scaffold commits + 1 reference doc) |
+| `git log f10187f..447f0f6` | `c9457f5` + `447f0f6` (inclusive range `a412bdb..447f0f6` = M1–M4 scaffold) |
 
 ## 4. Remaining work (for parallel agents / next reconciler pass)
 
-- Land `tools/install.ts` with WebContainer probe (GEM-02).
-- Land `src/adapters/*.yml` ×5 (GEM-03).
-- Land `.fence/` state tree (`app-profile.json`, `.integrity.json`, `state/dial.json`) and `AGENTS.md` router.
-- Land `src/framework/{verify-remote,billing-guard,sam,meta-client}.ts` + `src/rules/*` + `tools/anonymize.ts` (GEMS P0/P1).
-- Re-run this reconciler to close gaps; `tsc --noEmit` must stay green after.
+- PFLOP trace wiring (`src/framework/fence-look.ts` → eval) + adversarial bench expansion (seeded fixtures, 5×4 rubric).
+- `src/schemas/` JSON schemas if required by next GEM pass (not in current GEMS→files map l.122).
+- Re-run this reconciler only if FINAL-v4 scope changes or new GEM patches land; `.fence/` runtime state remains expected runtime-generated (not a gap).
 
 ---
-_Reconciler: non-destructive pass — only `docs/project/` gaps + `DEMO-SCRIPT.md` created; all other missing files reported, not fabricated._
+_Reconciler: non-destructive pass — only `docs/project/` gaps + `DEMO-SCRIPT.md` created; all other missing files reported, not fabricated. Closeout 2026-10-21: stale ❌ entries flipped to ✅; `.fence/` runtime state classified as expected._

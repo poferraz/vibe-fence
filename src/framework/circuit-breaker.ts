@@ -164,6 +164,14 @@ export function resetCircuit(projectRoot: string, _reason: string): CircuitState
   return state;
 }
 
+/**
+ * Pure trip predicate — no I/O. Returns true when breaker should trip.
+ * Spec: trip when consecutiveFailures >= threshold and state is closed.
+ */
+export function shouldTrip(state: Pick<CircuitState, "state" | "consecutiveFailures" | "threshold">): boolean {
+  return state.state === "closed" && state.consecutiveFailures >= state.threshold;
+}
+
 // ---------------------------------------------------------------------------
 // Queue push (read-only + queue contract)
 // ---------------------------------------------------------------------------

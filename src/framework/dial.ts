@@ -116,6 +116,12 @@ export function effectiveLevel(state: DialState, domain: DialDomain): DialLevel 
   return state.vector[domain]?.level ?? state.global;
 }
 
+/** Project-root overload — loads state then delegates to effectiveLevel. */
+export function getEffectiveLevel(projectRoot: string, domain: DialDomain): DialLevel {
+  const state = loadDialState(projectRoot);
+  return effectiveLevel(state, domain);
+}
+
 /**
  * Set global knob — updates all domains that have no explicit override.
  * S-11 — one global knob UI over vector store.

@@ -13,5 +13,8 @@
   "devDependencies": {
     "@types/bun": "latest",
     "typescript": "latest"
+  },
+  "bin": {
+    "vibe-fence": "./dist/cli.ts"
   }
 }

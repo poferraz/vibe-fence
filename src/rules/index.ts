@@ -7,18 +7,21 @@
 export { check as checkBill01, BILL01_ID } from "./bill-01.js";
 export { check as checkPrv09, PRV09_ID } from "./prv-09.js";
 export { check as checkNet01, NET01_ID } from "./net-01.js";
+export { check as checkSec02, SEC02_ID } from "./sec-02.js";
 
 import { check as checkBill01 } from "./bill-01.js";
 import { check as checkPrv09 } from "./prv-09.js";
 import { check as checkNet01 } from "./net-01.js";
+import { check as checkSec02 } from "./sec-02.js";
 import type { CheckCtx as BillCtx } from "./bill-01.js";
 import type { CheckCtx as PrvCtx } from "./prv-09.js";
 import type { CheckCtx as NetCtx } from "./net-01.js";
+import type { CheckCtx as Sec02Ctx } from "./sec-02.js";
 
 export type Verdict = "pass" | "fail" | "unknown" | "not-applicable";
 
 // Union of ctx shapes — all checkers accept { content?, filePath?, projectRoot?, fileList? }
-export type CheckCtx = BillCtx & PrvCtx & NetCtx;
+export type CheckCtx = BillCtx & PrvCtx & NetCtx & Sec02Ctx;
 
 export interface RuleEntry {
   id: string;
@@ -46,6 +49,12 @@ export const REGISTRY: Record<string, RuleEntry> = {
     severity: "block",
     description: "curl|sh pipe-to-shell hard-block — curl/wget piped to sh/bash/zsh (S-09)",
     check: checkNet01 as RuleEntry["check"],
+  },
+  "SEC-02": {
+    id: "SEC-02",
+    severity: "block",
+    description: "Credential-path hard-deny — read/open/cat of ~/.ssh, ~/.aws/credentials, .env, .fence/.integrity.json (S-09 block, GEM-01)",
+    check: checkSec02 as RuleEntry["check"],
   },
 };
 

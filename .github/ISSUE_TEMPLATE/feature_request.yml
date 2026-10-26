@@ -1,0 +1,25 @@
+name: Feature request
+description: Suggest an idea — problem first, proposal second.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What job fails today? Who benefits if it works?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      placeholder: "What should change? Keep scope small — one PR per feature."
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: input
+    id: final-ref
+    attributes:
+      label: Relevant FINAL-v4 section
+      placeholder: "e.g. M3 skill lint, S-09 rule packet — or N/A"

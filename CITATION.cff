@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+title: vibe-fence
+message: "If you use vibe-fence in research, please cite it as below — and see SOURCES.md for the full 186-entry bibliography this harness stands on."
+type: software
+authors:
+  - given-names: Paulo
+    family-names: Ferraz
+    email: poferraz@me.com
+    orcid: https://orcid.org/0009-0000-0000-0000
+version: 0.1.0
+date-released: 2026-10-21
+license: MIT
+repository-code: https://github.com/poferraz/vibe-fence
+url: https://github.com/poferraz/vibe-fence#readme
+keywords:
+  - meta-ai
+  - muse-spark
+  - harness
+  - guardrails
+  - vibe-coding
+  - ai-agents
+  - developer-tools
+references:
+  - type: report
+    title: "vibe-fence Phase 0 Deep Research — 6 streams, 186 sources"
+    authors:
+      - name: "vibe-fence contributors (6 models × 6 streams)"
+    year: 2026
+    url: https://github.com/poferraz/vibe-fence/blob/main/docs/research/SOURCES.md
+  - type: report
+    title: "FINAL-v4 — 15 settled S-01…S-15, 10 contested C-01…C-10, 11 GEM patches"
+    year: 2026
+    url: https://github.com/poferraz/vibe-fence/blob/main/docs/research/synthesis/FINAL-v4.md

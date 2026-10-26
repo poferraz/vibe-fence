@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question / idea
+    url: https://github.com/poferraz/vibe-fence/discussions
+    about: Ask in Discussions Q&A first — faster than an issue.
+  - name: Security — private report
+    url: https://github.com/poferraz/vibe-fence/security/advisories/new
+    about: Guardrail bypasses, secret leaks, integrity issues — do not file publicly.

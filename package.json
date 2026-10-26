@@ -1,9 +1,47 @@
 {
   "name": "vibe-fence",
   "version": "0.1.0",
-  "private": true,
+  "description": "One command makes any AI coding agent safe — a Meta harness for non-technical builders. Indie — Build for Your World · Meta Global AI Developer Hackathon",
   "type": "module",
-  "description": "Drop-in harness that makes any AI coding agent behave like a senior-dev companion for non-technical vibe-coders.",
+  "license": "MIT",
+  "author": "Paulo Ferraz <poferraz@me.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/poferraz/vibe-fence.git"
+  },
+  "homepage": "https://github.com/poferraz/vibe-fence#readme",
+  "bugs": {
+    "url": "https://github.com/poferraz/vibe-fence/issues"
+  },
+  "keywords": [
+    "meta-ai",
+    "muse-spark",
+    "muse-image",
+    "sam3",
+    "harness",
+    "vibe-coding",
+    "ai-agents",
+    "guardrails",
+    "developer-tools",
+    "hackathon"
+  ],
+  "packageManager": "bun@1.3.14",
+  "engines": {
+    "node": ">=20",
+    "bun": ">=1.0"
+  },
+  "files": [
+    "dist/",
+    "AGENTS.md",
+    "LICENSE",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "vibe-fence": "./dist/cli.js"
+  },
   "scripts": {
     "build": "bun run tools/generate.ts",
     "validate": "bun run tools/validate.ts",
@@ -13,8 +51,5 @@
   "devDependencies": {
     "@types/bun": "latest",
     "typescript": "latest"
-  },
-  "bin": {
-    "vibe-fence": "./dist/cli.ts"
   }
 }

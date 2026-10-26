@@ -1,0 +1,30 @@
+name: Bug report
+description: Report a bug — include reproduction so we can verify quickly.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "Thanks for filing — fill the fields below. For guardrail bypasses, use **Security → Report a vulnerability** instead."
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      placeholder: "Steps: git clone → bun install → … → expected vs actual"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      placeholder: "vibe-fence version, node -v, bun -v, OS, adapter (claude/cursor/hermes/...)"
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: "I ran `bun run validate` and `bunx tsc --noEmit`"
+          required: false

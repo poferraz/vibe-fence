@@ -26,7 +26,8 @@ dist/
 .idea/
 .vscode/settings.json
 
+# internal tooling (hermes)
+.hermes/
+
 # bun / tooling caches
-bun.lock
-bun.lockb
 tools/out/

@@ -1,5 +1,15 @@
 # Status
 
+## Current handoff — October 26, 2026 (v2, supersedes owned-CLI direction)
+
+- **Locked goal (user, 2026-10-26):** plug-and-play senior-developer fence for ANY coding tool, tiered honestly (Enforced via host hooks — OpenCode demo hero / Guarded via `check` + git hooks everywhere / Advisory via briefing files). Meta = fence's brain (Spark plan + explanations, key present) + demo driver + Muse Code builds it on the record. Fence core needs no model; no user forced to switch tools/models. Teaching optional; no UI. Full decisions + week plan: [updated audit & goal lock](../clief/audits/code-security/2026-10-26-updated-audit-goal-lock.md) — **read this first**; the owned-CLI design in `docs/superpowers/specs/` is superseded.
+- Audited implementation baseline: `4efad330ca1776bd05febbcc677bfde28c44f326`. Findings A1–A10 (fake verification pass, empty hooks, broken packed CLI, stub containment/undo, red CI, unwired Meta) in the goal-lock file § Verified findings. Existing workspace typecheck/validation passed; those checks do not establish runtime protection.
+- Sessions to date changed planning/routing documents only. No runtime fixes, API calls, or deployments yet.
+- Next (Oct 27): fix verifier fake-pass (A1) + CI order (A6); first real Meta API call recorded (user has Meta key — never commit it); user pastes Cerebral Valley authenticated rules (judging / pre-existing work / submission) — still unverified, login-walled.
+- At session start inspect Git HEAD/status and this handoff, then retrieve only references relevant to the active task. At completion update this handoff with evidence, blockers, and the next action. Report proposed/implemented/wired/verified separately.
+
+## Historical scaffold status — superseded by the handoff above
+
 ## Current Status
 M1–M4 scaffold landed on `main` — 10 scaffold commits since `056e49c` (FINAL-v4) through `447f0f6` plus 1 reference-doc commit (`c9457f5` sidebar). `tsc --noEmit` green (0 errors); `tools/validate.ts` green. M1–M4 file-level check vs FINAL-v4 §4 + GEMS→files map: scaffold complete — see `docs/project/RECONCILE.md` for closeout.
 

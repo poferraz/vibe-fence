@@ -5,7 +5,7 @@
  * Run: bun test src/framework/git.test.ts
  */
 import { describe, it, expect, afterEach } from "bun:test";
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execSync } from "node:child_process";
@@ -71,6 +71,33 @@ describe("checkpoint", () => {
     const r2 = checkpoint({ action: "with untracked", projectRoot: root, includeUntracked: true });
     expect(r2.committed).toBe(true);
     expect(sh(root, "git status --porcelain")).not.toContain("?? notes.txt");
+  });
+
+  it("commits a contaminated checkpoint but warns loudly and records findings (D7)", () => {
+    const root = makeRepo();
+    mkdirSync(join(root, ".fence"), { recursive: true });
+    writeFileSync(join(root, "a.txt"), "v1\n", "utf-8");
+    sh(root, "git add a.txt");
+    sh(root, "git -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -qm base");
+    writeFileSync(join(root, "a.txt"), "key = process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY;\n", "utf-8");
+    const warns: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warns.push(args.join(" "));
+    };
+    try {
+      const r = checkpoint({ action: "dirty wip", projectRoot: root });
+      expect(r.committed).toBe(true); // undo points always land — never gated
+    } finally {
+      console.warn = origWarn;
+    }
+    expect(warns.some((w) => w.includes("blocking finding") && w.includes("NOT as clean"))).toBe(true);
+    const events = readFileSync(join(root, ".fence", "events.ndjson"), "utf-8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as { type?: string; blockingFindings?: number });
+    const cp = events.find((e) => e.type === "checkpoint");
+    expect(cp?.blockingFindings).toBeGreaterThanOrEqual(1);
   });
 
   it("neutralizes shell metacharacters in the action label", () => {

@@ -9,6 +9,7 @@
  */
 
 import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join, relative } from "node:path";
 import { REGISTRY } from "./rules/index.js";
 
@@ -82,18 +83,38 @@ function listFiles(root: string, maxFiles: number): { files: string[]; skipped: 
   return { files: files.sort(), skipped };
 }
 
+/** Run the full REGISTRY over one file's content (shared by worktree, index, and push scans). */
+function scanContent(rel: string, content: string, files: string[], projectRoot: string): CheckFinding[] {
+  const findings: CheckFinding[] = [];
+  for (const id of Object.keys(REGISTRY).sort()) {
+    const entry = REGISTRY[id];
+    if (!entry) continue;
+    const v = entry.check({ content, filePath: rel, projectRoot, fileList: files });
+    if (v.verdict !== "fail" && v.verdict !== "unknown") continue;
+    const f: CheckFinding = { file: rel, ruleId: id, severity: entry.severity, verdict: v.verdict, reason: v.reason };
+    if (v.evidence) f.evidence = v.evidence;
+    findings.push(f);
+  }
+  return findings;
+}
+
+function summarize(filesScanned: number, filesSkipped: number, findings: CheckFinding[]): CheckReport {
+  const fails = findings.filter((f) => f.verdict === "fail").length;
+  const blocks = findings.filter((f) => f.verdict === "fail" && f.severity === "block").length;
+  const unknowns = findings.filter((f) => f.verdict === "unknown").length;
+  return { filesScanned, filesSkipped, fails, blocks, unknowns, findings };
+}
+
 export function runCheck(projectRoot: string, opts: CheckOptions = {}): CheckReport {
   const maxFiles = opts.maxFiles ?? DEFAULT_MAX_FILES;
   const maxBytes = opts.maxBytesPerFile ?? DEFAULT_MAX_BYTES;
   const findings: CheckFinding[] = [];
-  let unknowns = 0;
 
   if (!existsSync(projectRoot)) {
     return { filesScanned: 0, filesSkipped: 0, fails: 0, blocks: 0, unknowns: 0, findings };
   }
 
   const { files, skipped } = listFiles(projectRoot, maxFiles);
-  const ruleIds = Object.keys(REGISTRY).sort();
   for (const rel of files) {
     let content: string;
     try {
@@ -103,26 +124,133 @@ export function runCheck(projectRoot: string, opts: CheckOptions = {}): CheckRep
     } catch {
       continue;
     }
-    for (const id of ruleIds) {
-      const entry = REGISTRY[id];
-      if (!entry) continue;
-      const v = entry.check({ content, filePath: rel, projectRoot, fileList: files });
-      if (v.verdict === "fail") {
-        const f: CheckFinding = { file: rel, ruleId: id, severity: entry.severity, verdict: "fail", reason: v.reason };
-        if (v.evidence) f.evidence = v.evidence;
-        findings.push(f);
-      } else if (v.verdict === "unknown") {
-        unknowns++;
-        const f: CheckFinding = { file: rel, ruleId: id, severity: entry.severity, verdict: "unknown", reason: v.reason };
-        if (v.evidence) f.evidence = v.evidence;
-        findings.push(f);
-      }
-    }
+    findings.push(...scanContent(rel, content, files, projectRoot));
   }
 
-  const fails = findings.filter((f) => f.verdict === "fail").length;
-  const blocks = findings.filter((f) => f.verdict === "fail" && f.severity === "block").length;
-  return { filesScanned: files.length, filesSkipped: skipped, fails, blocks, unknowns, findings };
+  return summarize(files.length, skipped, findings);
+}
+
+// ---------------------------------------------------------------------------
+// Index-aware scans (L1): staged blobs pre-commit, outgoing commits pre-push.
+// Same REGISTRY loop as runCheck — only the content source differs.
+// ---------------------------------------------------------------------------
+
+function gitOut(projectRoot: string, args: string[], maxBuffer: number): Buffer | null {
+  try {
+    return execFileSync("git", args, {
+      cwd: projectRoot,
+      encoding: "buffer",
+      stdio: ["ignore", "pipe", "ignore"],
+      maxBuffer,
+    }) as Buffer;
+  } catch {
+    return null;
+  }
+}
+
+/** Content of one blob (`:0:path` for staged, `<rev>:path` for committed). Null when unreadable/oversize. */
+function readBlob(projectRoot: string, revPath: string, maxBytes: number): string | null {
+  const buf = gitOut(projectRoot, ["show", revPath], maxBytes + 1);
+  if (!buf || buf.length > maxBytes) return null;
+  return buf.toString("utf-8");
+}
+
+function shouldSkipBlob(rel: string): boolean {
+  const lower = rel.toLowerCase();
+  const dot = lower.lastIndexOf(".");
+  const ext = dot === -1 ? "" : lower.slice(dot);
+  return BINARY_EXTS.has(ext);
+}
+
+/**
+ * Scan staged blobs — what the next commit would contain (pre-commit gate).
+ * Closes the staged-blob smuggle (L1): stage a leak, clean the worktree, and
+ * the worktree scan stays blind while this scan blocks. Non-repos and empty
+ * stages yield an empty OK report (nothing staged = nothing to gate).
+ */
+export function runIndexCheck(projectRoot: string, opts: CheckOptions = {}): CheckReport {
+  const maxFiles = opts.maxFiles ?? DEFAULT_MAX_FILES;
+  const maxBytes = opts.maxBytesPerFile ?? DEFAULT_MAX_BYTES;
+  const findings: CheckFinding[] = [];
+  if (!existsSync(projectRoot)) return summarize(0, 0, findings);
+  const out = gitOut(projectRoot, ["diff", "--cached", "--name-only", "-z", "--diff-filter=ACMRT"], 4 * 1024 * 1024);
+  if (!out) return summarize(0, 0, findings);
+  const names = out.toString("utf-8").split("\0").filter(Boolean).sort();
+  const capped = names.slice(0, maxFiles);
+  let skipped = names.length - capped.length;
+  let scanned = 0;
+  for (const rel of capped) {
+    if (shouldSkipBlob(rel)) {
+      skipped++;
+      continue;
+    }
+    // :0: = stage 0 (resolved); unmerged paths have no stage 0 → skip.
+    const content = readBlob(projectRoot, `:0:${rel}`, maxBytes);
+    if (content === null || content.length === 0) {
+      skipped++;
+      continue;
+    }
+    scanned++;
+    findings.push(...scanContent(rel, content, capped, projectRoot));
+  }
+  return summarize(scanned, skipped, findings);
+}
+
+/**
+ * Scan outgoing commits' blobs (pre-push gate). Each range is `<old>..<new>`
+ * (a bare `<rev>` means that commit vs its parent). New refs (zero old) and
+ * unresolvable bases fall back to scanning the tip tree — unknown base, scan
+ * everything rather than nothing.
+ */
+export function runPushCheck(projectRoot: string, ranges: string[], opts: CheckOptions = {}): CheckReport {
+  const maxFiles = opts.maxFiles ?? DEFAULT_MAX_FILES;
+  const maxBytes = opts.maxBytesPerFile ?? DEFAULT_MAX_BYTES;
+  const findings: CheckFinding[] = [];
+  if (!existsSync(projectRoot)) return summarize(0, 0, findings);
+  const jobs: Array<{ base: string; tip: string }> = [];
+  for (const r of ranges) {
+    const parts = r.split("..");
+    if (parts.length === 2 && parts[0] && parts[1]) jobs.push({ base: parts[0], tip: parts[1] });
+    else if (parts.length === 1 && parts[0]) jobs.push({ base: `${parts[0]}^`, tip: parts[0] });
+  }
+  const paths = new Map<string, string>(); // rel → tip rev for blob reads
+  for (const { base, tip } of jobs) {
+    let names: string[] | null = null;
+    if (/^0+$/.test(base)) {
+      const out = gitOut(projectRoot, ["ls-tree", "-r", "--name-only", "-z", tip], 4 * 1024 * 1024);
+      if (out) names = out.toString("utf-8").split("\0").filter(Boolean);
+    } else {
+      const out = gitOut(projectRoot, ["diff", "--name-only", "-z", base, tip], 4 * 1024 * 1024);
+      if (out) {
+        names = out.toString("utf-8").split("\0").filter(Boolean);
+      } else {
+        // Unresolvable base (no upstream, shallow, root bare rev) → tip tree.
+        const whole = gitOut(projectRoot, ["ls-tree", "-r", "--name-only", "-z", tip], 4 * 1024 * 1024);
+        if (whole) names = whole.toString("utf-8").split("\0").filter(Boolean);
+      }
+    }
+    if (!names) continue;
+    for (const rel of names) {
+      if (!paths.has(rel)) paths.set(rel, tip);
+    }
+  }
+  const capped = [...paths.keys()].sort().slice(0, maxFiles);
+  let skipped = paths.size - capped.length;
+  let scanned = 0;
+  for (const rel of capped) {
+    if (shouldSkipBlob(rel)) {
+      skipped++;
+      continue;
+    }
+    const content = readBlob(projectRoot, `${paths.get(rel)}:${rel}`, maxBytes);
+    if (content === null || content.length === 0) {
+      skipped++;
+      continue;
+    }
+    scanned++;
+    findings.push(...scanContent(rel, content, capped, projectRoot));
+  }
+  return summarize(scanned, skipped, findings);
 }
 
 export function exitCodeForReport(report: CheckReport): 0 | 1 {

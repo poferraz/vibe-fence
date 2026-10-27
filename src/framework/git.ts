@@ -9,6 +9,7 @@
 import { execSync, execFileSync } from "node:child_process";
 import { existsSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
+import { runIndexCheck } from "../check.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -126,12 +127,29 @@ export function checkpoint(opts: CheckpointOptions): CheckpointResult {
   if (tryGitArgs(cwd, ["diff", "--cached", "--quiet", "--"]) !== null) {
     return { committed: false, commitHash: null, message: "nothing to snapshot — no staged changes (untracked files need --include-untracked)" };
   }
+  // D7: checkpoints deliberately capture WIP as-is (--no-verify below), so a
+  // contaminated checkpoint would land silently. Scan the stage — which right
+  // now holds exactly the checkpoint content — and warn LOUDLY when it holds
+  // blocks. Never gate: an undo point must always land.
+  let blockingFindings = 0;
+  try {
+    blockingFindings = runIndexCheck(cwd).blocks;
+  } catch {
+    blockingFindings = 0;
+  }
   // --no-verify is deliberate: a checkpoint captures WIP as-is (it may hold a
   // leak the fence is about to fix). Enforcement runs at real commits + `check`.
   gitArgs(cwd, [...FENCE_IDENTITY, "commit", "-m", message, "--no-verify"]);
   const hash = git(cwd, "rev-parse HEAD");
 
-  logEvent(cwd, { type: "checkpoint", action: opts.action, hash });
+  if (blockingFindings > 0) {
+    console.warn(
+      `vibe-fence: checkpoint ${hash.slice(0, 7)} holds ${blockingFindings} blocking finding(s) — ` +
+        `committed as an undo point, NOT as clean. Fix before your real commit.`,
+    );
+  }
+
+  logEvent(cwd, { type: "checkpoint", action: opts.action, hash, blockingFindings });
 
   return { committed: true, commitHash: hash, message };
 }

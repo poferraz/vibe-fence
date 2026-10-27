@@ -5,8 +5,8 @@
  * Run: bun test src/cli.test.ts
  */
 import { describe, it, expect, afterEach } from "bun:test";
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { execFileSync, execSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -17,14 +17,15 @@ afterEach(() => {
   for (const d of created.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
-function runCli(args: string[]): { stdout: string; stderr: string; exit: number } {
-  const cwd = mkdtempSync(join(tmpdir(), "vf-cli-"));
-  created.push(cwd);
+function runCli(args: string[], opts: { cwd?: string; input?: string } = {}): { stdout: string; stderr: string; exit: number } {
+  const cwd = opts.cwd ?? mkdtempSync(join(tmpdir(), "vf-cli-"));
+  if (!opts.cwd) created.push(cwd);
   try {
     const stdout = execFileSync(process.execPath, [CLI_PATH, ...args], {
       cwd,
+      input: opts.input,
       encoding: "utf-8",
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: [opts.input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
     });
     return { stdout, stderr: "", exit: 0 };
   } catch (e) {
@@ -35,6 +36,28 @@ function runCli(args: string[]): { stdout: string; stderr: string; exit: number 
       exit: err.status ?? 1,
     };
   }
+}
+
+function gitEnv(): Record<string, string> {
+  return { ...(process.env as Record<string, string>), GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" };
+}
+
+/** Fixture repo: clean base commit + leaky tip commit. Returns { root, base, tip }. */
+function makePushRepo(): { root: string; base: string; tip: string } {
+  const root = mkdtempSync(join(tmpdir(), "vf-push-"));
+  created.push(root);
+  const sh = (cmd: string): string => execSync(cmd, { cwd: root, env: gitEnv(), encoding: "utf-8" }).trim();
+  sh("git init -q .");
+  sh("git -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -q --allow-empty -m init");
+  writeFileSync(join(root, "ok.ts"), "export const x = 1;\n", "utf-8");
+  sh("git add -A");
+  sh("git -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -qm base");
+  const base = sh("git rev-parse HEAD");
+  writeFileSync(join(root, "leak.tsx"), "const k = process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY;\n", "utf-8");
+  sh("git add -A");
+  sh("git -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -qm leaky");
+  const tip = sh("git rev-parse HEAD");
+  return { root, base, tip };
 }
 
 describe("cli --profile", () => {
@@ -72,5 +95,37 @@ describe("cli --profile", () => {
     const r = runCli(["--help"]);
     expect(r.exit).toBe(0);
     expect(r.stdout).toContain("--profile=muse");
+  });
+});
+
+describe("cli check --push/--staged", () => {
+  it("--push reads pre-push stdin (real hook protocol) and blocks leaky ranges", () => {
+    const { root, base, tip } = makePushRepo();
+    const input = `refs/heads/main ${tip} refs/heads/main ${base}\n`;
+    const r = runCli(["check", "--push"], { cwd: root, input });
+    expect(r.exit).toBe(1);
+    expect(r.stdout).toContain("SEC-01");
+  });
+
+  it("--push with an explicit range scans without stdin", () => {
+    const { root } = makePushRepo();
+    const r = runCli(["check", "--push", "HEAD~1..HEAD"], { cwd: root });
+    expect(r.exit).toBe(1);
+    expect(r.stdout).toContain("SEC-01");
+    const clean = runCli(["check", "--push", "HEAD~1"], { cwd: root });
+    expect(clean.exit).toBe(0);
+  });
+
+  it("--push rejects malformed explicit ranges", () => {
+    const { root } = makePushRepo();
+    const r = runCli(["check", "--push", "a..b..c"], { cwd: root });
+    expect(r.exit).toBe(2);
+    expect(r.stderr).toContain("bad --push range");
+  });
+
+  it("--staged and --push are mutually exclusive", () => {
+    const r = runCli(["check", "--staged", "--push"]);
+    expect(r.exit).toBe(2);
+    expect(r.stderr).toContain("at most one");
   });
 });

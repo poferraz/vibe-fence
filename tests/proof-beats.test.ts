@@ -103,6 +103,21 @@ describe("proof beats", () => {
     expect(readFileSync(join(root, "a.txt"), "utf-8")).toBe("v2\n");
   });
 
+  it("beat 4c — staged-blob smuggle blocked (L1: dirty index + clean worktree)", () => {
+    const root = makeRepo();
+    installGitHooks(root);
+    const fenceBin = writeCliWrapper(root);
+    // The synthesis repro shape: stage the leak, THEN clean the worktree.
+    writeFileSync(join(root, "app.json"), "key = EXPO_PUBLIC_AUTH_SECRET\n", "utf-8");
+    sh(root, "git add app.json");
+    writeFileSync(join(root, "app.json"), "{}\n", "utf-8");
+    expect(runCheck(root).blocks).toBe(0); // worktree scan is blind — only --staged can block
+    expect(() =>
+      sh(root, "git -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -qm smuggle", gitEnv({ FENCE_BIN: fenceBin })),
+    ).toThrow();
+    expect(sh(root, "git rev-list --count HEAD")).toBe("1"); // init only — nothing landed
+  }, 120_000);
+
   it("beat 4b — unsafe commit stopped, safe commit allowed (real hook→CLI→engine)", () => {
     const root = makeRepo();
     installGitHooks(root);

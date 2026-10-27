@@ -7,7 +7,8 @@ import { describe, it, expect, afterEach } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runCheck, exitCodeForReport } from "./check";
+import { execSync } from "node:child_process";
+import { runCheck, runIndexCheck, runPushCheck, exitCodeForReport } from "./check";
 
 const created: string[] = [];
 afterEach(() => {
@@ -24,6 +25,29 @@ function makeProject(files: Record<string, string>): string {
   }
   return root;
 }
+
+function gitEnv(): Record<string, string> {
+  return { ...(process.env as Record<string, string>), GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" };
+}
+
+function sh(cwd: string, cmd: string): string {
+  return execSync(cmd, { cwd, env: gitEnv(), encoding: "utf-8" }).trim();
+}
+
+function makeGitProject(): string {
+  const root = mkdtempSync(join(tmpdir(), "vf-index-"));
+  created.push(root);
+  sh(root, "git init -q .");
+  sh(root, "git -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -q --allow-empty -m init");
+  return root;
+}
+
+function commitAll(root: string, message: string): void {
+  sh(root, "git add -A");
+  sh(root, `git -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -qm ${JSON.stringify(message)}`);
+}
+
+const LEAK = "const k = process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY;\n";
 
 describe("check", () => {
   it("fails (exit 1) on a NEXT_PUBLIC_ secret leak", () => {
@@ -106,5 +130,59 @@ describe("check", () => {
     expect(() => JSON.stringify(report)).not.toThrow();
     const roundtrip = JSON.parse(JSON.stringify(report)) as typeof report;
     expect(roundtrip.filesScanned).toBe(1);
+  });
+});
+
+describe("index-aware scans (L1)", () => {
+  it("runIndexCheck blocks staged leaks the worktree scan cannot see", () => {
+    const root = makeGitProject();
+    writeFileSync(join(root, "app.tsx"), LEAK, "utf-8");
+    sh(root, "git add app.tsx");
+    writeFileSync(join(root, "app.tsx"), "export const x = 1;\n", "utf-8"); // clean worktree, dirty index
+    expect(runCheck(root).blocks).toBe(0); // worktree scan is blind by construction
+    const staged = runIndexCheck(root);
+    expect(staged.filesScanned).toBe(1);
+    expect(staged.blocks).toBe(1);
+    expect(staged.findings.some((f) => f.ruleId === "SEC-01" && f.verdict === "fail")).toBe(true);
+    expect(exitCodeForReport(staged)).toBe(1);
+  });
+
+  it("runIndexCheck passes clean stages, empty stages, and non-repos", () => {
+    const root = makeGitProject();
+    writeFileSync(join(root, "ok.ts"), "export const x = 1;\n", "utf-8");
+    sh(root, "git add ok.ts");
+    const staged = runIndexCheck(root);
+    expect(staged.blocks).toBe(0);
+    expect(exitCodeForReport(staged)).toBe(0);
+    commitAll(root, "base");
+    const empty = runIndexCheck(root);
+    expect(empty.filesScanned).toBe(0);
+    expect(exitCodeForReport(empty)).toBe(0);
+    const plain = makeProject({ "a.ts": "export const x = 1;\n" });
+    expect(runIndexCheck(plain).filesScanned).toBe(0);
+  });
+
+  it("runPushCheck scans an explicit outgoing range (bare rev = commit vs parent)", () => {
+    const root = makeGitProject();
+    writeFileSync(join(root, "ok.ts"), "export const x = 1;\n", "utf-8");
+    commitAll(root, "base");
+    writeFileSync(join(root, "leak.tsx"), LEAK, "utf-8");
+    commitAll(root, "leaky");
+    const pushed = runPushCheck(root, ["HEAD~1..HEAD"]);
+    expect(pushed.blocks).toBe(1);
+    expect(pushed.findings.some((f) => f.ruleId === "SEC-01" && f.verdict === "fail")).toBe(true);
+    expect(exitCodeForReport(pushed)).toBe(1);
+    const clean = runPushCheck(root, ["HEAD~1"]); // base commit vs init: clean
+    expect(clean.blocks).toBe(0);
+    expect(exitCodeForReport(clean)).toBe(0);
+  });
+
+  it("runPushCheck scans the tip tree for new refs (zero base)", () => {
+    const root = makeGitProject();
+    writeFileSync(join(root, "leak.tsx"), LEAK, "utf-8");
+    commitAll(root, "leaky");
+    const pushed = runPushCheck(root, [`${"0".repeat(40)}..HEAD`]);
+    expect(pushed.blocks).toBe(1);
+    expect(exitCodeForReport(pushed)).toBe(1);
   });
 });

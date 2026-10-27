@@ -5,7 +5,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { install, CONTRIBUTOR_DISCLOSURE, DEFAULT_ADAPTER_IDS, hereDir } from "./install.js";
-import { runCheck, exitCodeForReport, formatHuman } from "./check.js";
+import { runCheck, runIndexCheck, runPushCheck, exitCodeForReport, formatHuman } from "./check.js";
 import { checkpoint, fenceUndo } from "./framework/git.js";
 import { evaluateToolCall } from "./framework/gate.js";
 
@@ -25,7 +25,7 @@ function help(): string {
     "",
     "Usage:",
     "  vibe-fence init [--dry-run] [--contributor-mode] [--full] [--adapters=a,b]",
-    "  vibe-fence check [--json]",
+    "  vibe-fence check [--json] [--staged] [--push [<range>]]",
     "  vibe-fence checkpoint --action <label> [--include-untracked]",
     "  vibe-fence undo [--steps N]",
     "  vibe-fence gate --tool <name> --args '<json>' [--root <dir>]",
@@ -45,8 +45,49 @@ function help(): string {
     `  --adapters=<list>    Subset of: ${DEFAULT_ADAPTER_IDS.join(", ")} (default: all)`,
     "  --profile=muse        Preset: Claude adapter (demo-hero path; overridden by --adapters)",
     "",
+    "Options (check):",
+    "  --staged             Scan staged blobs (what the next commit contains)",
+    "  --push [<range>]     Scan outgoing commits (<old>..<new>; default: pre-push stdin, else @{u}..HEAD)",
+    "  --json               Emit the report as JSON",
+    "",
     "More: https://github.com/poferraz/vibe-fence",
   ].join("\n");
+}
+
+/**
+ * Pre-push ranges without hook-script logic: the managed pre-push hook pipes
+ * git's `<local ref> <local sha> <remote ref> <remote sha>` lines on stdin,
+ * which we parse here. Malformed lines are ignored; empty stdin (manual run,
+ * TTY) falls back to outgoing-vs-upstream. Ref deletions carry no blobs.
+ */
+/** Explicit `--push` ranges: `<old>..<new>` or a bare `<rev>` (dots are legal inside rev names, so split first). */
+function isValidPushRange(r: string): boolean {
+  const parts = r.split("..");
+  if (parts.length < 1 || parts.length > 2) return false;
+  return parts.every((p) => p.length > 0 && /^[A-Za-z0-9_.@{}\/^~:-]+$/.test(p));
+}
+
+function pushRangesFromStdinOrDefault(): string[] {
+  let stdin = "";
+  if (!process.stdin.isTTY) {
+    try {
+      stdin = readFileSync(0, "utf-8");
+    } catch {
+      stdin = "";
+    }
+  }
+  const ranges: string[] = [];
+  for (const line of stdin.split("\n")) {
+    const parts = line.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) continue;
+    if (parts.length !== 4) continue;
+    const localSha = parts[1] ?? "";
+    const remoteSha = parts[3] ?? "";
+    if (!localSha || !remoteSha) continue;
+    if (/^0+$/.test(localSha)) continue;
+    ranges.push(`${remoteSha}..${localSha}`);
+  }
+  return ranges.length > 0 ? ranges : ["@{u}..HEAD"];
 }
 
 export async function main(argv: string[]): Promise<number> {
@@ -89,8 +130,33 @@ export async function main(argv: string[]): Promise<number> {
     return 0;
   }
   if (cmd === "check") {
-    const report = runCheck(process.cwd());
-    if (rest.includes("--json")) {
+    const json = rest.includes("--json");
+    const staged = rest.includes("--staged");
+    const pushIdx = rest.findIndex((a) => a === "--push" || a.startsWith("--push="));
+    if (staged && pushIdx !== -1) {
+      console.error("vibe-fence: check takes at most one of --staged / --push.");
+      return 2;
+    }
+    let report;
+    if (staged) {
+      report = runIndexCheck(process.cwd());
+    } else if (pushIdx !== -1) {
+      const arg = rest[pushIdx]!;
+      let range: string | null = null;
+      if (arg.startsWith("--push=")) {
+        range = arg.slice("--push=".length);
+      } else if (rest[pushIdx + 1] && !rest[pushIdx + 1]!.startsWith("--")) {
+        range = rest[pushIdx + 1]!;
+      }
+      if (range !== null && !isValidPushRange(range)) {
+        console.error(`vibe-fence: bad --push range '${range}' (want <old>..<new> or <rev>).`);
+        return 2;
+      }
+      report = runPushCheck(process.cwd(), range ? [range] : pushRangesFromStdinOrDefault());
+    } else {
+      report = runCheck(process.cwd());
+    }
+    if (json) {
       console.log(JSON.stringify(report, null, 2));
     } else {
       console.log(formatHuman(report));

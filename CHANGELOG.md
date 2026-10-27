@@ -12,6 +12,7 @@ Compare views: https://github.com/poferraz/vibe-fence/compare/
 ### Added
 - Track for `v0.2.0` — publishable `package.json`, governance files, CI, README resume.
 - `vibe-fence init --profile muse` preset (Claude adapter — demo-hero path; explicit `--adapters` overrides it).
+- `vibe-fence check --staged` (scan staged blobs — pre-commit gate) and `vibe-fence check --push [<range>]` (scan outgoing commits — pre-push gate; default range from pre-push stdin, else `@{u}..HEAD`).
 
 ### Fixed
 - `release.yml` now runs `bun test` + `bun run eval` before `npm publish` (L5) — a tagged release can no longer ship with red tests or eval regressions.
@@ -21,6 +22,8 @@ Compare views: https://github.com/poferraz/vibe-fence/compare/
 - Removed the `npx vibe-fence tour` receipt from install output (`tour` stays an unadvertised stub, exit 2).
 - Corpus v2 (C5/L8): deduped the 4 verbatim unit-test overlaps with behavior-preserving payloads; fixed the "independently authored" note; added TOKEN-shaped positives + benign TOKEN must-pass cases with the `TOKEN` keyword extension to SEC-01; hardened `compareBaseline` with coverage floors (deleted positives/negatives fail `--check`) + unknown ceiling, with unknowns surfaced in the `--check` line. Baseline regenerated (26 TP / 23 TN, 1 unknown pinned, 0 misses).
 - Committed the adversarial sweep as `tests/adversarial/sweep.test.ts` with fresh S-labels (C12 — was an unreproducible `/tmp` script with drifted T-numbers).
+- Closed the staged-blob smuggle (L1): managed hooks now run the index-aware scan plus the worktree scan; the synthesis repro (staged leak + clean worktree) is a `proof-beats` regression that must block.
+- `vibe-fence checkpoint` scans the staged snapshot and warns loudly (stderr + `blockingFindings` in `.fence/events.ndjson`) when an undo point holds blocks — checkpoints still always land (D7/L15).
 
 ## [0.1.0] — 2026-10-21
 

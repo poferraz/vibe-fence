@@ -114,6 +114,24 @@ describe("git-hooks", () => {
     expect(output).toContain("blocked");
   });
 
+  it("pre-commit runs staged + worktree scans; pre-push runs push + worktree scans", () => {
+    if (!gitAvailable()) return;
+    const cases = [
+      ["pre-commit", "check --staged"],
+      ["pre-push", "check --push"],
+    ] as const;
+    for (const [hook, first] of cases) {
+      const root = makeRepo();
+      installGitHooks(root);
+      const log = join(root, "calls.log");
+      const recorder = join(root, "rec.sh");
+      writeFileSync(recorder, `#!/bin/sh\necho "$@" >> "${log}"\nexit 0\n`, "utf-8");
+      chmodSync(recorder, 0o755);
+      execFileSync(join(root, ".git", "hooks", hook), [], { cwd: root, env: gitEnv({ FENCE_BIN: recorder }) });
+      expect(readFileSync(log, "utf-8").trim().split("\n")).toEqual([first, "check"]);
+    }
+  });
+
   it("is a no-op without .git", () => {
     const root = mkdtempSync(join(tmpdir(), "vf-nohook-"));
     created.push(root);

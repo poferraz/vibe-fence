@@ -28,12 +28,12 @@ export interface RuleVerdict {
   evidence?: string;
 }
 
-/** curl piped to shell — e.g. curl ... | sh, curl ... | bash, curl ... | zsh (with/without spaces) */
-const CURL_PIPE_RE = /curl\s.*\|\s*(sh|bash|zsh)\b/i;
+/** curl piped to shell — e.g. curl ... | sh, curl ... | bash, curl ... | zsh (with/without spaces; optional sudo) */
+const CURL_PIPE_RE = /curl\s.*\|\s*(?:sudo\s+)?(sh|bash|zsh)\b/i;
 /** wget variant — e.g. wget ... | sh */
-const WGET_PIPE_RE = /wget\s.*\|\s*(sh|bash|zsh)\b/i;
+const WGET_PIPE_RE = /wget\s.*\|\s*(?:sudo\s+)?(sh|bash|zsh)\b/i;
 /** Compact form without args — e.g. curl|sh, wget|bash (no space between command and pipe) */
-const COMPACT_PIPE_RE = /(?:curl|wget)\s*\|\s*(?:sh|bash|zsh)\b/i;
+const COMPACT_PIPE_RE = /(?:curl|wget)\s*\|\s*(?:sudo\s+)?(?:sh|bash|zsh)\b/i;
 
 function findEvidence(src: string): string | undefined {
   for (const line of src.split("\n")) {

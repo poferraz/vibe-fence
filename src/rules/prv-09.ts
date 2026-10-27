@@ -40,12 +40,31 @@ const PII_PATTERNS: Array<{ re: RegExp; label: string }> = [
   { re: /\b(sk_(live|test)_[A-Za-z0-9]{8,}|ghp_[A-Za-z0-9]{20,}|AKIA[A-Z0-9]{12,})\b/, label: "api-key" },
   // AWS secret-ish / private key
   { re: /-----BEGIN (?:RSA )?PRIVATE KEY-----/, label: "private-key" },
-  // 16-digit card-like (with spaces/dashes)
-  { re: /\b(?:\d[ -]*?){13,19}\b/, label: "card-like (weak signal — verify)" },
+  // 16-digit card-like (with spaces/dashes) — gated by Luhn below: random
+  // digit runs are weak, a Luhn-valid number is a real card shape.
+  { re: /\b(?:\d[ -]*?){13,19}\b/, label: "card-like" },
   // phone-like E.164 / US — separators (or +country + separators) required:
   // bare 10-digit runs are version numbers and hardware IDs, not phones.
   { re: /(?:\+\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b/, label: "phone-like" },
+  // International 4+6 grouping (e.g. UK +44 7700 900461).
+  { re: /\+\d{1,3}[-.\s]\d{4}[-.\s]\d{6}\b/, label: "phone-intl" },
 ];
+
+/** Luhn checksum: separates real card numbers from coincidental digit runs. */
+function luhnValid(candidate: string): boolean {
+  const d = candidate.replace(/\D/g, "");
+  if (d.length < 13 || d.length > 19) return false;
+  let sum = 0;
+  for (let i = 0; i < d.length; i++) {
+    let n = d.charCodeAt(d.length - 1 - i) - 48;
+    if (i % 2 === 1) {
+      n *= 2;
+      if (n > 9) n -= 9;
+    }
+    sum += n;
+  }
+  return sum % 10 === 0;
+}
 
 /** Synthetic / safe fixture markers — if present, suppress PII match */
 const SYNTHETIC_RE = /\b(example\.com|test\.com|@example|FAKE|SYNTHETIC|fixture|mock|dummy|placeholder|safe-for-commit)\b/i;
@@ -98,8 +117,18 @@ export function check(ctx: CheckCtx): RuleVerdict {
   }
 
   for (const { re, label } of PII_PATTERNS) {
-    // Skip weak card-like unless strong context — reduce FP on numeric fixtures
-    if (label.startsWith("card-like")) continue;
+    // Card-like digit runs fire only when Luhn-valid (strong context).
+    if (label.startsWith("card-like")) {
+      const candidates = src.match(new RegExp(re.source, "g")) ?? [];
+      const hit = candidates.find((c) => luhnValid(c));
+      if (!hit) continue;
+      return {
+        id: PRV09_ID,
+        verdict: "fail",
+        reason: "fixture contains a Luhn-valid card number — replace with synthetic PII (see tools/anonymize.ts GEM-06)",
+        evidence: hit.slice(0, 120),
+      };
+    }
     const m = src.match(re);
     if (m) {
       return {

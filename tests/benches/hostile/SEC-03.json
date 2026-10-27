@@ -1,0 +1,12 @@
+{
+  "rule": "SEC-03",
+  "note": "Hand-written hostile fixtures (Suite A): realistic live-key shapes, fragmented so no whole secret literal exists in the repo.",
+  "cases": [
+    {"id": "h-sec03-1", "payloadParts": ["api_key = \"sk_live_4eC39HqLyjWDarjtT1", "zdp7dc\""]},
+    {"id": "h-sec03-2", "payloadParts": ["token: gh", "p_k9Lm2Q", "p7xT4vBn8M1cD6eF3hJ0lZ5aRsTuVwXyZ"]},
+    {"id": "h-sec03-3", "payloadParts": ["AWS_KEY = \"AKIAIOSFODNN", "7REALKEY\""]},
+    {"id": "h-sec03-4", "payloadParts": ["slack = \"xoxb-12", "34567890-abcd", "efghijklmnopqrstuv\""]},
+    {"id": "h-sec03-5", "payloadParts": ["const g = \"AIzaSyD4iE2vH7kLm9NoPqRsTuVwXyZ012345", "6789ab\";"]},
+    {"id": "h-sec03-6", "payloadParts": ["secret = \"glpat-9f8e7d6c5b4a39281706", "fedcba\""]}
+  ]
+}

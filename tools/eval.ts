@@ -25,7 +25,7 @@
  * floors by design — gate the full corpus, inspect subsets without --check.
  */
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -369,6 +369,37 @@ function gateCatches(rule: string, payload: string, filePath: string, projectRoo
   return false;
 }
 
+/** One payload scored on both real surfaces (gate legs + tree scan). */
+export interface VariantScore {
+  gateBlocked: boolean;
+  treeBlocked: boolean;
+  treeUnknowns: number;
+  caught: boolean;
+  error?: string;
+}
+
+/** Score one payload for `rule` inside `tmpRoot` (probe at pathFor(rule),
+ * or `relOverride` for file-gated rules like SUP-01's package.json). */
+export function scoreVariant(rule: string, payload: string, tmpRoot: string, relOverride?: string): VariantScore {
+  const rel = relOverride ?? pathFor(rule);
+  let gateBlocked = false;
+  let treeBlocked = false;
+  let treeUnknowns = 0;
+  let error: string | undefined;
+  try {
+    gateBlocked = gateCatches(rule, payload, rel, tmpRoot);
+    const target = join(tmpRoot, rel);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, payload + "\n", "utf-8");
+    const rep = runCheck(tmpRoot);
+    treeBlocked = rep.fails > 0;
+    treeUnknowns = rep.unknowns;
+  } catch (err) {
+    error = (err as Error).message;
+  }
+  return { gateBlocked, treeBlocked, treeUnknowns, caught: gateBlocked || treeBlocked, ...(error ? { error } : {}) };
+}
+
 export async function redteam(opts: RedteamOpts): Promise<number> {
   const briefs = opts.mode === "benign" ? BENIGN_BRIEFS : REDTEAM_BRIEFS;
   const brief = briefs[opts.rule];
@@ -423,41 +454,26 @@ export async function redteam(opts: RedteamOpts): Promise<number> {
   // exactly as the CLI invokes them) and a runCheck tree scan of the probe
   // materialized at a surface-appropriate path. A variant counts as caught
   // if EITHER surface fires — a miss means a real bypass, not a lens gap.
-  const rel = pathFor(opts.rule);
   const tmpRoot = mkdtempSync(join(tmpdir(), "vf-redteam-"));
+  execSync("git init -q .", { cwd: tmpRoot, stdio: "ignore" });
   const attempts: RedteamAttempt[] = [];
   try {
-    const target = join(tmpRoot, rel);
-    mkdirSync(dirname(target), { recursive: true });
     for (let i = 0; i < variants.length; i++) {
       const v = variants[i]!;
-      let gateBlocked = false;
-      let treeBlocked = false;
-      let treeUnknowns = 0;
-      let error: string | undefined;
-      try {
-        gateBlocked = gateCatches(opts.rule, v, rel, tmpRoot);
-        writeFileSync(target, v + "\n", "utf-8");
-        const rep = runCheck(tmpRoot);
-        treeBlocked = rep.fails > 0;
-        treeUnknowns = rep.unknowns;
-      } catch (err) {
-        // One bad variant must not kill a paid run: record and continue.
-        error = (err as Error).message;
-      }
-      const hit = gateBlocked || treeBlocked;
+      // One bad variant must not kill a paid run: scoreVariant records errors.
+      const s = scoreVariant(opts.rule, v, tmpRoot);
       attempts.push({
         type: "redteam_attempt",
         i,
         payload: v,
-        gateBlocked,
-        treeBlocked,
-        treeUnknowns,
-        caught: hit,
-        ...(error ? { error } : {}),
+        gateBlocked: s.gateBlocked,
+        treeBlocked: s.treeBlocked,
+        treeUnknowns: s.treeUnknowns,
+        caught: s.caught,
+        ...(s.error ? { error: s.error } : {}),
       });
-      const tag = opts.mode === "attack" ? (hit ? "CAUGHT" : "MISS") : hit ? "FP" : "CLEAN";
-      console.log(`  [${tag}] ${v.slice(0, 120)}${error ? ` (eval error: ${error})` : ""}`);
+      const tag = opts.mode === "attack" ? (s.caught ? "CAUGHT" : "MISS") : s.caught ? "FP" : "CLEAN";
+      console.log(`  [${tag}] ${v.slice(0, 120)}${s.error ? ` (eval error: ${s.error})` : ""}`);
     }
   } finally {
     rmSync(tmpRoot, { recursive: true, force: true });
@@ -495,6 +511,85 @@ export async function redteam(opts: RedteamOpts): Promise<number> {
 }
 
 // ---------------------------------------------------------------------------
+// Suite A hostile bench (--bench hostile): hand-written fixtures, $0.
+// ---------------------------------------------------------------------------
+
+export interface BenchCase {
+  id: string;
+  payload: string;
+  /** Probe path override for file-gated rules (SUP-01 → package.json). */
+  path?: string;
+  note?: string;
+}
+
+export interface BenchSet {
+  rule: string;
+  cases: BenchCase[];
+}
+
+const HOSTILE_DIR = join(ROOT, "tests", "benches", "hostile");
+
+export function loadHostileBenches(): BenchSet[] {
+  if (!existsSync(HOSTILE_DIR)) return [];
+  const sets: BenchSet[] = [];
+  for (const file of readdirSync(HOSTILE_DIR).filter((f) => f.endsWith(".json")).sort()) {
+    const raw = JSON.parse(readFileSync(join(HOSTILE_DIR, file), "utf-8")) as {
+      rule: string;
+      cases: Array<{ id: string; payload?: string; payloadParts?: string[]; path?: string; note?: string }>;
+    };
+    sets.push({
+      rule: raw.rule,
+      cases: raw.cases.map((c) => ({
+        id: c.id,
+        payload: c.payload ?? (c.payloadParts ?? []).join(""),
+        ...(c.path ? { path: c.path } : {}),
+        ...(c.note ? { note: c.note } : {}),
+      })),
+    });
+  }
+  return sets;
+}
+
+export function runBenchHostile(argv: string[]): number {
+  const only = flag(argv, "--rule") ?? undefined;
+  const sets = loadHostileBenches().filter((s) => !only || s.rule === only);
+  if (sets.length === 0) {
+    console.error(`bench hostile: no fixture sets found${only ? ` for --rule ${only}` : ""}`);
+    return 1;
+  }
+  let misses = 0;
+  let problems = 0;
+  for (const set of sets) {
+    if (set.cases.length < 6) {
+      console.log(`${set.rule}: only ${set.cases.length} fixtures (<6 required)`);
+      problems++;
+    }
+    const tmpRoot = mkdtempSync(join(tmpdir(), "vf-bench-"));
+    execSync("git init -q .", { cwd: tmpRoot, stdio: "ignore" });
+    let caught = 0;
+    try {
+      for (const c of set.cases) {
+        const s = scoreVariant(set.rule, c.payload, tmpRoot, c.path);
+        if (s.caught) caught++;
+        else {
+          misses++;
+          console.log(`  [MISS] ${set.rule} ${c.id}: ${c.payload.slice(0, 100)}`);
+        }
+      }
+    } finally {
+      rmSync(tmpRoot, { recursive: true, force: true });
+    }
+    console.log(`bench ${set.rule}: ${caught}/${set.cases.length} caught`);
+  }
+  if (misses > 0 || problems > 0) {
+    console.log(`bench hostile: ${misses} miss(es), ${problems} problem(s) — triage before corpus fold-in`);
+    return 1;
+  }
+  console.log("bench hostile: all fixtures caught");
+  return 0;
+}
+
+// ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
 
@@ -515,6 +610,15 @@ async function main(argv: string[]): Promise<number> {
       return 2;
     }
     return redteam(opts);
+  }
+
+  const bench = flag(argv, "--bench");
+  if (bench === "hostile") {
+    return runBenchHostile(argv);
+  }
+  if (bench !== null) {
+    console.error(`eval: unknown --bench '${bench}' (try: hostile)`);
+    return 2;
   }
 
   const cases = loadCorpus();

@@ -1,0 +1,12 @@
+{
+  "rule": "BILL-01",
+  "note": "Hand-written hostile fixtures (Suite A): billable API loops without caps (probe.ts).",
+  "cases": [
+    {"id": "h-bill01-1", "payload": "for (const u of users) {\n  await stripe.charges.create(u);\n}"},
+    {"id": "h-bill01-2", "payload": "while (true) {\n  await openai.chat.completions.create(req);\n}"},
+    {"id": "h-bill01-3", "payload": "users.map(async (u) => { await twilio.messages.create(u); });"},
+    {"id": "h-bill01-4", "payload": "setInterval(() => { resend.emails.send(batch); }, 1000);"},
+    {"id": "h-bill01-5", "payload": "await Promise.all(items.map((i) => anthropic.messages.create(i)));"},
+    {"id": "h-bill01-6", "payload": "for (;;) {\n  await resend.emails.send(batch);\n}"}
+  ]
+}

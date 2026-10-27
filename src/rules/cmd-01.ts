@@ -32,6 +32,18 @@ export interface RuleVerdict {
 
 const FORBIDDEN_RM_BARE = new Set(["/", "~", "$HOME", "/root", ".git", "./.git", ".."]);
 
+/** System trees: wiping the root itself or anything under it is never
+ * routine. /var/tmp is the carve-out (build caches live there). */
+const PROTECTED_ROOTS = ["/etc", "/usr", "/bin", "/sbin", "/boot", "/sys", "/proc", "/root", "/home", "/var"];
+function isProtectedRoot(bare: string): boolean {
+  if (bare === "/") return true;
+  for (const r of PROTECTED_ROOTS) {
+    if (bare === r) return true;
+    if (bare.startsWith(r + "/") && !bare.startsWith("/var/tmp/")) return true;
+  }
+  return false;
+}
+
 function isRmWipe(segment: string): string | null {
   const m = segment.match(/^\s*(?:sudo\s+)?rm\s+(.*)$/);
   if (!m) return null;
@@ -49,7 +61,8 @@ function isRmWipe(segment: string): string | null {
     const norm = t.replace(/^["']|["']$/g, "").replace(/\$\{HOME\}/g, "$HOME").replace(/\/{2,}/g, "/");
     const bare = norm.replace(/\/+$/, "") || "/";
     if (FORBIDDEN_RM_BARE.has(bare)) return t;
-    if (bare.endsWith("/*") && FORBIDDEN_RM_BARE.has(bare.slice(0, -2) || "/")) return t;
+    if (isProtectedRoot(bare)) return t;
+    if (bare.endsWith("/*") && (FORBIDDEN_RM_BARE.has(bare.slice(0, -2) || "/") || isProtectedRoot(bare.slice(0, -2)))) return t;
   }
   return null;
 }

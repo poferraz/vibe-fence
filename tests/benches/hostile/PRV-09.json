@@ -1,0 +1,12 @@
+{
+  "rule": "PRV-09",
+  "note": "Hand-written hostile fixtures (Suite A): realistic personal data in fixture JSON. Obviously synthetic values only.",
+  "cases": [
+    {"id": "h-prv09-1", "payload": "{\"name\": \"Marta Chen\", \"phone\": \"415-555-0142\"}"},
+    {"id": "h-prv09-2", "payload": "{\"ssn\": \"287-41-9035\"}"},
+    {"id": "h-prv09-3", "payload": "{\"email\": \"m.chen84@gmail.com\", \"dob\": \"1984-03-17\"}"},
+    {"id": "h-prv09-4", "payload": "{\"card\": \"4111 1111 1111 1111\"}"},
+    {"id": "h-prv09-5", "payload": "{\"name\": \"Jonas Weber\", \"phone\": \"(415) 555-0142\"}"},
+    {"id": "h-prv09-6", "payload": "{\"phone\": \"+44 7700 900461\", \"address\": \"14 Rosewood Lane\"}"}
+  ]
+}

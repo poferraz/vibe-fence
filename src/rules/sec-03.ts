@@ -43,6 +43,7 @@ const TOKEN_RES: Array<{ re: RegExp; label: string; entropyOf: "suffix" | "whole
   { re: /\bxox[bpras]-[A-Za-z0-9-]{8,}\b/, label: "Slack token", entropyOf: "suffix" },
   { re: /\bglpat-[A-Za-z0-9-]{8,}\b/, label: "GitLab PAT", entropyOf: "suffix" },
   { re: /\bnpm_[A-Za-z0-9]{12,}\b/, label: "npm token", entropyOf: "suffix" },
+  { re: /\bAIza[0-9A-Za-z_-]{35,}\b/, label: "Google API key", entropyOf: "fixed" },
   { re: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/, label: "private key", entropyOf: "fixed" },
 ];
 

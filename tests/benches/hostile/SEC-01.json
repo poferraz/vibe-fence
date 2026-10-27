@@ -1,0 +1,12 @@
+{
+  "rule": "SEC-01",
+  "note": "Hand-written hostile fixtures (Suite A). Secret-shaped values fragmented via payloadParts so no whole secret literal exists in the repo. Evaluated via gate write leg + runCheck tree scan at app/page.tsx.",
+  "cases": [
+    {"id": "h-sec01-1", "payloadParts": ["const s = process.env.NEXT_PUBLIC_STRIPE_SECRET; // sk_live_51H8x", "FAKE9E2daEXAMPLE"]},
+    {"id": "h-sec01-2", "payload": "VITE_PAYMENTS_PRIVATE_KEY=runtime-loaded"},
+    {"id": "h-sec01-3", "payload": "export const t = process.env.EXPO_PUBLIC_SESSION_TOKEN;"},
+    {"id": "h-sec01-4", "payload": "PUBLIC_DB_SERVICE_ROLE_KEY=server-only-value"},
+    {"id": "h-sec01-5", "payload": "const k = process.env.NEXT_PUBLIC_ENCRYPTION_PRIVATE;"},
+    {"id": "h-sec01-6", "payloadParts": ["NEXT_PUBLIC_API_SECRET=\"sk_live_9f2Kd8", "mQ4xT7vN1pR6sW3z\""]}
+  ]
+}

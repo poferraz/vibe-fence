@@ -43,7 +43,7 @@ import { isExecutablePath, isProsePath, isQuotedAt, liveCode, stripStrings } fro
 // Covers display (cat/pagers), search (grep family), dump/encode (strings/xxd/od/base64),
 // and copy-out (cp/scp/sftp/rsync) — all exfiltrate file bytes to the caller.
 const READ_LIKE_RE =
-  /\b(read|open|cat|view|show|load|fetch|get|grep|rg|ag|ack|head|tail|less|more|strings|xxd|od|base64|cp|scp|sftp|rsync)\b/i;
+  /\b(read|open|cat|view|show|load|fetch|get|grep|rg|ag|ack|head|tail|less|more|strings|xxd|od|base64|cp|scp|sftp|rsync|tar|zip|7z)\b/i;
 
 // Tree-scan mode (no toolName): prose mentions must pass, so a bare verb is
 // not enough — require a read SINK. Code sink: read-call with a QUOTED
@@ -54,7 +54,7 @@ const READ_SINK_CALL_RE =
 // showing the attack as an example pass at tree level; live execution is
 // gated by toolName=bash through the gate).
 const SHELL_READ_RE =
-  /(?:^|[;&|]\s*|&&\s*)(?:sudo\s+)?(cat|less|more|head|tail|open|code|cursor|bat|grep|rg|ag|ack|strings|xxd|od|base64|cp|scp|sftp|rsync)\s+[^\n]*$/;
+  /(?:^|[;&|]\s*|&&\s*)(?:sudo\s+)?(cat|less|more|head|tail|open|code|cursor|bat|grep|rg|ag|ack|strings|xxd|od|base64|cp|scp|sftp|rsync|tar|zip|7z)\s+[^\n]*$/;
 
 function isCredentialPath(text: string): { hit: boolean; label?: string; match?: string; index?: number } {
   // .env.example is explicitly safe — strip before check to avoid FP

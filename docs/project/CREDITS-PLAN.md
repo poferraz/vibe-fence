@@ -12,8 +12,26 @@ credits. Verify each balance before spending.
 | Meta Model API | $150 | Not ready — verify in account |
 | Modal | **$30 in hand** | Confirmed Oct 26 — the bulk-eval budget |
 | Fireworks | User-held (amount TBC) + $25 offer | Confirm balance; Sinan Ozdemir workshop |
-| Baseten | $100 + 2M TPM (select) | Not ready — claim via Discord/workshops |
+| Baseten | $100 + 2M TPM (select) | **Claimed Oct 27** — key issued, see endpoint note |
 | Modal | $100 (select offer) | Not ready — claim via Discord/workshops |
+
+## Baseten endpoint (claimed Oct 27 — select-participant offer)
+
+- Base URL: `https://inference.baseten.co/v1` (OpenAI-compatible).
+- Model: `meta-models/muse-spark-open-1026` — use EXACTLY this; the key
+  works only with the hackathon model, and the public docs' shorter
+  `meta-models/muse-spark-open` name will NOT work here.
+- Key: one-time link (open once, copy immediately) → store ONLY in local
+  `.env` as `BASETEN_API_KEY` (gitignored, never committed, never pasted).
+- Redteam invocation: `bun run tools/eval.ts --redteam N --rule R --model
+  meta-models/muse-spark-open-1026 --provider custom --base-url
+  https://inference.baseten.co/v1 --api-key-env BASETEN_API_KEY --out
+  tools/out/<date>-<rule>-<mode>.ndjson` (2M TPM dwarfs the capped
+  N≤50 / ≤2000-token runs — no throttle risk).
+- Muse Spark Open always reasons; for redteam only the payload lines
+  matter (the harness strips numbering/fences already). Now available as
+  the open-weights bulk endpoint alongside Fireworks — spend order is the
+  human's call (see Actions).
 
 ## Allocation rule
 
@@ -85,7 +103,8 @@ are human-owned (see Actions).
       dollars. Record per-rule catch rates; fold misses into corpus (v2).
 - [ ] Modal $30: bulk runs — repeat red-team 5× per rule + rubric-judged
       suites once model IDs verified; log spend per run.
-- [ ] Claim Baseten $100 / Modal $100 select offers via Discord/office hours.
+- [x] Baseten $100 + 2M TPM claimed Oct 27 (key issued; endpoint noted above).
+- [ ] Claim Modal $100 select offer via Discord/office hours.
 - [ ] Attend partner workshops (Oct 27–Nov 4) — claim codes + integration help.
 - [ ] Add Fireworks base-URL switch for the open-weights local tier
       (Phase 2 task; keeps Meta API spend at ~zero for bulk work).

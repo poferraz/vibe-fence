@@ -120,6 +120,8 @@ CI is the "holds up live" proof: every push runs `tsc --noEmit` + `build` + `val
 
 Report **success and unsafe-action rate** per task; gate releases on the latter (ClawsBench — capability ≠ safety).
 
+Paid-variant probing: `bun run tools/eval.ts --redteam N --rule R --model M [--mode attack|benign] [--out FILE]` — evaluates each variant through the gate + tree scan (Fireworks default; paid runs are human-owned).
+
 ---
 
 ## How it works — 30 seconds

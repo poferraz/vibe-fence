@@ -44,13 +44,41 @@ Spend each credit where judges can see it, cheapest adequate tier always.
    support, one call each.
 4. Never commit keys. `.env` is gitignored; CI stays fixture-only.
 
+## Spend log format (ready — Phase 4a, no paid runs yet)
+
+Every paid red-team run writes one NDJSON artefact:
+
+```
+bun run tools/eval.ts --redteam N --rule R --model M --out tools/out/<date>-<rule>-<mode>.ndjson
+```
+
+(`tools/out/` is gitignored — raw attack payloads must never land in the
+tree, where they would trip the repo self-scan.)
+
+- `redteam_attempt` lines: `{i, payload, gateBlocked, treeBlocked,
+  treeUnknowns, caught}` — which real surface fired per variant
+  (`caught = gateBlocked || treeBlocked`).
+- One trailing `redteam_run` line: `{rule, mode, model, provider, n,
+  evaluated, caught, rate, promptTokens, completionTokens, totalTokens,
+  usd, at}` — token counts come from the provider `usage` block (null
+  when the provider omits it); `usd` is always null in the artefact —
+  fill it from the provider invoice (per-model rates change; never
+  estimated).
+- Benign mode (`--mode benign`) scores firings as false positives —
+  the measured false-block rate, replacing the asserted one.
+
+The spend log is the concatenation of per-run files. First paid runs
+are human-owned (see Actions).
+
 ## Actions
 
 - [ ] Verify $150 Meta credit in account; record balance + expiry.
 - [x] Modal $30 confirmed in hand (Oct 26) — ring-fence for full-suite evals.
 - [x] Eval runner v0 built (Oct 26): local metrics + pinned baseline + capped
-      `--redteam` stub with base-URL switch (Fireworks default; Modal/Baseten
+      `--redteam` harness with base-URL switch (Fireworks default; Modal/Baseten
       via `--provider custom --base-url`). Keys from env only, never gated.
+      Phase 4a: dual-surface eval (gate legs + `runCheck` tree scan),
+      `--mode benign`, `--out` NDJSON artefacts (see Spend log format).
 - [ ] Confirm Fireworks balance; claim $25 hackathon offer if separate.
 - [ ] First paid red-team run: start on Fireworks (held credits),
       10 variants × 11 rules × ~300 tokens ≈ 33K output tokens — cents, not

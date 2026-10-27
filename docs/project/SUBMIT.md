@@ -23,6 +23,8 @@ Deadline: Nov 4, 9PM ET. One track only; Representative submits.
       (model IDs, latency, docs gaps)
 - [ ] **Feedback on partner tech** — requires REAL usage; run evals/bulk on
       Fireworks (held), claim + touch Baseten/Modal so this isn't blank
+      (harness ready on this branch: `tools/eval.ts --redteam … --out`,
+      attack + benign NDJSON artefacts — paid runs are human-owned)
 - [x] **Promo consent** — understood: Meta/CV may publish/promote materials
 
 ## Prep before Nov 3

@@ -15,6 +15,7 @@ Compare views: https://github.com/poferraz/vibe-fence/compare/
 - `vibe-fence check --staged` (scan staged blobs — pre-commit gate) and `vibe-fence check --push [<range>]` (scan outgoing commits — pre-push gate; default range from pre-push stdin, else `@{u}..HEAD`).
 - Claude/Cursor PreToolUse gate hooks: managed `fence-gate.sh` scripts evaluate every tool call via `vibe-fence gate` (exit 2 blocks; missing binary/jq warns + allows — fail-open-with-warn mirroring the OpenCode plugin).
 - `vibe-fence check --explain` / `gate --explain`: one budget-capped, goal-blind Muse Spark call per blocking report (task target + findings only; never file contents, tool args, or evidence); artefact + request ID land in `.fence/events.ndjson`. No key / API error → stderr note, exits unchanged.
+- Redteam harness (`tools/eval.ts --redteam`; Phase 4a): every variant is evaluated through both real surfaces (`vibe-fence gate` write/shell/read legs + a `runCheck` tree scan of the probe materialized at a surface-appropriate path); `--mode benign` measures the false-block rate with a dedicated benign brief set; `--out FILE` writes a per-run NDJSON artefact (attempts + run record with provider token counts; `usd` always null — filled from invoices, never estimated); `--redteam`/`--max-tokens` validation is NaN-proof and usage errors exit 2 before any key/network touch.
 
 ### Fixed
 - `release.yml` now runs `bun test` + `bun run eval` before `npm publish` (L5) — a tagged release can no longer ship with red tests or eval regressions.

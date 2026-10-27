@@ -17,7 +17,7 @@ afterEach(() => {
   for (const d of created.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
-function runCli(args: string[], opts: { cwd?: string; input?: string } = {}): { stdout: string; stderr: string; exit: number } {
+function runCli(args: string[], opts: { cwd?: string; input?: string; env?: Record<string, string> } = {}): { stdout: string; stderr: string; exit: number } {
   const cwd = opts.cwd ?? mkdtempSync(join(tmpdir(), "vf-cli-"));
   if (!opts.cwd) created.push(cwd);
   try {
@@ -25,6 +25,7 @@ function runCli(args: string[], opts: { cwd?: string; input?: string } = {}): { 
       cwd,
       input: opts.input,
       encoding: "utf-8",
+      env: { ...process.env, ...opts.env },
       stdio: [opts.input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
     });
     return { stdout, stderr: "", exit: 0 };
@@ -37,6 +38,9 @@ function runCli(args: string[], opts: { cwd?: string; input?: string } = {}): { 
     };
   }
 }
+
+/** Scrubbed model keys: --explain tests must never make live calls, even on dev machines with keys set. */
+const NO_KEYS = { MUSE_API_KEY: "", META_API_KEY: "" };
 
 function gitEnv(): Record<string, string> {
   return { ...(process.env as Record<string, string>), GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" };
@@ -127,5 +131,54 @@ describe("cli check --push/--staged", () => {
     const r = runCli(["check", "--staged", "--push"]);
     expect(r.exit).toBe(2);
     expect(r.stderr).toContain("at most one");
+  });
+});
+
+describe("cli --explain (no live calls — keys scrubbed)", () => {
+  function makeProject(files: Record<string, string>): string {
+    const root = mkdtempSync(join(tmpdir(), "vf-exp-"));
+    created.push(root);
+    for (const [rel, content] of Object.entries(files)) writeFileSync(join(root, rel), content, "utf-8");
+    return root;
+  }
+
+  it("check --explain without a key notes and keeps the block exit", () => {
+    const root = makeProject({ "a.ts": "const k = process.env.NEXT_PUBLIC_X_SECRET;\n" });
+    const r = runCli(["check", "--explain"], { cwd: root, env: NO_KEYS });
+    expect(r.exit).toBe(1);
+    expect(r.stderr).toContain("--explain needs MUSE_API_KEY");
+  });
+
+  it("check --explain on a clean tree is a silent no-op", () => {
+    const root = makeProject({ "a.ts": "export const x = 1;\n" });
+    const r = runCli(["check", "--explain"], { cwd: root, env: NO_KEYS });
+    expect(r.exit).toBe(0);
+    expect(r.stderr).toBe("");
+  });
+
+  it("gate --explain without a key notes and keeps the block exit", () => {
+    const root = makeProject({ "a.ts": "export const x = 1;\n" });
+    const r = runCli(
+      ["gate", "--tool", "write", "--args", JSON.stringify({ filePath: "a.ts", content: "const k = process.env.NEXT_PUBLIC_X_SECRET;" }), "--explain"],
+      { cwd: root, env: NO_KEYS },
+    );
+    expect(r.exit).toBe(1);
+    expect(r.stdout).toContain("SEC-01");
+    expect(r.stderr).toContain("--explain needs MUSE_API_KEY");
+  });
+
+  it("gate --explain on an allowed call is a silent no-op", () => {
+    const root = makeProject({ "a.ts": "export const x = 1;\n" });
+    const r = runCli(["gate", "--tool", "write", "--args", JSON.stringify({ filePath: "a.ts", content: "export const x = 1;" }), "--explain"], {
+      cwd: root,
+      env: NO_KEYS,
+    });
+    expect(r.exit).toBe(0);
+    expect(r.stderr).toBe("");
+  });
+
+  it("--help documents --explain", () => {
+    const r = runCli(["--help"]);
+    expect(r.stdout).toContain("--explain");
   });
 });

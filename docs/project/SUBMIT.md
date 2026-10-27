@@ -18,9 +18,7 @@ Deadline: Nov 4, 9PM ET. One track only; Representative submits.
 - [ ] **Use of Meta products*** — Spark live + Wonder escalation + Muse Image
       assets + SAM spot-check + Muse Code built-with story (must be TRUE by
       Nov 3 — each claim needs a live call or artefact behind it)
-- [ ] **Why Meta's models are important*** — the load-bearing-beat question;
-      "they explain what the fence decided" is weak. Needs: Spark plan card
-      the user acts on and/or Wonder escalation that changes an outcome.
+- [x] **Why Meta's models are important*** — drafted Oct 26 from the probe artefact + `--explain` wiring (see draft below; actionable one-line fixes per finding — strengthen with Wonder escalation if 3b lands)
 - [ ] **Feedback on Meta products** — honest notes from probe + build
       (model IDs, latency, docs gaps)
 - [ ] **Feedback on partner tech** — requires REAL usage; run evals/bulk on
@@ -49,3 +47,17 @@ Draft notes (do not submit verbatim before checking): `npx` path requires
 the human-owned `v0.2.0` npm publish; Spark-explains requires Phase 3a
 (`--explain`) on this branch. Add a Wonder-escalation line only if the
 human-approved Phase 3b probe succeeds.
+
+## Why-Meta draft (Oct 26 — from the probe artefact + `--explain` wiring)
+
+vibe-fence splits safety into two jobs: the deterministic fence decides
+(11 local rules, zero false positives), and Meta's Muse models explain.
+Every block the fence raises can be narrated by Muse Spark with a one-line
+fix — `vibe-fence check --explain` makes one budget-capped, goal-blind
+`POST /v1/responses` call per blocking report (task target + findings only;
+never file contents or tool args), verified live against the Model API on
+Oct 26 (probe artefact: `muse-spark-1.3`, stateless replay, per-request
+artefact in `.fence/events.ndjson`). Without Muse, the fence is correct but
+mute for its non-technical users; Spark is the voice that teaches the fix.
+Planned, not claimed: Wonder escalation on verifier failure (gated on a
+human-approved probe) and an offline open-weights tier.

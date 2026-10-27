@@ -6,6 +6,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { install, CONTRIBUTOR_DISCLOSURE, DEFAULT_ADAPTER_IDS, hereDir } from "./install.js";
 import { runCheck, runIndexCheck, runPushCheck, exitCodeForReport, formatHuman } from "./check.js";
+import { explainBlocking, type ExplainContext, type ExplainFinding } from "./framework/explain.js";
 import { checkpoint, fenceUndo } from "./framework/git.js";
 import { evaluateToolCall } from "./framework/gate.js";
 
@@ -25,10 +26,10 @@ function help(): string {
     "",
     "Usage:",
     "  vibe-fence init [--dry-run] [--contributor-mode] [--full] [--adapters=a,b]",
-    "  vibe-fence check [--json] [--staged] [--push [<range>]]",
+    "  vibe-fence check [--json] [--staged] [--push [<range>]] [--explain]",
     "  vibe-fence checkpoint --action <label> [--include-untracked]",
     "  vibe-fence undo [--steps N]",
-    "  vibe-fence gate --tool <name> --args '<json>' [--root <dir>]",
+    "  vibe-fence gate --tool <name> --args '<json>' [--root <dir>] [--explain]",
     "  vibe-fence --help | --version",
     "",
     "Commands:",
@@ -49,6 +50,7 @@ function help(): string {
     "  --staged             Scan staged blobs (what the next commit contains)",
     "  --push [<range>]     Scan outgoing commits (<old>..<new>; default: pre-push stdin, else @{u}..HEAD)",
     "  --json               Emit the report as JSON",
+    "  --explain            Ask Meta Muse Spark to explain blocking findings (needs MUSE_API_KEY; check + gate)",
     "",
     "More: https://github.com/poferraz/vibe-fence",
   ].join("\n");
@@ -65,6 +67,26 @@ function isValidPushRange(r: string): boolean {
   const parts = r.split("..");
   if (parts.length < 1 || parts.length > 2) return false;
   return parts.every((p) => p.length > 0 && /^[A-Za-z0-9_.@{}\/^~:-]+$/.test(p));
+}
+
+/**
+ * --explain: one Spark call per blocking report (Phase 3a). Advisory only —
+ * the caller's exit code never changes. With --json the text goes to stderr
+ * so stdout stays parseable.
+ */
+async function printExplanation(failures: ExplainFinding[], ctx: ExplainContext, json: boolean): Promise<void> {
+  const outcome = await explainBlocking(failures, ctx, { projectRoot: process.cwd() });
+  if (outcome.status === "skipped") {
+    if (outcome.code === "no-key") {
+      console.error("vibe-fence: --explain needs MUSE_API_KEY — skipping AI explanation (findings above are complete).");
+    } else if (outcome.code === "error") {
+      console.error(`vibe-fence: --explain unavailable (${outcome.reason}) — findings above are complete.`);
+    }
+    return;
+  }
+  const text = `\n${outcome.model} explanation (request ${outcome.requestId ?? "n/a"}):\n${outcome.text}`;
+  if (json) console.error(text);
+  else console.log(text);
 }
 
 function pushRangesFromStdinOrDefault(): string[] {
@@ -161,7 +183,15 @@ export async function main(argv: string[]): Promise<number> {
     } else {
       console.log(formatHuman(report));
     }
-    return exitCodeForReport(report);
+    const exit = exitCodeForReport(report);
+    // Explain all fails when the report blocks (each command follows its own exit contract).
+    if (rest.includes("--explain") && report.blocks > 0) {
+      const failures = report.findings
+        .filter((f) => f.verdict === "fail")
+        .map((f) => ({ ruleId: f.ruleId, severity: f.severity, file: f.file, reason: f.reason }));
+      await printExplanation(failures, { kind: "check", target: process.cwd() }, json);
+    }
+    return exit;
   }
   if (cmd === "checkpoint") {
     const actionArg = rest.find((a) => a.startsWith("--action="));
@@ -222,6 +252,15 @@ export async function main(argv: string[]): Promise<number> {
     const findings = evaluateToolCall({ tool, args: args as Record<string, unknown>, projectRoot });
     if (findings.length === 0) return 0;
     for (const f of findings) console.log(`${f.ruleId} [${f.severity}] ${f.reason}`);
+    if (rest.includes("--explain")) {
+      const fileArg = (args as Record<string, unknown>)["filePath"];
+      const file = typeof fileArg === "string" ? fileArg : `tool:${tool}`;
+      await printExplanation(
+        findings.map((f) => ({ ruleId: f.ruleId, severity: f.severity, file, reason: f.reason })),
+        { kind: "gate", target: tool },
+        false,
+      );
+    }
     return 1;
   }
   if (cmd === "tour") {

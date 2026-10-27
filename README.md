@@ -49,18 +49,18 @@ Indie lens: *creativity, technical ambition, whether it works* — see [Demo](#d
 
 ## Use of Meta AI Tooling — Muse Spark · Muse Image · SAM 3.1 · Meta Model API · Open-weights · Muse Code (25%)
 
-Beyond a basic integration — each model powers a distinct fence surface:
+Beyond a basic integration — each model maps to a distinct fence surface; the Status column says what is wired today:
 
-| Model / tool | Feature | Call |
-|--------------|---------|------|
-| **Muse Spark** (companion) | Safety reasoning — the fence's voice, goal-blind (S-11), one-line fix + plan | `POST /v1/responses` stateless replay, `muse-spark-1.3` (`src/framework/meta-client.ts`) |
-| **Muse Wonder** (escalation) | Architect review — dual-tier routing (GEM-08), `companion → Wonder` on verifier fail | Same endpoint, `muse-wonder-1.0`, `FENCE_SYNC_TOKEN`-gated |
-| **Muse Image** | Generated UI assets in demo — Muse Image logo → `public/images/` per `DEMO-SCRIPT.md` 2:00→3:00 | Meta Model API image generation |
-| **SAM 3.1** | Visual guardrails — screenshot diff / fence-look Playwright spot-check (S-14 PFLOP trace) | `src/framework/sam.ts` + `sam-guard.test.ts` |
-| **Meta open-weights** | Offline `local` tier (14 blocks vs 29 shared / 55 public) — `app-profile.json` tier guard | Local inference path, no Model API key required |
-| **Muse Code** | Built-with story — the harness is itself built using the agent it secures | Agentic coding agent — harness development |
+| Model / tool | Feature | Call | Status |
+|--------------|---------|------|--------|
+| **Muse Spark** (companion) | Safety reasoning — the fence's voice, goal-blind (S-11), one-line fix + plan | `POST /v1/responses` stateless replay, `muse-spark-1.3` (`src/framework/meta-client.ts`) | ✅ wired — `check`/`gate --explain`, one capped call per blocking report, artefact in `.fence/events.ndjson` |
+| **Muse Wonder** (escalation) | Architect review — dual-tier routing (GEM-08), `companion → Wonder` on verifier fail | Same endpoint, `muse-wonder-1.0`, `FENCE_SYNC_TOKEN`-gated | planned — Phase 3b, gated on a human-approved probe |
+| **Muse Image** | Generated UI assets in demo — Muse Image logo → `public/images/` per `DEMO-SCRIPT.md` 2:00→3:00 | Meta Model API image generation | planned — no image code in tree |
+| **SAM 3.1** | Visual guardrails — screenshot diff / fence-look Playwright spot-check (S-14 PFLOP trace) | `src/framework/sam.ts` + `sam-guard.test.ts` | contract-tested, unwired — no product caller yet |
+| **Meta open-weights** | Offline `local` tier (14 blocks vs 29 shared / 55 public) — `app-profile.json` tier guard | Local inference path, no Model API key required | planned — no local-inference code in tree |
+| **Muse Code** | Built-with story — the harness is itself built using the agent it secures | Agentic coding agent — harness development | true — process, not a product surface |
 
-All Model API calls run stateless replay (never `previous_response_id`) — see stream 06 (Meta models) synthesis + `docs/research/synthesis/ARGON-AUDIT-v2.md` D-02. The prompt is goal-blind (S-11) — the model never sees the fence's success criterion, only the task + verifier artefact.
+All Model API calls run stateless replay (never `previous_response_id`) — see stream 06 (Meta models) synthesis + `docs/research/synthesis/ARGON-AUDIT-v2.md` D-02. The prompt is goal-blind (S-11) — the model never sees the fence's success criterion, only the task target + the findings (never file contents, tool args, or evidence).
 
 ---
 

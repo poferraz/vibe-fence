@@ -14,6 +14,7 @@ Compare views: https://github.com/poferraz/vibe-fence/compare/
 - `vibe-fence init --profile muse` preset (Claude adapter — demo-hero path; explicit `--adapters` overrides it).
 - `vibe-fence check --staged` (scan staged blobs — pre-commit gate) and `vibe-fence check --push [<range>]` (scan outgoing commits — pre-push gate; default range from pre-push stdin, else `@{u}..HEAD`).
 - Claude/Cursor PreToolUse gate hooks: managed `fence-gate.sh` scripts evaluate every tool call via `vibe-fence gate` (exit 2 blocks; missing binary/jq warns + allows — fail-open-with-warn mirroring the OpenCode plugin).
+- `vibe-fence check --explain` / `gate --explain`: one budget-capped, goal-blind Muse Spark call per blocking report (task target + findings only; never file contents, tool args, or evidence); artefact + request ID land in `.fence/events.ndjson`. No key / API error → stderr note, exits unchanged.
 
 ### Fixed
 - `release.yml` now runs `bun test` + `bun run eval` before `npm publish` (L5) — a tagged release can no longer ship with red tests or eval regressions.

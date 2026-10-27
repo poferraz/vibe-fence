@@ -14,13 +14,19 @@ describe("scoreExplanation (offline rubric)", () => {
     const text =
       "SEC-01: a secret is exposed in client code. Fix: move it server-side. NET-01: a download is piped into a shell. Fix: download to a file and verify it first.";
     const s = scoreExplanation(text, FINDINGS);
-    expect(s).toMatchObject({ mentionsAllRules: true, hasFixLine: true, sentenceBudgetOk: true, noSystemLeak: true, score: 4 });
+    expect(s).toMatchObject({ mentionsAllRules: true, hasFixKeyword: true, sentenceBudgetOk: true, noSystemLeak: true, score: 4 });
   });
 
   it("fails when a rule goes unmentioned", () => {
     const s = scoreExplanation("SEC-01: a secret is exposed. Fix: move it server-side.", FINDINGS);
     expect(s.mentionsAllRules).toBe(false);
     expect(s.score).toBeLessThan(4);
+  });
+
+  it("fails bare 'need a fix' without substance (review finding)", () => {
+    const s = scoreExplanation("SEC-01 and NET-01 need a fix.", FINDINGS);
+    expect(s.hasFixKeyword).toBe(false);
+    expect(s.score).toBe(3);
   });
 
   it("fails rambling output on the sentence budget", () => {

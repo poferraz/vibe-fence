@@ -6,7 +6,7 @@
  * Run: bun test tools/loops/run.test.ts
  */
 import { describe, it, expect } from "bun:test";
-import { loopPlan, countRefusals, parseLoopArgs, ALL_RULES, fragmentPayload, foldDrafts, type LoopPlanInput } from "./run";
+import { loopPlan, liveCapsError, countRefusals, parseLoopArgs, ALL_RULES, fragmentPayload, foldDrafts, type LoopPlanInput } from "./run";
 
 describe("loopPlan (caps enforced before any network)", () => {
   it("counts rules × modes per live provider and worst-case tokens", () => {
@@ -19,6 +19,24 @@ describe("loopPlan (caps enforced before any network)", () => {
     const plan = loopPlan({ providers: ["fixture"], rules: ALL_RULES, modes: ["attack"], n: 6, maxTokens: 2000 });
     expect(plan.apiCalls).toBe(0);
     expect(plan.worstTokens).toBe(0);
+  });
+
+  it("live loops without explicit caps refuse pre-network (review finding)", () => {
+    const base: LoopPlanInput = { providers: ["baseten"], rules: ["SEC-01"], modes: ["attack"], n: 1, maxTokens: 1 };
+    expect(liveCapsError(base)).toContain("--cap-calls");
+    expect(loopPlan(base).error).toContain("require explicit");
+    expect(liveCapsError({ ...base, capCalls: 1 })).toContain("--cap-tokens");
+    expect(liveCapsError({ ...base, capCalls: 1, capTokens: 1 })).toBeUndefined();
+    expect(liveCapsError({ providers: ["fixture"], rules: ["SEC-01"], modes: ["attack"], n: 1, maxTokens: 1 })).toBeUndefined();
+  });
+
+  it("non-finite or unenforceable --cap-usd refuses pre-network", () => {
+    expect(() => parseLoopArgs(["--cap-usd", "NaN"])).toThrow(/finite/);
+    expect(() => parseLoopArgs(["--cap-usd", "-1"])).toThrow(/finite/);
+    const capped: LoopPlanInput = { providers: ["baseten"], rules: ["SEC-01"], modes: ["attack"], n: 1, maxTokens: 1, capCalls: 1, capTokens: 1, capUsd: 0 };
+    expect(loopPlan(capped).error).toContain("unenforceable");
+    const modal: LoopPlanInput = { ...capped, providers: ["modal"], capUsd: 5 };
+    expect(loopPlan(modal).error).toBeUndefined();
   });
 
   it("exceeding --cap-calls or --cap-tokens is a plan error, not a partial run", () => {

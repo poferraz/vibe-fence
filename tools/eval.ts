@@ -383,15 +383,19 @@ export interface VariantScore {
   error?: string;
 }
 
-/** Score one payload for `rule` inside `tmpRoot` (probe at pathFor(rule),
- * or `relOverride` for file-gated rules like SUP-01's package.json). */
-export function scoreVariant(rule: string, payload: string, tmpRoot: string, relOverride?: string): VariantScore {
+/** Score one payload for `rule` in a FRESH isolated git repo per call
+ * (probe at pathFor(rule), or `relOverride` for file-gated rules like
+ * SUP-01's package.json). Per-call isolation is load-bearing: earlier
+ * probes at other paths used to linger and contaminate later scores. */
+export function scoreVariant(rule: string, payload: string, relOverride?: string): VariantScore {
   const rel = relOverride ?? pathFor(rule);
+  const tmpRoot = mkdtempSync(join(tmpdir(), "vf-score-"));
   let gateBlocked = false;
   let treeBlocked = false;
   let treeUnknowns = 0;
   let error: string | undefined;
   try {
+    execSync("git init -q .", { cwd: tmpRoot, stdio: "ignore" });
     gateBlocked = gateCatches(rule, payload, rel, tmpRoot);
     const target = join(tmpRoot, rel);
     mkdirSync(dirname(target), { recursive: true });
@@ -401,6 +405,8 @@ export function scoreVariant(rule: string, payload: string, tmpRoot: string, rel
     treeUnknowns = rep.unknowns;
   } catch (err) {
     error = (err as Error).message;
+  } finally {
+    rmSync(tmpRoot, { recursive: true, force: true });
   }
   return { gateBlocked, treeBlocked, treeUnknowns, caught: gateBlocked || treeBlocked, ...(error ? { error } : {}) };
 }
@@ -459,14 +465,13 @@ export async function redteam(opts: RedteamOpts): Promise<number> {
   // exactly as the CLI invokes them) and a runCheck tree scan of the probe
   // materialized at a surface-appropriate path. A variant counts as caught
   // if EITHER surface fires — a miss means a real bypass, not a lens gap.
-  const tmpRoot = mkdtempSync(join(tmpdir(), "vf-redteam-"));
-  execSync("git init -q .", { cwd: tmpRoot, stdio: "ignore" });
   const attempts: RedteamAttempt[] = [];
-  try {
+  {
     for (let i = 0; i < variants.length; i++) {
       const v = variants[i]!;
       // One bad variant must not kill a paid run: scoreVariant records errors.
-      const s = scoreVariant(opts.rule, v, tmpRoot);
+      // Per-call isolation also keeps differently-pathed probes from leaking.
+      const s = scoreVariant(opts.rule, v);
       attempts.push({
         type: "redteam_attempt",
         i,
@@ -480,8 +485,6 @@ export async function redteam(opts: RedteamOpts): Promise<number> {
       const tag = opts.mode === "attack" ? (s.caught ? "CAUGHT" : "MISS") : s.caught ? "FP" : "CLEAN";
       console.log(`  [${tag}] ${v.slice(0, 120)}${s.error ? ` (eval error: ${s.error})` : ""}`);
     }
-  } finally {
-    rmSync(tmpRoot, { recursive: true, force: true });
   }
 
   const caught = attempts.filter((a) => a.caught).length;
@@ -578,20 +581,17 @@ export function runBenchHostile(argv: string[]): number {
       console.log(`${set.rule}: only ${set.cases.length} fixtures (<6 required)`);
       problems++;
     }
-    const tmpRoot = mkdtempSync(join(tmpdir(), "vf-bench-"));
-    execSync("git init -q .", { cwd: tmpRoot, stdio: "ignore" });
     let caught = 0;
-    try {
-      for (const c of set.cases) {
-        const s = scoreVariant(set.rule, c.payload, tmpRoot, c.path);
-        if (s.caught) caught++;
-        else {
-          misses++;
-          console.log(`  [MISS] ${set.rule} ${c.id}: ${c.payload.slice(0, 100)}`);
-        }
+    for (const c of set.cases) {
+      const s = scoreVariant(set.rule, c.payload, c.path);
+      if (s.error) {
+        problems++;
+        console.log(`  [ERROR] ${set.rule} ${c.id}: ${s.error}`);
+      } else if (s.caught) caught++;
+      else {
+        misses++;
+        console.log(`  [MISS] ${set.rule} ${c.id}: ${c.payload.slice(0, 100)}`);
       }
-    } finally {
-      rmSync(tmpRoot, { recursive: true, force: true });
     }
     console.log(`bench ${set.rule}: ${caught}/${set.cases.length} caught`);
   }
@@ -619,20 +619,18 @@ export function runBenchBenign(argv: string[]): number {
       console.log(`${set.rule}: only ${set.cases.length} fixtures (<10 required)`);
       problems++;
     }
-    const tmpRoot = mkdtempSync(join(tmpdir(), "vf-bench-"));
-    execSync("git init -q .", { cwd: tmpRoot, stdio: "ignore" });
     let clean = 0;
-    try {
-      for (const c of set.cases) {
-        total++;
-        const s = scoreVariant(set.rule, c.payload, tmpRoot, c.path);
-        if (s.caught) {
-          fps++;
-          console.log(`  [FP] ${set.rule} ${c.id}: gate=${s.gateBlocked} tree=${s.treeBlocked} — ${c.payload.slice(0, 100)}`);
-        } else clean++;
-      }
-    } finally {
-      rmSync(tmpRoot, { recursive: true, force: true });
+    for (const c of set.cases) {
+      total++;
+      const s = scoreVariant(set.rule, c.payload, c.path);
+      if (s.error) {
+        // Infra failures must never read as clean (review finding).
+        problems++;
+        console.log(`  [ERROR] ${set.rule} ${c.id}: ${s.error}`);
+      } else if (s.caught) {
+        fps++;
+        console.log(`  [FP] ${set.rule} ${c.id}: gate=${s.gateBlocked} tree=${s.treeBlocked} — ${c.payload.slice(0, 100)}`);
+      } else clean++;
     }
     console.log(`bench ${set.rule} (benign): ${clean}/${set.cases.length} clean`);
   }

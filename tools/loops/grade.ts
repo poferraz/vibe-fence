@@ -12,26 +12,31 @@ export interface GradeFinding {
 
 export interface ExplanationGrade {
   mentionsAllRules: boolean;
-  hasFixLine: boolean;
+  /** Keyword heuristic (honest name): "fix" plus substance, not a semantic judgment. */
+  hasFixKeyword: boolean;
   sentenceBudgetOk: boolean;
   noSystemLeak: boolean;
-  /** 0-4: one point per rubric line. */
+  /** 0-4: one point per rubric line. Coarse structural signal only. */
   score: number;
 }
 
-const FIX_RE = /\bfix\b|\b(move|rotate|remove|replace|add|rename|set)\b[^.\n]{0,60}\b(server|gitignore|env|placeholder|file|variable|secret|shell|download)/i;
+/** "fix" must carry substance after it — bare "need a fix." scores 0 here. */
+const FIX_RE = /\bfix\b\s*:?[^.\n]{2,80}/i;
 const LEAK_RE = /system (prompt|instructions)|as an ai\b|my instructions|goal-blind/i;
+
+/** 2-3 sentences requested, 4 tolerated; 5+ rambles. */
+const MAX_SENTENCES = 4;
 
 export function scoreExplanation(text: string, findings: GradeFinding[]): ExplanationGrade {
   const mentionsAllRules = findings.every((f) => text.includes(f.ruleId));
-  const hasFixLine = FIX_RE.test(text);
+  const hasFixKeyword = FIX_RE.test(text);
   const sentences = text.split(/[.!?]+/).map((s) => s.trim()).filter(Boolean).length;
-  const sentenceBudgetOk = sentences >= 1 && sentences <= 5;
+  const sentenceBudgetOk = sentences >= 1 && sentences <= MAX_SENTENCES;
   const noSystemLeak = !LEAK_RE.test(text);
-  const checks = [mentionsAllRules, hasFixLine, sentenceBudgetOk, noSystemLeak];
+  const checks = [mentionsAllRules, hasFixKeyword, sentenceBudgetOk, noSystemLeak];
   return {
     mentionsAllRules,
-    hasFixLine,
+    hasFixKeyword,
     sentenceBudgetOk,
     noSystemLeak,
     score: checks.filter(Boolean).length,

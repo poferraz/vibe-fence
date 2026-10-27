@@ -7,10 +7,6 @@
  * Run: bun test tests/benches/benign.test.ts
  */
 import { describe, it, expect } from "bun:test";
-import { execSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { loadBenignBenches, scoreVariant } from "../../tools/eval";
 
 const benches = loadBenignBenches();
@@ -25,17 +21,11 @@ describe("benign bench fixtures", () => {
 
   for (const b of benches) {
     it(`${b.rule}: zero false positives on both surfaces`, () => {
-      const tmpRoot = mkdtempSync(join(tmpdir(), "vf-bench-"));
-      // SEC-03 probes git check-ignore: roots must be real repos (as corpus does).
-      execSync("git init -q .", { cwd: tmpRoot, stdio: "ignore" });
-      try {
-        for (const c of b.cases) {
-          const score = scoreVariant(b.rule, c.payload, tmpRoot, c.path);
-          expect(score.caught, `${c.id} fired (gate=${score.gateBlocked} tree=${score.treeBlocked}): ${c.payload.slice(0, 80)}`).toBe(false);
-        }
-      } finally {
-        rmSync(tmpRoot, { recursive: true, force: true });
+      for (const c of b.cases) {
+        const score = scoreVariant(b.rule, c.payload, c.path);
+        expect(score.error, `${c.id} errored (errors must never read as clean): ${score.error}`).toBeUndefined();
+        expect(score.caught, `${c.id} fired (gate=${score.gateBlocked} tree=${score.treeBlocked}): ${c.payload.slice(0, 80)}`).toBe(false);
       }
-    }, 30_000);
+    }, 60_000);
   }
 });

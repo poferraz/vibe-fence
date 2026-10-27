@@ -114,6 +114,9 @@ export function parseLoopArgs(argv: string[]): LoopOpts {
   const capCalls = flag(argv, "--cap-calls") === null ? undefined : int("--cap-calls", 0);
   const capTokens = flag(argv, "--cap-tokens") === null ? undefined : int("--cap-tokens", 0);
   const capUsdRaw = flag(argv, "--cap-usd");
+  if (capUsdRaw !== null && (!Number.isFinite(Number(capUsdRaw)) || Number(capUsdRaw) < 0)) {
+    throw new Error("--cap-usd must be a finite number >= 0");
+  }
   return {
     suites,
     providers,
@@ -147,6 +150,26 @@ export interface LoopPlanInput {
   capUsd?: number;
 }
 
+/** Live loops must name their spend ceiling up front (review finding):
+ * uncapped live runs and unenforceable dollar caps refuse pre-network. */
+export function liveCapsError(opts: LoopPlanInput): string | undefined {
+  const live = opts.providers.filter((p): p is Exclude<ProviderId, "fixture"> => p !== "fixture");
+  if (live.length === 0) return undefined;
+  const missing: string[] = [];
+  if (opts.capCalls === undefined) missing.push("--cap-calls");
+  if (opts.capTokens === undefined) missing.push("--cap-tokens");
+  if (missing.length > 0) {
+    return `live providers [${live.join(",")}] require explicit ${missing.join(" and ")} (refusing uncapped spend before any network touch)`;
+  }
+  if (opts.capUsd !== undefined) {
+    const unpriced = live.filter((p) => PROFILES[p].completionRatePerMTok === null);
+    if (unpriced.length > 0) {
+      return `--cap-usd is unenforceable for: ${unpriced.join(", ")} (rates unknown) — drop the flag or drop the provider`;
+    }
+  }
+  return undefined;
+}
+
 export function loopPlan(opts: LoopPlanInput): LoopPlan {
   const live = opts.providers.filter((p): p is Exclude<ProviderId, "fixture"> => p !== "fixture");
   const apiCalls = live.length * opts.rules.length * opts.modes.length;
@@ -162,6 +185,8 @@ export function loopPlan(opts: LoopPlanInput): LoopPlan {
   }
   if (live.length === 0) worstUsd = 0;
   const errors: string[] = [];
+  const capsError = liveCapsError(opts);
+  if (capsError) errors.push(capsError);
   if (opts.capCalls !== undefined && apiCalls > opts.capCalls) {
     errors.push(`plan needs ${apiCalls} API calls > --cap-calls ${opts.capCalls} (refusing before any network touch)`);
   }

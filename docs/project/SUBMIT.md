@@ -11,10 +11,11 @@ Deadline: Nov 4, 9PM ET. One track only; Representative submits.
 - [ ] **Problem statement*** — Build for Your World (locked; form selection)
 - [ ] **Most Viral X post link** (optional, free lottery ticket — bonus pool
       includes most-viral/community awards up to $50k aggregate; post + link it)
-- [x] **Project Description*** — drafted Oct 26 from truth-passed README Impact + 4 proof beats (see draft below; finalize after Phase 3a lands)
+- [x] **Project Description*** — drafted Oct 26 from truth-passed README Impact + 4 proof beats (see draft below; Phase 3a + demo fixture landed — finalize at submit, needs the human-owned publish for the npx line)
 - [x] **Public GitHub Repository*** — https://github.com/poferraz/vibe-fence
 - [ ] **3-Minute Demo Video*** (YouTube link — HARD requirement; unlisted is
-      fine; record Nov 2–3 per DEMO-SCRIPT.md Visceral Delta)
+      fine; in progress — demo fixture + cues committed, `demo/CUES.md`;
+      record Nov 2–3 per DEMO-SCRIPT.md Visceral Delta)
 - [ ] **Use of Meta products*** — Spark live + Wonder escalation + Muse Image
       assets + SAM spot-check + Muse Code built-with story (must be TRUE by
       Nov 3 — each claim needs a live call or artefact behind it)
@@ -34,7 +35,7 @@ Deadline: Nov 4, 9PM ET. One track only; Representative submits.
 3. X account ready for Most Viral post (draft thread during video edit).
 4. Keep every Meta-surface claim honest: no unwired item in the form answers.
 
-## Project description draft (Oct 26 — finalize after Phase 3a)
+## Project description draft (Oct 26 — finalize at submit)
 
 vibe-fence is a one-command safety harness for non-technical vibe-coders:
 `npx vibe-fence init` wraps any AI coding agent in a deterministic fence —
@@ -46,8 +47,8 @@ Proven end to end by 4 green proof beats (leak stopped, private files
 off-limits, done-means-checked, unsafe commit blocked + undo).
 
 Draft notes (do not submit verbatim before checking): `npx` path requires
-the human-owned `v0.2.0` npm publish; Spark-explains requires Phase 3a
-(`--explain`) on this branch. Add a Wonder-escalation line only if the
+the human-owned `v0.2.0` npm publish; Spark-explains (`--explain`) landed
+in Phase 3a on this branch. Add a Wonder-escalation line only if the
 human-approved Phase 3b probe succeeds.
 
 ## Why-Meta draft (Oct 26 — from the probe artefact + `--explain` wiring)

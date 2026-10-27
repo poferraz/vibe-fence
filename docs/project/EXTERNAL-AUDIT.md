@@ -17,8 +17,9 @@ clarity, and winning potential.
 ## Rules of engagement
 
 - Paste the EXACT same prompt below to all four, each in a fresh session.
-- Auditors get the PUBLIC repo only: https://github.com/poferraz/vibe-fence
-  No keys, no `.env`, no private context. They must say what they could
+- Auditors run LOCALLY with full file access to the working tree (this
+  machine). No cloning. They WILL see `.env` (live key) — the prompt
+  orders them never to print/transmit it. They must say what they could
   and could not verify.
 - Collect the 4 reports as files (e.g. `docs/project/audits/<model>-<date>.md`).
 - Then run the synthesis step. A finding cited by 2+ models is a fact;
@@ -34,9 +35,16 @@ claim must cite a file path with line numbers, a URL, or a command you ran.
 Say plainly what you could not verify.
 
 PROJECT: vibe-fence — "One command makes any AI coding agent safe."
-Repo (public, clone or browse it): https://github.com/poferraz/vibe-fence
+Repo: you are running ON the entrant's machine with full file access to the
+working tree at /Users/poferraz/Documents/Development/active/vibe-fence.
+Do NOT clone anything — audit this tree directly. (Public mirror for
+reference only: https://github.com/poferraz/vibe-fence — the local tree
+is authoritative and may be ahead of it.)
+SECRECY: this tree contains a LIVE API key in .env (gitignored). Never
+print, quote, or transmit any key material. Verify .gitignore/history
+hygiene WITHOUT reproducing secrets.
 Claimed status: working CLI (init/check/gate/checkpoint/undo), 11 guardrail
-rules, 236 tests, eval runner + 45-case held-out corpus with pinned baseline
+rules, 237 tests, eval runner + 45-case held-out corpus with pinned baseline
 (bun run eval, gated in CI), 4 proof beats green, demo video NOT YET
 recorded. Red-team mode exists as a capped, key-from-env stub (--redteam)
 not yet run on partner hardware.
@@ -67,13 +75,14 @@ HACKATHON FACTS (Meta Global AI Developer Hackathon, Cerebral Valley):
   after the tag)? Is the disclosure adequate for a judge?
 
 DO THIS:
-1. Clone/browse the repo. Start at README.md, docs/project/STATUS.md,
-   docs/project/SUBMIT.md, docs/project/CREDITS-PLAN.md, then drill into
-   src/, tools/, tests/, .github/workflows/.
-2. If your environment allows, run: bun install, bunx tsc --noEmit,
+1. Explore the working tree directly. Start at README.md,
+   docs/project/STATUS.md, docs/project/SUBMIT.md,
+   docs/project/CREDITS-PLAN.md, then drill into src/, tools/, tests/,
+   .github/workflows/.
+2. Run, from the repo root: bun install, bunx tsc --noEmit,
    bun run build, bun run validate, bun test, bun run eval. Report
-   exactly what ran, what passed/failed, and timings. If you cannot run
-   code, audit statically and SAY SO.
+   exactly what ran, what passed/failed, and timings. If any command
+   cannot run, SAY SO and audit that part statically.
 3. READ the tests — do not count them. Are assertions meaningful? Do the
    4 proof beats (tests/proof-beats.test.ts) prove real behavior? Is the
    adversarial bench (tests/adversarial/README.md) honest? What critical
@@ -92,9 +101,12 @@ DO THIS:
    Any verified live calls (look for recorded request IDs)? Are model IDs
    real? Could the "why Meta's models are important" submission answer be
    written honestly from this repo TODAY?
-6. GitHub hygiene: README honest vs code reality? CI green and meaningful?
-   LICENSE present? .gitignore correct (no secrets/keys in history —
-   check)? Commit history clear? Repo presentation (description, topics)?
+6. GitHub hygiene: README honest vs code reality? CI config meaningful
+   (and CI status green, if you have network — else SAY SO)? LICENSE
+   present? .gitignore correct (no secrets/keys in history — check with
+   git log / git show, WITHOUT printing any key material)? Commit history
+   clear? Repo presentation (description, topics — web-only, note if
+   unreachable)?
 7. Submission readiness, field by field from the list above: ready / gap /
    blocked, with the missing artifact named.
 8. Winning potential: as an Indie judge, would this place? Why / why not?
@@ -122,17 +134,42 @@ OUTPUT (use this exact structure):
 
 ## Synthesis step
 
-After collecting all 4 reports, run this (one session, any strong model):
+After collecting all 4 reports into `docs/project/audits/`, run the
+prompt below in a fresh session with file access to this tree:
 
 ```text
-You are synthesizing 4 independent audit reports of the same repo
-(<paste all four>). Rules: a finding cited by 2+ reports is CONFIRMED;
-a lone finding is UNCONFIRMED (keep it, flagged). Do not invent new
-findings. Output: (1) score table per model + median, (2) confirmed
-strengths (top 5), (3) confirmed issues ranked with severity consensus,
-(4) unconfirmed leads worth checking, (5) disagreements between auditors
-with your call, (6) final prioritized fix list (max 10, with effort),
-(7) one-paragraph win assessment.
+You are synthesizing 4 independent audit reports of the same repo, and
+grounding them against the actual tree. You have full file access to
+/Users/poferraz/Documents/Development/active/vibe-fence. The reports are
+at docs/project/audits/<model>-<date>.md (four files — read them all).
+
+RULES:
+- A finding cited by 2+ reports is CONFIRMED; a lone finding is
+  UNCONFIRMED (keep it, flagged as a lead, never silently dropped).
+- Do NOT invent new findings. Your only additions are VERIFICATION
+  results: for every CONFIRMED issue and every auditor disagreement,
+  spot-check the cited file:line/command against the tree and mark it
+  VERIFIED (holds), REFUTED (wrong — say why), or UNCHECKABLE (say why).
+  Check at least one cited claim per report even when reports agree.
+- Severity consensus: take the median severity across citing reports;
+  note any P0-vs-P2 splits explicitly.
+- Costs/effort: keep the auditors' S/M/L labels; flag any you disagree
+  with after seeing the code.
+- Scores: reproduce each report's 9 dimension scores verbatim, then add
+  the median column. Do not rescore.
+
+OUTPUT (write it to docs/project/audits/SYNTHESIS-<today's date>.md
+AND print it):
+# Synthesis — 4-model audit — <DATE>
+## Score table (per model + median; one-line note on widest spread)
+## Confirmed strengths (top 5, with verification note each)
+## Confirmed issues (ranked; each: severity consensus, cited-by,
+   verification VERIFIED/REFUTED/UNCHECKABLE + evidence)
+## Unconfirmed leads (each: source report, why worth checking, effort)
+## Disagreements (each: the split, your call with tree evidence)
+## Final fix list (max 10, prioritized, each: fix + effort S/M/L)
+## Win assessment (one paragraph: place or not, why, highest-ROI fix)
+## Reports used (filenames + dates)
 ```
 
 ## Timeline suggestion

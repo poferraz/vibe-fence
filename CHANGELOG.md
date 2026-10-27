@@ -14,6 +14,8 @@ Compare views: https://github.com/poferraz/vibe-fence/compare/
 
 ### Fixed
 - `release.yml` now runs `bun test` + `bun run eval` before `npm publish` (L5) — a tagged release can no longer ship with red tests or eval regressions.
+- `dist/` and the npm tarball no longer ship `*.test.ts` or `.gitkeep` (C9); test counts are unique-only going forward (was 237 run / 127 unique). Guarded by `tools/generate.test.ts`.
+- `vibe-fence check` skips 0-byte files instead of reporting per-rule unknowns (L7) — repo self-scan drops from 45 unknowns to 0.
 
 ## [0.1.0] — 2026-10-21
 

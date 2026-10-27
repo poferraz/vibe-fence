@@ -50,6 +50,10 @@ export async function generate(): Promise<string[]> {
   const report: string[] = [];
   const files = listFiles(SRC).sort();
   for (const file of files) {
+    // C9: tests never ship — dist/ feeds the npm tarball (package.json files).
+    if (file.endsWith(".test.ts")) continue;
+    // Placeholder only: dist dirs materialize via real files, never via .gitkeep.
+    if (/(^|[\\/])\.gitkeep$/.test(file)) continue;
     const from = join(SRC, file);
     const to = join(DIST, file);
     mkdirSync(join(to, ".."), { recursive: true });

@@ -68,7 +68,9 @@ function listFiles(root: string, maxFiles: number): { files: string[]; skipped: 
       const lower = rel.toLowerCase();
       const dot = lower.lastIndexOf(".");
       const ext = dot === -1 ? "" : lower.slice(dot);
-      if (BINARY_EXTS.has(ext) || st.size > DEFAULT_MAX_BYTES) {
+      // L7: 0-byte files carry no signal — every rule would report unknown
+      // (5 .gitkeeps × 9 rules = 45 unknowns of pure noise). Skip, don't scan.
+      if (BINARY_EXTS.has(ext) || st.size === 0 || st.size > DEFAULT_MAX_BYTES) {
         skipped++;
         continue;
       }

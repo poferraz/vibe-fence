@@ -198,4 +198,4 @@ Two sweep-driven fixes landed: gate audits local script bodies on `bash`
 execution (a committed `demo.sh` payload no longer launders through a bare
 `./demo.sh`), and SEC-02's read verbs grew the grep/pager/dumper/copy-out
 family. Self-scan of this repo: 54 fails → 0 (exit 0) under the
-mention-vs-payload doctrine; `bun test` 227 green.
+mention-vs-payload doctrine; `bun test` 227 green (run incl. dist/ test dupes — counts are unique-only since the Phase 0 dist-cleanliness fix; see STATUS.md).

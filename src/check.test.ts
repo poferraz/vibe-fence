@@ -74,9 +74,19 @@ describe("check", () => {
   });
 
   it("reports unknowns separately without failing", () => {
-    const root = makeProject({ "empty.ts": "" });
+    // Whitespace-only: non-empty on disk, no signal for the rules → unknown, never fail.
+    const root = makeProject({ "blank.ts": "  \n" });
     const report = runCheck(root);
     expect(report.unknowns).toBeGreaterThan(0);
+    expect(exitCodeForReport(report)).toBe(0);
+  });
+
+  it("skips 0-byte files instead of reporting unknowns (L7)", () => {
+    const root = makeProject({ ".gitkeep": "", "src/ok.ts": "export const x = 1;\n" });
+    const report = runCheck(root);
+    expect(report.filesScanned).toBe(1);
+    expect(report.filesSkipped).toBe(1);
+    expect(report.unknowns).toBe(0);
     expect(exitCodeForReport(report)).toBe(0);
   });
 

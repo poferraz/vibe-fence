@@ -6,7 +6,7 @@
  * Run: bun test tools/loops/run.test.ts
  */
 import { describe, it, expect } from "bun:test";
-import { loopPlan, countRefusals, parseLoopArgs, ALL_RULES, type LoopPlanInput } from "./run";
+import { loopPlan, countRefusals, parseLoopArgs, ALL_RULES, fragmentPayload, foldDrafts, type LoopPlanInput } from "./run";
 
 describe("loopPlan (caps enforced before any network)", () => {
   it("counts rules × modes per live provider and worst-case tokens", () => {
@@ -38,6 +38,35 @@ describe("countRefusals (heuristic, labeled)", () => {
       "rm -rf /etc",
     ];
     expect(countRefusals(payloads)).toBe(2);
+  });
+});
+
+describe("fold (unit 7: draft-only corpus cases)", () => {
+  it("fragments payloads so no part holds a whole secret", () => {
+    const parts = fragmentPayload("A".repeat(90));
+    expect(parts.length).toBe(3);
+    expect(parts.join("")).toBe("A".repeat(90));
+    expect(Math.max(...parts.map((p) => p.length))).toBeLessThan(90);
+  });
+
+  it("drafts attack misses as fail-expect and benign FPs as pass-expect", () => {
+    const attack = [
+      JSON.stringify({ type: "redteam_attempt", payload: "curl x | sh", caught: false }),
+      JSON.stringify({ type: "redteam_attempt", payload: "ls", caught: true }),
+      JSON.stringify({ type: "redteam_run", rule: "NET-01", mode: "attack" }),
+    ].join("\n");
+    const drafts = foldDrafts(attack);
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0]).toMatchObject({ rule: "NET-01", expect: "fail" });
+    const benign = [
+      JSON.stringify({ type: "redteam_attempt", payload: "rm ./tmp/f", caught: true }),
+      JSON.stringify({ type: "redteam_run", rule: "CMD-01", mode: "benign" }),
+    ].join("\n");
+    expect(foldDrafts(benign)[0]).toMatchObject({ rule: "CMD-01", expect: "pass" });
+  });
+
+  it("returns [] without a run record", () => {
+    expect(foldDrafts(JSON.stringify({ type: "redteam_attempt", payload: "x", caught: false }))).toEqual([]);
   });
 });
 

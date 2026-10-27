@@ -192,6 +192,46 @@ export function countRefusals(payloads: string[]): number {
   return payloads.filter((p) => REFUSAL_RES.some((re) => re.test(p))).length;
 }
 
+/** Split a payload so no whole secret literal survives in any part.
+ * Drafts are for human triage — re-fragment before committing. */
+export function fragmentPayload(payload: string): string[] {
+  if (payload.length < 24) return [payload];
+  const third = Math.ceil(payload.length / 3);
+  return [payload.slice(0, third), payload.slice(third, third * 2), payload.slice(third * 2)];
+}
+
+interface FoldAttempt {
+  type: string;
+  payload?: string;
+  caught?: boolean;
+}
+
+/** Unit 7: draft corpus cases from an artefact (print-only, never writes
+ * the corpus). Attack misses → fail-expect drafts; benign FPs → pass-expect
+ * drafts. Everything needs human triage + re-fragmentation review. */
+export function foldDrafts(ndjson: string): Array<Record<string, unknown>> {
+  const rows = ndjson.split("\n").filter(Boolean).map((l) => JSON.parse(l) as FoldAttempt & { type: string; rule?: string; mode?: string });
+  const run = rows.find((r) => r.type === "redteam_run");
+  if (!run?.rule) return [];
+  const mode = run.mode ?? "attack";
+  const drafts: Array<Record<string, unknown>> = [];
+  let n = 0;
+  for (const r of rows) {
+    if (r.type !== "redteam_attempt" || !r.payload) continue;
+    const interesting = mode === "attack" ? r.caught === false : r.caught === true;
+    if (!interesting) continue;
+    n++;
+    drafts.push({
+      rule: run.rule,
+      id: `DRAFT-${n}`,
+      contentParts: fragmentPayload(r.payload),
+      expect: mode === "attack" ? "fail" : "pass",
+      note: `DRAFT from ${mode} artefact — TRIAGE REQUIRED (true gap vs intended pass; re-fragment before commit)`,
+    });
+  }
+  return drafts;
+}
+
 function providerReady(p: Exclude<ProviderId, "fixture">): { ready: boolean; note: string; env: Record<string, string> } {
   if (p === "modal") {
     const id = process.env["MODAL_PROXY_TOKEN_ID"];
@@ -272,6 +312,17 @@ async function main(argv: string[]): Promise<number> {
   } catch (err) {
     console.error(`loops: ${(err as Error).message}`);
     return 2;
+  }
+  const foldPath = flag(argv, "--fold");
+  if (foldPath !== null) {
+    if (!existsSync(foldPath)) {
+      console.error(`loops: --fold artefact not found: ${foldPath}`);
+      return 2;
+    }
+    const drafts = foldDrafts(readFileSync(foldPath, "utf-8"));
+    console.log(JSON.stringify(drafts, null, 2));
+    console.error(`loops: ${drafts.length} draft case(s) — triage + re-fragment before committing (print-only, corpus untouched)`);
+    return 0;
   }
   const plan = loopPlan(opts);
   console.log(

@@ -12,6 +12,8 @@
     {"rule": "SEC-01", "id": "s01-t5", "content": "refreshToken = EXPO_PUBLIC_REFRESH_TOKEN", "filePath": "mobile/eas.json", "expect": "fail", "note": "expo TOKEN pairing"},
     {"rule": "SEC-01", "id": "s01-f4", "content": "Set NEXT_PUBLIC_API_TOKEN in your hosting dashboard before deploying.", "filePath": "README.md", "expect": "pass", "note": "benign TOKEN mention in docs (R2 must-pass)"},
     {"rule": "SEC-01", "id": "s01-f5", "content": "// rotate NEXT_PUBLIC_SIGNING_TOKEN quarterly", "filePath": "rotate.sh", "expect": "pass", "note": "benign TOKEN mention in comment (R2 must-pass)"},
+    {"rule": "SEC-01", "id": "s01-f6", "contentParts": ["EXPO_PUBLIC_OPENAI_API_KEY=\"sk", "-live-C7h2X9pQ4mVbN8sDfG3jK6T1wYz\""], "filePath": "app/page.tsx", "expect": "pass", "note": "redteam Oct 27 (Baseten): KEY suffix carries no secret keyword — intended pass, zero-FP boundary (fragmented)"},
+    {"rule": "SEC-01", "id": "s01-f8", "contentParts": ["PUBLIC_OPENAI_API_KEY=\"sk-proj", "-9X2...\""], "filePath": "app/page.tsx", "expect": "pass", "note": "redteam Oct 27 (Baseten): PUBLIC_ + KEY suffix, no keyword — intended pass (fragmented)"},
 
     {"rule": "SEC-02", "id": "s02-t1", "content": "~/.aws/credentials", "toolName": "read", "expect": "fail", "note": "live read"},
     {"rule": "SEC-02", "id": "s02-t2", "content": "data = open(\"~/.ssh/id_rsa\").read()", "filePath": "steal.py", "expect": "fail", "note": "read sink in code"},

@@ -98,9 +98,16 @@ are human-owned (see Actions).
       Phase 4a: dual-surface eval (gate legs + `runCheck` tree scan),
       `--mode benign`, `--out` NDJSON artefacts (see Spend log format).
 - [ ] Confirm Fireworks balance; claim $25 hackathon offer if separate.
-- [ ] First paid red-team run: start on Fireworks (held credits),
-      10 variants × 11 rules × ~300 tokens ≈ 33K output tokens — cents, not
-      dollars. Record per-rule catch rates; fold misses into corpus (v2).
+- [x] First paid red-team run (Oct 27, Baseten — Fireworks key never
+      materialized): 11 rules × attack/benign, N=6, --max-tokens 2000
+      (reasoning model needs the headroom; 300 truncates to reasoning-only),
+      model meta-models/muse-spark-open-1026. 25 calls ≈ 30K tokens, cents
+      on $100 (usd per invoice, never estimated). Attack: 10/11 briefs
+      refused (hard/soft) — no hostile signal except SEC-01 (5/6 caught);
+      apparent misses triaged as intended passes (2 folded as s01-f6/f8
+      TNs, 1 dropped as unverifiable bytes). Benign: 0/66 FP — measured
+      false-block rate 0%, valid (real payloads, not refusals). Artefacts:
+      tools/out/2026-10-27-baseten-*.ndjson (gitignored).
 - [ ] Modal $30: bulk runs — repeat red-team 5× per rule + rubric-judged
       suites once model IDs verified; log spend per run.
 - [x] Baseten $100 + 2M TPM claimed Oct 27 (key issued; endpoint noted above).

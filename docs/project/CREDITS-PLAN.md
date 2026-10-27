@@ -10,7 +10,7 @@ credits. Verify each balance before spending.
 | Source | Amount | Status |
 |---|---|---|
 | Meta Model API | $150 | Not ready — verify in account |
-| Modal | **$30 in hand** | Confirmed Oct 29 — the bulk-eval budget |
+| Modal | **$30 in hand** | Confirmed Oct 26 — the bulk-eval budget |
 | Fireworks | User-held (amount TBC) + $25 offer | Confirm balance; Sinan Ozdemir workshop |
 | Baseten | $100 + 2M TPM (select) | Not ready — claim via Discord/workshops |
 | Modal | $100 (select offer) | Not ready — claim via Discord/workshops |
@@ -47,8 +47,8 @@ Spend each credit where judges can see it, cheapest adequate tier always.
 ## Actions
 
 - [ ] Verify $150 Meta credit in account; record balance + expiry.
-- [x] Modal $30 confirmed in hand (Oct 29) — ring-fence for full-suite evals.
-- [x] Eval runner v0 built (Oct 30): local metrics + pinned baseline + capped
+- [x] Modal $30 confirmed in hand (Oct 26) — ring-fence for full-suite evals.
+- [x] Eval runner v0 built (Oct 26): local metrics + pinned baseline + capped
       `--redteam` stub with base-URL switch (Fireworks default; Modal/Baseten
       via `--provider custom --base-url`). Keys from env only, never gated.
 - [ ] Confirm Fireworks balance; claim $25 hackathon offer if separate.

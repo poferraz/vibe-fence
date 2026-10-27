@@ -46,7 +46,7 @@ Severity is policy from `.fence/app-profile.json` (`local 14 / shared 29 / publi
 | **DB / RLS** | `USING (true)` linter on `*.sql` + remote `pg_policies` introspection on `promote public` (`unknown` offline — GEM-04) | 04 M3 · GEM-04 |
 | **Supply chain** | `lockfile` parity + `npm ci` + `onlyBuiltDependencies` allowlist (empty default) + `npm audit --omit=dev` (block `dependencies`, warn `devDependencies`) + SBOM/cooldown on `add-dep` | 04 M3 |
 | **BILL-01 billing loop** | Loops (`for`/`while`/`forEach`/`Promise.all`) over `openai.*.create`/`replicate.run`/`*.chat.completions.create` without `maxBudget|maxCostUsd|maxTokens` + missing `try/catch` → `warn@local / block@shared,public` (GEMS-05 P1) | BILL-01 |
-| **PRV-09 fixture hygiene** | `tests/fixtures/**`, `seed/**`, `*.fixture.*`, `__mocks__/**` scanned for ≥3 distinct email-shaped strings, phone patterns, high-entropy secret-like strings → `block` at all tiers; repair: `npx vibe-fence anonymize fixtures/<file>` (GEM-06) | PRV-09 |
+| **PRV-09 fixture hygiene** | `tests/fixtures/**`, `seed/**`, `*.fixture.*`, `__mocks__/**` scanned for ≥3 distinct email-shaped strings, phone patterns, high-entropy secret-like strings → `block` at all tiers; repair: `bun run tools/anonymize.ts fixtures/<file>` (GEM-06) | PRV-09 |
 | **Privacy** | Inventory → `/privacy` completeness + export/delete + consent gate (04 M3) | 04 M3 |
 
 Instruction files (`AGENTS.md`, `SKILL.md`) are untrusted on init and on dependency pulls — validate + SHA-256 hash-attest (S-06/GEM-01).
@@ -54,15 +54,13 @@ Instruction files (`AGENTS.md`, `SKILL.md`) are untrusted on init and on depende
 ## Usage
 
 ```bash
-fence guard add --id sec-secrets-01 --check gitleaks --severity block
-fence guard check --all                         # run all rules → verdicts.ndjson
-fence guard check --rule BILL-01                # single-category gate
-fence guard allowlist --rule sec-secrets-01 --pattern "example.com" --reason "docs" --expiry 2026-12-01
-fence verify-remote --check rls                 # remote RLS introspection (GEM-04)
-npx vibe-fence anonymize fixtures/seed.json     # PRV-09 synthetic replacement
+vibe-fence check                          # run all 11 rules over the tree → exit 1 on any block
+vibe-fence check --json                   # same report as JSON
+vibe-fence gate --tool write --args '{"filePath":"app.ts","content":"..."}'   # evaluate one live tool call (Enforced tier)
+bun run tools/anonymize.ts fixtures/seed.json   # PRV-09 synthetic replacement (GEM-06)
 ```
 
-Guard output is `{finding_id, explanation, question, options, evidence_ids}` validated app-side (FINAL-v2 §1 P1).
+`check` prints `FAIL <rule> [block] <file>` lines plus a totals line; `--json` emits the full report. Exit 1 iff a `block` finding exists — warn-grade findings queue without gating.
 
 ## Verification
 
@@ -71,9 +69,9 @@ Guard output is `{finding_id, explanation, question, options, evidence_ids}` val
 | `block` maps to executable | `tools/validate.ts` asserts every `severity: block` rule has a `check_adapter` binary/config reachable |
 | Secrets dual-layer | `gitleaks` pre-commit + Push Protection push; seeded fixture (`AWS AKIA…`) must `block` (FINAL-v2 M4 bench #2) |
 | `NEXT_PUBLIC_` lint | Fixture with `NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY` → `block` |
-| RLS | `USING (true)` in `*.sql` → `fail`; `fence verify-remote` queries `pg_policies` on `promote public` |
+| RLS | `USING (true)` in `*.sql` → `fail`; remote `pg_policies` introspection is `src/framework/verify-remote.ts` (library, no CLI yet) |
 | BILL-01 | `while(true){ openai.chat.completions.create()}` without budget cap → `warn@local / block@shared` |
-| PRV-09 | `fixtures/users.json` with 3+ emails → `block`; `fence anonymize` preserves referential integrity |
+| PRV-09 | `fixtures/users.json` with 3+ emails → `block`; `bun run tools/anonymize.ts` preserves referential integrity |
 | Supply chain | Missing `package-lock.json` parity or `npm audit high` in `dependencies` → `block` |
 | Mechanical gate | `Read→Think→Write→Check` + trust ladder `compile→lint→tests×2→generated-tests→judge-for-prose` (S-04); diagnosis artefact before retry; 2-attempt circuit breaker |
 | Adversarial bench | 8–12 tasks (poisoned `AGENTS.md`, README payload, malicious skill, user-asks-bypass) → `block` rate + false-block rate |

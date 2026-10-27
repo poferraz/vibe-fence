@@ -1,5 +1,6 @@
 {
   "_comment": "src/config/severity-policy.json — S-09 deterministic severity policy + 04 D-07 app-profile escalation. Canonical: no check→nudge, check+irreversible→block, check+reversible→warn, unknown≠pass. Per FINAL-v2 §2 S-09 + 04 S-11/S-14 + deepseek decision tree.",
+  "_status": "aspirational (Oct 26) — design policy, not runtime: no rule reads this file (comment mentions only); severities are hard-coded in src/rules/index.ts REGISTRY. Driving a rule from it is future work.",
   "version": 1,
   "description": "Deterministic function: every block has a command returning a verdict (S-05). Severity is policy from declared intent (.fence/app-profile.json local/shared/public → 14/29/55 blocks). AI-specific rules block even at local.",
   "function": {

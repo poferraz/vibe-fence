@@ -26,9 +26,9 @@ Context budget: byte-cap shell outputs at 4 KB; teaching lives on disk (`.fence/
 ## Usage
 
 ```bash
-fence dial max|medium|min|silent              # global knob (steps all domains together in v1)
-fence dial --domain auth --level medium        # per-domain override (when vector UI ships)
-fence learn --topic rls-101                    # write .fence/learn/<topic>.md
+vibe-fence check                   # findings feed the cards; clean tree → nothing to teach
+# Cards live on disk: .fence/learn/<topic>.md (pointer in context, never inline)
+# Dial state: .fence/state/dial.json (max|medium|min|silent per domain)
 ```
 
 ### Card schema — fixed at every level (05 A-03)
@@ -62,7 +62,7 @@ Without RLS any browser `SELECT *` returned every user's rows (04 A-02).
 — (no fork on this fix; auto-resolved, reported as count at natural stop)
 
 ## How we will know
-`SELECT * FROM profiles` as anon → 0 rows; `fence validate` green.
+`SELECT * FROM profiles` as anon → 0 rows; `vibe-fence check` green.
 ```
 
 Delivery only at checkpoint boundaries (task complete / tests green / idle) — never mid-task (S-11/05 A-05); batch-and-defer at natural stops ≤3 items, ≤1 decision per report (05 A-11). First output is a *completed fix*, not a warning (05 D-04).
@@ -73,7 +73,7 @@ Delivery only at checkpoint boundaries (task complete / tests green / idle) — 
 |-------|-----|
 | Card schema | `tools/validate.ts` asserts every `.fence/learn/*.md` carries the 4-block frontmatter; missing block → `warn` |
 | Context budget | Byte-cap 4 KB per shell snippet; L1/L2/L3 progressive disclosure; teaching on disk, not in active window (S-03/S-04) |
-| Mechanical gate | `Read→Think→Write→Check` + trust ladder `compile→lint→tests×2→generated-tests→judge-for-prose` (S-04); `fence validate` ≤400-token assertion |
+| Mechanical gate | `Read→Think→Write→Check` + trust ladder `compile→lint→tests×2→generated-tests→judge-for-prose` (S-04); `tools/validate.ts` ≤400-token assertion |
 | Transfer check | Can user fix a *similar* issue unassisted next time? (05 D-01 Phase 2 probe) |
 | Instrument | `plan shown → expanded → revised → accepted` funnel; gate count/session + rolling approval rate (last 20) + card expand rate + undo usage (05 A-06) |
 | Token budget | `context-budget.yml` caps for static/dynamic/history/headroom; image tokens billed against `history` headroom (GEM-02 P2) |

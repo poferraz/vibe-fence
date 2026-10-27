@@ -26,12 +26,12 @@ Teachable axis orthogonal to autonomy (FINAL-v2 S-05/S-11): dial is scaffolding 
 ## Usage
 
 ```bash
-fence plan --task "Add auth"                     # agent drafts artefact → pauses at fork
-fence plan --choice A --task "Add auth"          # user picks in CLI
-fence plan --template feature --task "…"         # use starter template
+vibe-fence checkpoint --action "before plan"   # snapshot WIP before drafting
+# ... agent writes .fence/plans/<id>.md, then stops for the fork choice ...
+vibe-fence check                                # confirm the tree is clean before mutating
 ```
 
-Agent-side: on `fence plan` invocation the agent writes `.fence/plans/<id>.md` and **stops mutating** until the user submits `choice` (gated fork — one choice/run, FINAL-v2 M3). Elicitation inside: `1 sample → cheapest verify → on failure parallel best-of-k (k≤5) → first pass wins`; tournament selection (S-12/S-04). Prose-only synthesis: 2–3 candidates + rubric allowed (03 D-02) — never merge code diffs (03 D-02/A-09).
+Agent-side: on a plan request the agent writes `.fence/plans/<id>.md` and **stops mutating** until the user submits `choice` (gated fork — one choice/run, FINAL-v2 M3). Elicitation inside: `1 sample → cheapest verify → on failure parallel best-of-k (k≤5) → first pass wins`; tournament selection (S-12/S-04). Prose-only synthesis: 2–3 candidates + rubric allowed (03 D-02) — never merge code diffs (03 D-02/A-09).
 
 Plan selection surfaces as a card (05 A-03/A-09 — `What changed · Why · Your call · How we'll know`):
 
@@ -70,7 +70,7 @@ Muse tiering: `companion` (Muse Spark 1.3) by default; swap to `architect` (Muse
 | Gate enforces | No file write before `.fence/plans/<id>.md` exists; CI asserts artefact precedes mutation timestamp |
 | One choice/run | Second concurrent `choice` item → enqueue as `warn` (FINAL-v2 M3 `max_per_run: 1`) — see M2 queue WIP=1 |
 | Mechanical gate | Plan verifier runs `compile→lint→tests×2`; diagnosis artefact before retry (S-04); 2-attempt circuit breaker → read-only consultation |
-| Teaching dial | Accepting a fork steps per-domain vector in `.fence/state/dial.json` (TTL+LRU eviction, GEM-02 P2); global knob in `fence dial <level>` |
+| Teaching dial | Accepting a fork steps per-domain vector in `.fence/state/dial.json` (TTL+LRU eviction, GEM-02 P2); global knob in `.fence/state/dial.json` |
 | Skill lint | No ungrounded `review your own work` without tool signal; `AGENTS.md` ≤400 tokens (M2 `tools/validate.ts`) |
 
 ## Anti-patterns

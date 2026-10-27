@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // src/cli.ts — vibe-fence command entry (authority; bundled to dist/cli.js by tools/generate.ts).
 // Self-contained: no bun binary, no tools/ dir at runtime. Runs on Node 20+.
-// Subcommands: init | check | --help | --version. `tour` lands Oct 30.
+// Subcommands: init | check | checkpoint | undo | gate | --help | --version.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { install, CONTRIBUTOR_DISCLOSURE, DEFAULT_ADAPTER_IDS, hereDir } from "./install.js";
@@ -43,6 +43,7 @@ function help(): string {
     "  --contributor-mode   Opt in to Contributor model mode (training disclosure applies)",
     "  --full               Force native mode even on WebContainer-like runtimes",
     `  --adapters=<list>    Subset of: ${DEFAULT_ADAPTER_IDS.join(", ")} (default: all)`,
+    "  --profile=muse        Preset: Claude adapter (demo-hero path; overridden by --adapters)",
     "",
     "More: https://github.com/poferraz/vibe-fence",
   ].join("\n");
@@ -62,7 +63,23 @@ export async function main(argv: string[]): Promise<number> {
     const contributorMode = rest.includes("--contributor-mode");
     if (contributorMode) console.log(CONTRIBUTOR_DISCLOSURE);
     const adaptersArg = rest.find((a) => a.startsWith("--adapters="));
-    const adapters = adaptersArg ? adaptersArg.slice("--adapters=".length).split(",").map((s) => s.trim()).filter(Boolean) : undefined;
+    const profileArg = rest.find((a) => a.startsWith("--profile="));
+    const profileFlag = rest.indexOf("--profile");
+    const profile = profileArg
+      ? profileArg.slice("--profile=".length)
+      : profileFlag !== -1 && rest[profileFlag + 1] && !rest[profileFlag + 1]!.startsWith("--")
+        ? rest[profileFlag + 1]!
+        : null;
+    if (profile !== null && profile !== "muse") {
+      console.error(`vibe-fence: unknown --profile '${profile}' (known: muse).`);
+      return 2;
+    }
+    // Explicit --adapters wins; --profile muse is a preset for the demo-hero path.
+    const adapters = adaptersArg
+      ? adaptersArg.slice("--adapters=".length).split(",").map((s) => s.trim()).filter(Boolean)
+      : profile === "muse"
+        ? ["claude"]
+        : undefined;
     await install(process.cwd(), {
       dryRun: rest.includes("--dry-run"),
       contributorMode,
@@ -142,7 +159,7 @@ export async function main(argv: string[]): Promise<number> {
     return 1;
   }
   if (cmd === "tour") {
-    console.error("vibe-fence: 'tour' lands Oct 30 — not yet implemented.");
+    console.error("vibe-fence: 'tour' is not implemented — nothing advertises it; try `vibe-fence init` (or `--help`).");
     return 2;
   }
   if (cmd === undefined) {

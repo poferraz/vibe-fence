@@ -380,9 +380,6 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
     console.log("  1. Keep building — the fence watches your next write.");
     console.log("  2. You'll see a card when the fence finds something to harden.");
     console.log("  3. Approve — the agent handles the fix in your repo.");
-    // Tour opt-in — artifact-first (05 D-04)
-    console.log("");
-    console.log("Run `npx vibe-fence tour` for an interactive walkthrough (opt-in).");
 
     // Scope guard note — Desktop CLIs v1 (GEM-02)
     if (probe.runtime === "webcontainer") {

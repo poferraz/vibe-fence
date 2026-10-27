@@ -35,9 +35,10 @@ npx vibe-fence init                          # standard (default)
 npx vibe-fence init --full                   # native clone after WebContainer file-only mode
 npx vibe-fence init --contributor-mode       # explicit opt-in — prints training-use disclosure (GEM-09)
 npx vibe-fence init --dry-run                # preview without writing
+npx vibe-fence init --profile muse           # preset: Claude adapter (demo-hero path)
 ```
 
-Paved 3-step path printed after install (05 A-11/S-02): `keep building → you'll see a card → approve and the agent handles it`. Tour is opt-in via `fence tour` (05 D-04 artifact-first).
+Paved 3-step path printed after install (05 A-11/S-02): `keep building → you'll see a card → approve and the agent handles it`. No tour step — the 3-second receipt below is the whole install UX (05 D-04 artifact-first).
 
 **3-second receipt** (FINAL-v2 §7 Visceral Delta; 05 A-06):
 
@@ -50,7 +51,6 @@ Paved 3-step path printed after install (05 A-11/S-02): `keep building → you'l
   runtime    native | webcontainer (file-only)
 ─────────────────────────────────────────────
  keep building → you'll see a card → approve & the agent fixes it
- fence tour  to preview the card UX
 ```
 
 On failure, receipt names the file and the fix (`AGENTS.md already fenced — skipped`).
@@ -61,12 +61,12 @@ On failure, receipt names the file and the fix (`AGENTS.md already fenced — sk
 |-------|-----|--------|
 | Idempotence | `npx vibe-fence init` ×3 → `git status` identical | FINAL-v2 §7 #1 |
 | Token budget | `tools/validate.ts` asserts `AGENTS.md` ≤400 tokens; no skill >250 lines | FINAL-v2 §7 #4 |
-| Integrity | `fence validate` recomputes SHA-256 vs `.fence/.integrity.json`; `FENCE_SYNC_TOKEN` gate | GEM-01 |
+| Integrity | install seeds SHA-256 attestation in `.fence/.integrity.json` (`src/framework/integrity.ts`); `FENCE_SYNC_TOKEN` gate | GEM-01 |
 | Gitignore lock | `.env` not in `git ls-files`; `.fence/.integrity.json` not tracked | 04 A-01 |
 | Receipt | One-line-per-file meaning + timing (`<3s`) printed | M4 paved path |
 | WebContainer fallback | CI matrix job inside WebContainer — file-only mode asserted | GEM-02 |
 
-`fence validate` and `fence sync` are the post-init validators (FINAL-v2 M1).
+`vibe-fence check` is the post-init validator — run it after install to confirm the tree is clean.
 
 ## Anti-patterns
 

@@ -16,6 +16,8 @@ npx vibe-fence init
 # 🛡️ vibe-fence active — native mode — 6 adapters — 43ms
 ```
 
+> Until `v0.2.0` is published to npm (human-owned step), `npx vibe-fence` 404s — run from source instead: `git clone https://github.com/poferraz/vibe-fence.git && cd vibe-fence && bun install && bun run build`, then `node dist/cli.js init`.
+
 The fence drops `AGENTS.md` + `.fence/` state + skills + adapter wiring. Every later agent turn is read→think→write→check: the deterministic fence decides, the model explains.
 
 ---
@@ -26,10 +28,10 @@ The fence drops `AGENTS.md` + `.fence/` state + skills + adapter wiring. Every l
 |-----------|--------|--------------------|--------|
 | **Impact — Real-world potential** | **30%** | [Impact](#impact--real-world-potential-30) · `PRODUCT.md` JTBD + before/after | ✅ |
 | **Use of Meta AI Tooling — Muse Spark · Muse Image · SAM 3.1 · Meta Model API · Muse Code** | **25%** | [Meta Tooling](#use-of-meta-ai-tooling--muse-spark--muse-image--sam-31--meta-model-api--open-weights--muse-code-25) · `src/framework/meta-client.ts` + `sam.ts` | ✅ |
-| **Demo — Working, impressive, holds up live** | **25%** | [Demo](#demo--working-impressive-holds-up-live-25) · `DEMO-SCRIPT.md` · CI badge (green = holds up) | ✅ scaffold · 🎬 video lands D8–9 |
-| **Technical Depth and Execution — Sound, refined, crafted** | **20%** | [Technical Depth](#technical-depth-and-execution--sound-refined-crafted-20) · `REHEARSAL.md` 8/8 bench · 5×4 rubric + unsafe-action rate | ✅ |
+| **Demo — Working, impressive, holds up live** | **25%** | [Demo](#demo--working-impressive-holds-up-live-25) · `docs/research/synthesis/DEMO-SCRIPT.md` · CI badge (green = holds up) | ✅ scaffold · 🎬 video lands D8–9 |
+| **Technical Depth and Execution — Sound, refined, crafted** | **20%** | [Technical Depth](#technical-depth-and-execution--sound-refined-crafted-20) · `REHEARSAL.md` 6/8 + 2 open · 5×4 rubric + unsafe-action rate | ✅ |
 
-Indie lens: *creativity, technical ambition, whether it works* — see [Demo](#demo--working-impressive-holds-up-live-25) (whether it works) + [Impact](#impact--real-world-potential-30) (creativity — new product surface) + [Technical Depth](#technical-depth-and-execution--sound-refined-crafted-20) (ambition — Cordis composability, dual-gate proof).
+Indie lens: *creativity, technical ambition, whether it works* — see [Demo](#demo--working-impressive-holds-up-live-25) (whether it works) + [Impact](#impact--real-world-potential-30) (creativity — new product surface) + [Technical Depth](#technical-depth-and-execution--sound-refined-crafted-20) (ambition — deterministic rule engine + proof beats).
 
 ---
 
@@ -51,14 +53,14 @@ Beyond a basic integration — each model powers a distinct fence surface:
 
 | Model / tool | Feature | Call |
 |--------------|---------|------|
-| **Muse Spark** (companion) | Safety reasoning — the fence's voice, goal-blind (S-11), one-line fix + plan | `POST /v1/responses` stateless encrypted replay, `muse-spark-1.3` (`src/framework/meta-client.ts`) |
-| **Muse Wonder** (escalation) | Architect review — dual-tier routing (GEM-08), `companion → Wonder` on verifier fail | Same endpoint, `muse-wonder-1.3`, `FENCE_SYNC_TOKEN`-gated |
+| **Muse Spark** (companion) | Safety reasoning — the fence's voice, goal-blind (S-11), one-line fix + plan | `POST /v1/responses` stateless replay, `muse-spark-1.3` (`src/framework/meta-client.ts`) |
+| **Muse Wonder** (escalation) | Architect review — dual-tier routing (GEM-08), `companion → Wonder` on verifier fail | Same endpoint, `muse-wonder-1.0`, `FENCE_SYNC_TOKEN`-gated |
 | **Muse Image** | Generated UI assets in demo — Muse Image logo → `public/images/` per `DEMO-SCRIPT.md` 2:00→3:00 | Meta Model API image generation |
 | **SAM 3.1** | Visual guardrails — screenshot diff / fence-look Playwright spot-check (S-14 PFLOP trace) | `src/framework/sam.ts` + `sam-guard.test.ts` |
 | **Meta open-weights** | Offline `local` tier (14 blocks vs 29 shared / 55 public) — `app-profile.json` tier guard | Local inference path, no Model API key required |
 | **Muse Code** | Built-with story — the harness is itself built using the agent it secures | Agentic coding agent — harness development |
 
-All Model API calls run stateless replay (never `previous_response_id`) with encrypted replay — see stream 06 (Meta models) synthesis + `ARGON-AUDIT-v2.md` D-02. The prompt is goal-blind (S-11) — the model never sees the fence's success criterion, only the task + verifier artefact.
+All Model API calls run stateless replay (never `previous_response_id`) — see stream 06 (Meta models) synthesis + `docs/research/synthesis/ARGON-AUDIT-v2.md` D-02. The prompt is goal-blind (S-11) — the model never sees the fence's success criterion, only the task + verifier artefact.
 
 ---
 
@@ -87,24 +89,24 @@ npx vibe-fence init
 
 Full script + production checklist + acceptance rubric: [`docs/research/synthesis/DEMO-SCRIPT.md`](docs/research/synthesis/DEMO-SCRIPT.md) (GEM-10 P0).
 
-CI is the "holds up live" proof: every push runs `tsc --noEmit` + `validate` + `build` + `npm pack` — badge must be green.
+CI is the "holds up live" proof: every push runs `tsc --noEmit` + `build` + `validate` + `bun test` + `bun run eval` + `npm pack` — badge must be green.
 
 ---
 
 ## Technical Depth and Execution — Sound, refined, crafted (20%)
 
-**Architecture:** Everything-is-a-plugin (Cordis spatiotemporal composability — ref `deepseek-ai/deepseek-harness` `vendor/cordis`). vibe-fence owns its composition: profiles/bundles/`cordis.patch.yml` overlays, model routing, glass language. The web surface (`npx vibe-fence web → http://127.0.0.1:3100`) mirrors `dsh web` on `:3080` — see `META-REPLICATION-PLAN.md` + `DESIGN.md`/`tailwind.theme.json`.
+**Architecture:** Deterministic rule engine (`src/rules/`, 11 rules) + self-contained CLI (`src/cli.ts` → `dist/cli.js`) + 6 host adapters (`src/adapters/`). No backend, no always-on daemon — checks run at write/commit time via the CLI, git hooks, and host plugins. A web surface is deferred: no `vibe-fence web` command ships; the replication notes in `docs/research/synthesis/META-REPLICATION-PLAN.md` are a design reference, not shipped behavior.
 
 **Soundness gates:**
 
 - `AGENTS.md` ≤400 tok router, retrieval-gated (S-01), JIT via `docs/fence/INDEX.md`
-- 10 zero-FP hard-blocks (S-09) — SEC-01/02/03, FS-01, CMD-01, **NET-01 `curl|sh`**, SUP-01, GIT-01, DB-01, PRV-09 — `src/rules/` + `src/config/severity-policy.json`
+- 10 zero-FP hard-blocks (S-09) — SEC-01/02/03, FS-01, CMD-01, **NET-01 `curl|sh`**, SUP-01, GIT-01, DB-01, PRV-09 — plus BILL-01 (warn) — `src/rules/` + `src/config/severity-policy.json`
 - `FENCE_OWNED_FILES` integrity attestation + `FENCE_SYNC_TOKEN` ephemeral gate (`src/framework/integrity.ts`, S-05/S-06) + `postinstall-guard.sh`
 - `fence undo` rollback invariant (S-11a) + privilege isolation — `src/framework/git.ts:CHECKPOINT_PREFIX` / `UNDO_SPEC`
 - Verifier trust ladder (S-06a) — `compile` + `hasTests` implemented, `generated`/`judge-for-prose` spec'd with gated TODOs
 - Deterministic build: `src/` sole authority → `dist/` + `dist/cli.js` bin (`tools/generate.ts` + `PROVENANCE.md`)
 
-**Adversary-validated:** 8/8 content checks in `docs/project/REHEARSAL.md` (§A installer ×3 idempotence — 53/64/63 ms, §B bench 1–3, §C 4–8 with NET-01 + SEC-02 fixes `ed8a25a`/`020e864`). Remaining gap: Task 8 shim wiring (tracked in REHEARSAL).
+**Adversary-validated:** 6/8 content checks PASS in `docs/project/REHEARSAL.md` (§A installer ×3 idempotence — 53/64/63 ms, §B bench 1–3, §C 4–8 with NET-01 + SEC-02 fixes `ed8a25a`/`020e864`); T2 (contradiction lint) + T8 (postinstall shim) open, tracked in REHEARSAL.
 
 **Evals — 5×4 rubric + unsafe-action rate** (FINAL-v4 §7):
 
@@ -148,10 +150,10 @@ prompt              fence (deterministic)          agent (model)
 ## Quickstart
 
 ```sh
-# In your project repo:
+# In your project repo (after npm publish; until then use the source path below):
 npx vibe-fence init
 
-# Or from source:
+# From source (works today):
 git clone https://github.com/poferraz/vibe-fence.git && cd vibe-fence
 bun install && bun run build && bun run validate
 
@@ -166,17 +168,17 @@ bun run validate    # AGENTS ≤400 tok, SKILL budgets, schemas
 src/
   adapters/      — Claude, Cursor, Codex, OpenCode, Antigravity, Hermes (types.ts is authority, .yml are profiles)
   framework/     — integrity, verifier, meta-client (Muse Spark/Wonder via POST /v1/responses), sam, git (checkpoint/undo), queue, dial, billing-guard, fence-look
-  rules/         — 10 hard-blocks (S-09) — net-01, sec-02, bill-01, prv-09 + 6 planned
+  rules/         — 11 rules: 10 block (S-09) — sec-01/02/03, net-01, fs-01, cmd-01, sup-01, git-01, db-01, prv-09 — + bill-01 (warn)
   skills/        — vibe-init / vibe-guard / vibe-plan / vibe-teach (Anthropic Skills spec)
   config/        — severity-policy.json (tiered local/shared/public)
   templates/     — app-profile.json (14/29/55 blocks), postinstall-guard.sh
 tools/           — generate.ts (src→dist), validate.ts, install.ts (npx init), anonymize.ts
 docs/
   research/      — FINAL-v4.md (source of truth, 186 sources) + per-stream synthesis + Argon audit
-  project/       — STATUS, RECONCILE, REHEARSAL (8/8 bench)
+  project/       — STATUS, RECONCILE, REHEARSAL (6/8 + 2 open)
 ```
 
-Product boundary (what is explicitly deferred): Electron desktop, mobile — see `PRODUCT.md`. Web UI replica (`npx vibe-fence web` on `:3100`) is next — see `META-REPLICATION-PLAN.md`.
+Product boundary (what is explicitly deferred): Electron desktop, mobile — see `PRODUCT.md`. Web UI replica is deferred (no `vibe-fence web` command ships) — design notes in `docs/research/synthesis/META-REPLICATION-PLAN.md`.
 
 ## Roadmap — Oct 26 → Nov 4 (Meta Global AI Developer Hackathon build window)
 

@@ -11,11 +11,14 @@ Compare views: https://github.com/poferraz/vibe-fence/compare/
 
 ### Added
 - Track for `v0.2.0` — publishable `package.json`, governance files, CI, README resume.
+- `vibe-fence init --profile muse` preset (Claude adapter — demo-hero path; explicit `--adapters` overrides it).
 
 ### Fixed
 - `release.yml` now runs `bun test` + `bun run eval` before `npm publish` (L5) — a tagged release can no longer ship with red tests or eval regressions.
 - `dist/` and the npm tarball no longer ship `*.test.ts` or `.gitkeep` (C9); test counts are unique-only going forward (was 237 run / 127 unique). Guarded by `tools/generate.test.ts`.
 - `vibe-fence check` skips 0-byte files instead of reporting per-rule unknowns (L7) — repo self-scan drops from 45 unknowns to 0.
+- Truth pass (C4/C8/C13/L9/L11/L13): README corrected (`muse-wonder-1.0`, `web`/Cordis/`encrypted` dropped or hedged, honest rule counts, npm 404 hedged, REHEARSAL refs 6/8 + 2 open); all 4 `SKILL.md` Usage blocks teach real subcommands only (enforced by `src/skills/skills.test.ts`); STATUS dates relabeled to Oct 26; REHEARSAL verdicts corrected to 6/8 + 2 open (T2/T8); 13 MB `.docx` blobs removed (`.md` retained); `severity-policy.json` labeled aspirational.
+- Removed the `npx vibe-fence tour` receipt from install output (`tour` stays an unadvertised stub, exit 2).
 
 ## [0.1.0] — 2026-10-21
 

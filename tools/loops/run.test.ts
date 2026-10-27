@@ -6,7 +6,7 @@
  * Run: bun test tools/loops/run.test.ts
  */
 import { describe, it, expect } from "bun:test";
-import { loopPlan, countRefusals, parseLoopArgs, ALL_RULES } from "./run";
+import { loopPlan, countRefusals, parseLoopArgs, ALL_RULES, type LoopPlanInput } from "./run";
 
 describe("loopPlan (caps enforced before any network)", () => {
   it("counts rules × modes per live provider and worst-case tokens", () => {
@@ -22,7 +22,7 @@ describe("loopPlan (caps enforced before any network)", () => {
   });
 
   it("exceeding --cap-calls or --cap-tokens is a plan error, not a partial run", () => {
-    const base = { providers: ["baseten"], rules: ALL_RULES, modes: ["attack", "benign"] as const, n: 6, maxTokens: 2000 };
+    const base: LoopPlanInput = { providers: ["baseten"], rules: ALL_RULES, modes: ["attack", "benign"], n: 6, maxTokens: 2000 };
     expect(loopPlan({ ...base, capCalls: 3 }).error).toContain("cap-calls");
     expect(loopPlan({ ...base, capTokens: 1000 }).error).toContain("cap-tokens");
     expect(loopPlan({ ...base, capCalls: 22, capTokens: 22 * 6 * 2000 }).error).toBeUndefined();
@@ -45,7 +45,7 @@ describe("parseLoopArgs", () => {
   it("defaults to fixture provider and all rules, dry-run off", () => {
     const opts = parseLoopArgs([]);
     expect(opts.providers).toEqual(["fixture"]);
-    expect(opts.rules).toEqual(ALL_RULES);
+    expect(opts.rules).toEqual([...ALL_RULES]);
     expect(opts.dryRun).toBe(false);
   });
 

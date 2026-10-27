@@ -136,7 +136,18 @@ export interface LoopPlan {
   error?: string;
 }
 
-export function loopPlan(opts: LoopOpts): LoopPlan {
+export interface LoopPlanInput {
+  providers: ProviderId[];
+  rules: readonly string[];
+  modes: readonly ("attack" | "benign")[];
+  n: number;
+  maxTokens: number;
+  capCalls?: number;
+  capTokens?: number;
+  capUsd?: number;
+}
+
+export function loopPlan(opts: LoopPlanInput): LoopPlan {
   const live = opts.providers.filter((p): p is Exclude<ProviderId, "fixture"> => p !== "fixture");
   const apiCalls = live.length * opts.rules.length * opts.modes.length;
   const worstTokens = apiCalls * opts.n * opts.maxTokens;

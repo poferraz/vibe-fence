@@ -19,6 +19,8 @@ jobs:
           node-version: "20"
       - run: bun install --frozen-lockfile
       - run: bunx tsc --noEmit
-      - run: bun run validate
       - run: bun run build
+      - run: bun run validate
+      - run: bun test
+      - run: bun run eval
       - run: bun pm pack --dry-run

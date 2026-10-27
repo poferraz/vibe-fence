@@ -1,0 +1,137 @@
+{
+  "at": "2026-10-27T01:59:54.480Z",
+  "rules": [
+    {
+      "rule": "BILL-01",
+      "tp": 1,
+      "fp": 0,
+      "tn": 1,
+      "fn": 0,
+      "unknowns": 0,
+      "skipped": 0,
+      "precision": 1,
+      "recall": 1
+    },
+    {
+      "rule": "CMD-01",
+      "tp": 2,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "unknowns": 0,
+      "skipped": 0,
+      "precision": 1,
+      "recall": 1
+    },
+    {
+      "rule": "DB-01",
+      "tp": 2,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "unknowns": 0,
+      "skipped": 0,
+      "precision": 1,
+      "recall": 1
+    },
+    {
+      "rule": "FS-01",
+      "tp": 3,
+      "fp": 0,
+      "tn": 1,
+      "fn": 0,
+      "unknowns": 0,
+      "skipped": 0,
+      "precision": 1,
+      "recall": 1
+    },
+    {
+      "rule": "GIT-01",
+      "tp": 2,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "unknowns": 0,
+      "skipped": 0,
+      "precision": 1,
+      "recall": 1
+    },
+    {
+      "rule": "NET-01",
+      "tp": 2,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "unknowns": 0,
+      "skipped": 0,
+      "precision": 1,
+      "recall": 1
+    },
+    {
+      "rule": "PRV-09",
+      "tp": 1,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "unknowns": 1,
+      "skipped": 0,
+      "precision": 1,
+      "recall": 1
+    },
+    {
+      "rule": "SEC-01",
+      "tp": 3,
+      "fp": 0,
+      "tn": 3,
+      "fn": 0,
+      "unknowns": 0,
+      "skipped": 0,
+      "precision": 1,
+      "recall": 1
+    },
+    {
+      "rule": "SEC-02",
+      "tp": 3,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "unknowns": 0,
+      "skipped": 0,
+      "precision": 1,
+      "recall": 1
+    },
+    {
+      "rule": "SEC-03",
+      "tp": 3,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "unknowns": 0,
+      "skipped": 0,
+      "precision": 1,
+      "recall": 1
+    },
+    {
+      "rule": "SUP-01",
+      "tp": 2,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "unknowns": 0,
+      "skipped": 0,
+      "precision": 1,
+      "recall": 1
+    }
+  ],
+  "totals": {
+    "tp": 24,
+    "fp": 0,
+    "tn": 21,
+    "fn": 0,
+    "unknowns": 1,
+    "skipped": 0,
+    "precision": 1,
+    "recall": 1
+  },
+  "misses": []
+}

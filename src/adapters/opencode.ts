@@ -49,6 +49,58 @@ export function mergeOpenCodeConfig(
   return base;
 }
 
+export const OPENCODE_PLUGIN_NAME = "fence-guard.js";
+export const OPENCODE_PLUGIN_MARKER = "vibe-fence managed plugin";
+
+/**
+ * Dependency-free OpenCode plugin (runs in OpenCode's Bun runtime).
+ * Subscribes to `tool.execute.before` (stable plugin API per opencode.ai/docs/plugins)
+ * and evaluates every tool call through `vibe-fence gate` — the same engine as
+ * `vibe-fence check`, so the Enforced tier can never drift from Guarded.
+ * Exit 1 blocks (throw); missing binary or usage error warns + allows, so a
+ * broken install degrades to Guarded instead of bricking the session.
+ */
+export function buildFenceGuardPlugin(): string {
+  return [
+    "// vibe-fence managed plugin — safe to delete; reinstall via `vibe-fence init`.",
+    "// Enforced tier: every tool call is evaluated by `vibe-fence gate` (SEC-01/SEC-02/NET-01).",
+    'import { execFileSync } from "node:child_process";',
+    "",
+    "export const FenceGuard = async ({ directory, worktree } = {}) => {",
+    '  const root = directory || worktree || null;',
+    "  return {",
+    '    "tool.execute.before": async (input, output) => {',
+    '      const tool = input?.tool ?? input?.call?.name ?? "unknown";',
+    "      const args = output?.args ?? input?.call?.input ?? {};",
+    "      let serialized;",
+    "      try {",
+    "        serialized = JSON.stringify(args);",
+    "      } catch {",
+    "        console.warn(`[vibe-fence] unserializable args for ${tool} — allowing.`);",
+    "        return;",
+    "      }",
+    '      const bin = process.env.FENCE_BIN || "vibe-fence";',
+    '      const gateArgs = ["gate", "--tool", String(tool), "--args", serialized];',
+    "      if (root) gateArgs.push(\"--root\", String(root));",
+    "      try {",
+    "        execFileSync(bin, gateArgs, {",
+    '          encoding: "utf-8",',
+    '          stdio: ["ignore", "pipe", "pipe"],',
+    "        });",
+    "      } catch (e) {",
+    "        if (e?.status === 1) {",
+    '          const reason = String(e?.stdout || "").trim() || "blocked by fence policy";',
+    "          throw new Error(`vibe-fence blocked ${tool}: ${reason}`);",
+    "        }",
+    '        console.warn(`[vibe-fence] gate unavailable (${e?.message ?? e}) — allowing ${tool}.`);',
+    "      }",
+    "    },",
+    "  };",
+    "};",
+    "",
+  ].join("\n");
+}
+
 export function installOpenCodeAdapter(projectRoot: string, opts: { modelMode?: string } = {}): string[] {
   const written: string[] = [];
   const modelMode = (opts.modelMode ?? "standard") as OpenCodeFenceBlock["model_mode"];
@@ -66,12 +118,14 @@ export function installOpenCodeAdapter(projectRoot: string, opts: { modelMode?: 
     const candidates = [join(projectRoot, "opencode.json"), join(projectRoot, ".opencode", "config.json")];
     const p = candidates[0]!;
     const existing = existsSync(p) ? JSON.parse(readFileSync(p, "utf-8") as string) as Record<string, unknown> : null;
+    const prevInstalledAt = (existing?.["fence"] as { installedAt?: unknown } | undefined)?.installedAt;
     const fenceBlock: OpenCodeFenceBlock = {
       version: 1,
       model_mode: modelMode,
       companion_model: process.env["MUSE_MODEL_COMPANION"] ?? "muse-spark-1.3",
       architect_model: process.env["MUSE_MODEL_ARCHITECT"] ?? "muse-wonder-1.0",
-      installedAt: new Date().toISOString(),
+      // Preserve first-install timestamp — init ×3 must be zero-churn (FINAL-v2 §7).
+      installedAt: typeof prevInstalledAt === "string" ? prevInstalledAt : new Date().toISOString(),
       receipt: "🛡️ vibe-fence active — OpenCode adapter",
     };
     const merged = mergeOpenCodeConfig(existing, fenceBlock);
@@ -90,6 +144,21 @@ export function installOpenCodeAdapter(projectRoot: string, opts: { modelMode?: 
   {
     const dir = join(projectRoot, ".agents", "skills");
     if (!existsSync(dir)) { mkdirSync(dir, { recursive: true }); }
+  }
+
+  // 4. .opencode/plugins/fence-guard.js — Enforced tier (tool.execute.before → vibe-fence gate)
+  {
+    const dir = join(projectRoot, ".opencode", "plugins");
+    const p = join(dir, OPENCODE_PLUGIN_NAME);
+    const next = buildFenceGuardPlugin();
+    const prev = existsSync(p) ? readFileSync(p, "utf-8") : null;
+    if (prev !== null && !prev.includes(OPENCODE_PLUGIN_MARKER)) {
+      console.warn(`[vibe-fence] ${".opencode/plugins/" + OPENCODE_PLUGIN_NAME} exists and is not fence-managed — leaving it alone.`);
+    } else if (prev !== next) {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(p, next, "utf-8");
+      written.push(`.opencode/plugins/${OPENCODE_PLUGIN_NAME}`);
+    }
   }
 
   void buildAgentsFenceBlock;

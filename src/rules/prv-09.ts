@@ -42,19 +42,22 @@ const PII_PATTERNS: Array<{ re: RegExp; label: string }> = [
   { re: /-----BEGIN (?:RSA )?PRIVATE KEY-----/, label: "private-key" },
   // 16-digit card-like (with spaces/dashes)
   { re: /\b(?:\d[ -]*?){13,19}\b/, label: "card-like (weak signal — verify)" },
-  // phone-like E.164 / US
-  { re: /\b\+?1?[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/, label: "phone-like" },
+  // phone-like E.164 / US — separators (or +country + separators) required:
+  // bare 10-digit runs are version numbers and hardware IDs, not phones.
+  { re: /(?:\+\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b/, label: "phone-like" },
 ];
 
 /** Synthetic / safe fixture markers — if present, suppress PII match */
 const SYNTHETIC_RE = /\b(example\.com|test\.com|@example|FAKE|SYNTHETIC|fixture|mock|dummy|placeholder|safe-for-commit)\b/i;
 
-function isFixturePath(filePath: string | undefined, fileList: string[] | undefined): boolean {
-  if (filePath && FIXTURE_PATH_RE.test(filePath)) return true;
-  if (fileList && fileList.some((p) => FIXTURE_PATH_RE.test(p))) return true;
-  // Without path evidence we still inspect content but mark narrowly;
-  // caller can pass fileList for repo-wide "not-applicable" optimization.
-  return false;
+function hasScope(ctx: CheckCtx, src: string): boolean {
+  // A file's own path decides (a repo merely CONTAINING fixtures elsewhere
+  // must not put package.json in scope; content that merely NAMES fixtures —
+  // like this rule's own test file — must not self-trigger either).
+  // Path-less direct calls fall back to the repo list, then content markers.
+  if (ctx.filePath) return FIXTURE_PATH_RE.test(ctx.filePath);
+  if (ctx.fileList?.some((p) => FIXTURE_PATH_RE.test(p))) return true;
+  return FIXTURE_PATH_RE.test(src);
 }
 
 export function check(ctx: CheckCtx): RuleVerdict {
@@ -65,23 +68,14 @@ export function check(ctx: CheckCtx): RuleVerdict {
     return { id: PRV09_ID, verdict: "unknown", reason: "no content to inspect (unknown≠pass)" };
   }
 
-  const hasFixtureScope =
-    isFixturePath(ctx.filePath, ctx.fileList) ||
-    // Also treat explicit non-empty content that looks fixture-ish as in-scope
-    FIXTURE_PATH_RE.test(src);
-
-  // Heuristic: if caller passed fileList and none are fixture paths and no fixture marker in src,
-  // treat as not-applicable rather than pass (helps CI four-outcome reporting).
-  if (ctx.fileList && ctx.fileList.length > 0 && !hasFixtureScope && src.trim().length > 0) {
-    // But still allow single-file check without fileList to proceed — don't force unknown
-    // Only emit not-applicable when repo-level fileList is authoritative
-    if (ctx.filePath == null) {
-      return { id: PRV09_ID, verdict: "not-applicable", reason: "no fixture files in repo" };
-    }
-  }
-
   if (src.trim().length === 0) {
     return { id: PRV09_ID, verdict: "not-applicable", reason: "empty fixture / no fixtures" };
+  }
+
+  // Scope gate: outside fixtures this rule cannot speak (author emails in
+  // package.json and version numbers in docs are not fixture PII).
+  if (!hasScope(ctx, src)) {
+    return { id: PRV09_ID, verdict: "not-applicable", reason: "not a fixture file" };
   }
 
   // Synthetic marker suppresses findings (real anonymizer output, GEM-06)

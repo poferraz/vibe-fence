@@ -136,12 +136,14 @@ export function installCursorAdapter(projectRoot: string, opts: { modelMode?: st
   {
     const p = join(projectRoot, ".cursor", "hooks.json");
     const existing = existsSync(p) ? JSON.parse(readFileSync(p, "utf-8") as string) as Record<string, unknown> : null;
+    const prevInstalledAt = (existing?.["fence"] as { installedAt?: unknown } | undefined)?.installedAt;
     const fenceBlock: CursorFenceHooksBlock = {
       version: 1,
       model_mode: modelMode,
       companion_model: process.env["MUSE_MODEL_COMPANION"] ?? "muse-spark-1.3",
       architect_model: process.env["MUSE_MODEL_ARCHITECT"] ?? "muse-wonder-1.0",
-      installedAt: new Date().toISOString(),
+      // Preserve first-install timestamp — init ×3 must be zero-churn (FINAL-v2 §7).
+      installedAt: typeof prevInstalledAt === "string" ? prevInstalledAt : new Date().toISOString(),
       hooks: ["PreToolUse", "PostToolUse"],
     };
     const merged = mergeCursorHooks(existing, fenceBlock);

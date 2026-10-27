@@ -1,11 +1,163 @@
 #!/usr/bin/env node
-// src/cli.ts — bin shim for `vibe-fence` (package.json bin: ./dist/cli.js)
-// Delegates to tools/install.ts so `npx vibe-fence init` works after `bun run build`.
-// Kept minimal: src/ is authority, dist/ is disposable (src→dist via tools/generate.ts).
-import { spawnSync } from "node:child_process";
-import { resolve, join } from "node:path";
-const root = resolve(import.meta.dir, "..");
-const result = spawnSync("bun", [join(root, "tools", "install.ts"), ...process.argv.slice(2)], {
-  stdio: "inherit",
-});
-process.exit(result.status ?? 0);
+// src/cli.ts — vibe-fence command entry (authority; bundled to dist/cli.js by tools/generate.ts).
+// Self-contained: no bun binary, no tools/ dir at runtime. Runs on Node 20+.
+// Subcommands: init | check | --help | --version. `tour` lands Oct 30.
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { install, CONTRIBUTOR_DISCLOSURE, DEFAULT_ADAPTER_IDS, hereDir } from "./install.js";
+import { runCheck, exitCodeForReport, formatHuman } from "./check.js";
+import { checkpoint, fenceUndo } from "./framework/git.js";
+import { evaluateToolCall } from "./framework/gate.js";
+
+function version(): string {
+  try {
+    const pkg = JSON.parse(readFileSync(join(hereDir(), "..", "package.json"), "utf-8") as string) as {
+      version?: string;
+    };
+    if (pkg.version) return pkg.version;
+  } catch {}
+  return "0.0.0-dev";
+}
+
+function help(): string {
+  return [
+    "vibe-fence — one command makes any AI coding agent safe.",
+    "",
+    "Usage:",
+    "  vibe-fence init [--dry-run] [--contributor-mode] [--full] [--adapters=a,b]",
+    "  vibe-fence check [--json]",
+    "  vibe-fence checkpoint --action <label> [--include-untracked]",
+    "  vibe-fence undo [--steps N]",
+    "  vibe-fence gate --tool <name> --args '<json>' [--root <dir>]",
+    "  vibe-fence --help | --version",
+    "",
+    "Commands:",
+    "  init    Install the fence into the current project (AGENTS.md + .fence/ + skills + adapters)",
+    "  check   Run the rule engine over the working tree (exit 1 on any fail)",
+    "  checkpoint  Snapshot tracked WIP as a checkpoint commit (safe undo point)",
+    "  undo    Revert the last checkpoint(s) — never detaches, never force-pushes",
+    "  gate    Evaluate one tool call (Enforced tier plugins; exit 1 blocks)",
+    "",
+    "Options (init):",
+    "  --dry-run            Print what would change; write nothing",
+    "  --contributor-mode   Opt in to Contributor model mode (training disclosure applies)",
+    "  --full               Force native mode even on WebContainer-like runtimes",
+    `  --adapters=<list>    Subset of: ${DEFAULT_ADAPTER_IDS.join(", ")} (default: all)`,
+    "",
+    "More: https://github.com/poferraz/vibe-fence",
+  ].join("\n");
+}
+
+export async function main(argv: string[]): Promise<number> {
+  const [cmd, ...rest] = argv;
+  if (cmd === "--help" || cmd === "-h" || cmd === "help") {
+    console.log(help());
+    return 0;
+  }
+  if (cmd === "--version" || cmd === "-V" || cmd === "-v") {
+    console.log(`vibe-fence ${version()}`);
+    return 0;
+  }
+  if (cmd === "init") {
+    const contributorMode = rest.includes("--contributor-mode");
+    if (contributorMode) console.log(CONTRIBUTOR_DISCLOSURE);
+    const adaptersArg = rest.find((a) => a.startsWith("--adapters="));
+    const adapters = adaptersArg ? adaptersArg.slice("--adapters=".length).split(",").map((s) => s.trim()).filter(Boolean) : undefined;
+    await install(process.cwd(), {
+      dryRun: rest.includes("--dry-run"),
+      contributorMode,
+      full: rest.includes("--full"),
+      adapters,
+    });
+    return 0;
+  }
+  if (cmd === "check") {
+    const report = runCheck(process.cwd());
+    if (rest.includes("--json")) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      console.log(formatHuman(report));
+    }
+    return exitCodeForReport(report);
+  }
+  if (cmd === "checkpoint") {
+    const actionArg = rest.find((a) => a.startsWith("--action="));
+    const actionFlag = rest.indexOf("--action");
+    const action = actionArg
+      ? actionArg.slice("--action=".length)
+      : actionFlag !== -1 && rest[actionFlag + 1]
+        ? rest[actionFlag + 1]!
+        : null;
+    if (!action) {
+      console.error("vibe-fence: checkpoint needs --action <label> (e.g. --action \"before plan\").");
+      return 2;
+    }
+    const r = checkpoint({ action, projectRoot: process.cwd(), includeUntracked: rest.includes("--include-untracked") });
+    console.log(r.committed ? `checkpoint ${r.commitHash?.slice(0, 7)} — ${r.message}` : r.message);
+    const benignNoop = r.message.startsWith("no changes") || r.message.startsWith("nothing to snapshot");
+    return r.committed || benignNoop ? 0 : 2;
+  }
+  if (cmd === "undo") {
+    const stepsArg = rest.find((a) => a.startsWith("--steps="));
+    const stepsFlag = rest.indexOf("--steps");
+    const raw = stepsArg ? stepsArg.slice("--steps=".length) : stepsFlag !== -1 ? rest[stepsFlag + 1] : undefined;
+    const steps = raw === undefined ? 1 : Number(raw);
+    try {
+      const r = fenceUndo({ projectRoot: process.cwd(), steps });
+      console.log(r.message);
+      return 0;
+    } catch (e) {
+      console.error(`vibe-fence: undo failed: ${(e as Error).message}`);
+      return 1;
+    }
+  }
+  if (cmd === "gate") {
+    const flag = (name: string): string | null => {
+      const eq = rest.find((a) => a.startsWith(`${name}=`));
+      if (eq) return eq.slice(name.length + 1);
+      const i = rest.indexOf(name);
+      return i !== -1 && rest[i + 1] ? rest[i + 1]! : null;
+    };
+    const tool = flag("--tool");
+    const rawArgs = flag("--args");
+    if (!tool || rawArgs === null) {
+      console.error("vibe-fence: gate needs --tool <name> --args '<json>'.");
+      return 2;
+    }
+    const projectRoot = flag("--root") ?? process.cwd();
+    let args: unknown;
+    try {
+      args = JSON.parse(rawArgs);
+    } catch {
+      console.error("vibe-fence: gate --args is not valid JSON.");
+      return 2;
+    }
+    if (!args || typeof args !== "object" || Array.isArray(args)) {
+      console.error("vibe-fence: gate --args must be a JSON object.");
+      return 2;
+    }
+    const findings = evaluateToolCall({ tool, args: args as Record<string, unknown>, projectRoot });
+    if (findings.length === 0) return 0;
+    for (const f of findings) console.log(`${f.ruleId} [${f.severity}] ${f.reason}`);
+    return 1;
+  }
+  if (cmd === "tour") {
+    console.error("vibe-fence: 'tour' lands Oct 30 — not yet implemented.");
+    return 2;
+  }
+  if (cmd === undefined) {
+    console.error("vibe-fence: missing subcommand — try `vibe-fence init` (or `--help`).");
+    return 2;
+  }
+  console.error(`vibe-fence: unknown subcommand '${cmd}' — try \`vibe-fence init\` (or \`--help\`).`);
+  return 2;
+}
+
+// Bin entry — always dispatches (this module ships only as the bundled dist/cli.js).
+await main(process.argv.slice(2)).then(
+  (code) => process.exit(code),
+  (err) => {
+    console.error(`vibe-fence: fatal: ${(err as Error).message}`);
+    process.exit(1);
+  },
+);

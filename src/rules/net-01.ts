@@ -5,6 +5,8 @@
  * Closes Wauters npm-run bypass + nomos chmod miss surface — network pipe-to-shell is hard-block.
  */
 
+import { isExecutablePath, isProsePath, sinkLines } from "./context.js";
+
 export const NET01_ID = "NET-01" as const;
 export const NET01_SEVERITY = "block" as const;
 
@@ -15,6 +17,8 @@ export interface CheckCtx {
   filePath?: string;
   content?: string;
   fileList?: string[];
+  toolName?: string;
+  args?: string;
 }
 
 export interface RuleVerdict {
@@ -40,22 +44,50 @@ function findEvidence(src: string): string | undefined {
   return undefined;
 }
 
+/** Shared pipe-to-shell detector (also used by SUP-01's scripts scan). */
+export function hasPipeToShell(src: string): boolean {
+  return CURL_PIPE_RE.test(src) || WGET_PIPE_RE.test(src) || COMPACT_PIPE_RE.test(src);
+}
+
+function hasPipe(src: string): boolean {
+  return hasPipeToShell(src);
+}
+
 export function check(ctx: CheckCtx): RuleVerdict {
   const src = ctx.content;
 
-  // Empty/missing content = pass (not unknown) per NET-01 contract
   if (src == null || src.trim().length === 0) {
-    return { id: NET01_ID, verdict: "pass", reason: "no content — no curl|sh pipe detected" };
+    return { id: NET01_ID, verdict: "unknown", reason: "no content to inspect (unknown≠pass)" };
   }
 
-  if (CURL_PIPE_RE.test(src) || WGET_PIPE_RE.test(src) || COMPACT_PIPE_RE.test(src)) {
-    return {
-      id: NET01_ID,
-      verdict: "fail",
-      reason: "curl/wget piped to shell (curl|sh / wget|bash) — piped remote execution is hard-blocked (S-09)",
-      evidence: findEvidence(src),
-    };
+  // Gate mode (live tool call): arg content is action — any match fails.
+  if (ctx.toolName) {
+    if (hasPipe(src)) {
+      return {
+        id: NET01_ID,
+        verdict: "fail",
+        reason: "curl/wget piped to shell (curl|sh / wget|bash) — piped remote execution is hard-blocked (S-09)",
+        evidence: findEvidence(src),
+      };
+    }
+    return { id: NET01_ID, verdict: "pass", reason: "no curl|sh / wget pipe-to-shell pattern detected" };
   }
 
-  return { id: NET01_ID, verdict: "pass", reason: "no curl|sh / wget pipe-to-shell pattern detected" };
+  // Tree mode: docs discussing the attack must pass — fire only where the
+  // payload would execute: executable files, or exec-sink lines in code.
+  // Prose skips sink analysis entirely (execution is gated live).
+  const scopes: string[] = isExecutablePath(ctx.filePath) ? [src] : [];
+  if (!isProsePath(ctx.filePath)) scopes.push(...sinkLines(src));
+  for (const scope of scopes) {
+    if (hasPipe(scope)) {
+      return {
+        id: NET01_ID,
+        verdict: "fail",
+        reason: "curl/wget piped to shell (curl|sh / wget|bash) — piped remote execution is hard-blocked (S-09)",
+        evidence: findEvidence(scope),
+      };
+    }
+  }
+
+  return { id: NET01_ID, verdict: "pass", reason: "no executable curl|sh / wget pipe-to-shell pattern detected" };
 }

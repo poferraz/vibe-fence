@@ -46,7 +46,9 @@
     "build": "bun run tools/generate.ts",
     "validate": "bun run tools/validate.ts",
     "deploy": "bun run tools/install.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "eval": "bun run tools/eval.ts --check",
+    "eval:baseline": "bun run tools/eval.ts --write-baseline"
   },
   "devDependencies": {
     "@types/bun": "latest",

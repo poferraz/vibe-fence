@@ -5,6 +5,12 @@
  * GEM-11 (P1) — Ephemeral smoke suite for zero-test repos (// @fence-ephemeral).
  * C-10 — Can LLM-generated smoke tests be trusted as block gate? Measure false-pass before promoting.
  * Anti-patterns: §6 #6 (no LLM-judge gating), #14 (do not delete/skip tests to green CI).
+ *
+ * A1 (fixed 2026-10-27): every tier EXECUTES its check for real and writes the
+ * byte-capped output to .fence/verdicts/<taskId>-<tier>.log. A check that cannot
+ * run (no command configured, tool missing) reports "unknown" — never a pass.
+ * overall is "pass" only when every tier ran and passed; any failure is "fail";
+ * otherwise any unknown makes the whole report "unknown".
  */
 
 import { existsSync, writeFileSync, readFileSync, mkdirSync, globSync } from "node:fs";
@@ -18,24 +24,33 @@ import { join } from "node:path";
 /** Trust ladder tiers — ordered cheapest→most expensive (S-04/S-12). */
 export type TrustTier =
   | "compile" // tsc --noEmit — cheapest, always
-  | "lint" // eslint / biome
+  | "lint" // project lint script (eslint / biome / …)
   | "tests" // existing repo tests ×1
   | "tests-x2" // same tests ×2 — flake check (GEM-11)
+  | "build" // project build script
   | "generated" // ephemeral smoke suite (GEM-11) — only if zero-test repo
   | "judge-for-prose"; // LLM judge — ONLY for prose/docs, never for code (S-12 / §6 #6)
 
+/** pass = ran and succeeded · fail = ran and did not · unknown = could not run. */
+export type TierStatus = "pass" | "fail" | "unknown";
+
 export interface TierResult {
   tier: TrustTier;
+  status: TierStatus;
+  /** Kept for compatibility: true only when status === "pass". */
   passed: boolean;
   durationMs: number;
-  outputPath: string | null; // .fence/verdicts/<tier>.log — diagnosis artefact
-  // TODO: add evidence_ids for companion explanation payload
+  outputPath: string | null; // .fence/verdicts/<taskId>-<tier>.log — diagnosis artefact
+  /** Why the tier is unknown/failed, in plain words. */
+  reason?: string;
+  /** The exact command executed (absent when the tier could not run). */
+  command?: string;
 }
 
 export interface VerifyReport {
   taskId: string;
   tiers: TierResult[];
-  overall: "pass" | "fail";
+  overall: "pass" | "fail" | "unknown";
   generatedEphemeral: boolean;
 }
 
@@ -47,6 +62,8 @@ export const EPHEMERAL_MARKER = "// @fence-ephemeral — delete when you add rea
 export const EPHEMERAL_PATH = "tests/.fence-smoke.test.ts";
 export const VERDICT_DIR = ".fence/verdicts";
 export const BYTE_CAP = 4096; // S-03 4KB pipe
+
+const TIER_TIMEOUT_MS = 120_000;
 
 // ---------------------------------------------------------------------------
 // Helpers — byte cap + artefact writer
@@ -67,6 +84,48 @@ function verdictPath(projectRoot: string, taskId: string, tier: TrustTier): stri
   return join(projectRoot, VERDICT_DIR, `${taskId}-${tier}.log`);
 }
 
+/** Write the diagnosis artefact (byte-capped). Returns .fence/verdicts/… path or null. */
+function writeVerdict(projectRoot: string, taskId: string, tier: TrustTier, text: string): string | null {
+  try {
+    ensureVerdictDir(projectRoot);
+    writeFileSync(verdictPath(projectRoot, taskId, tier), byteCap(text), "utf-8");
+    return `${VERDICT_DIR}/${taskId}-${tier}.log`;
+  } catch {
+    return null; // verdict write failure must not mask the check result itself
+  }
+}
+
+function tierResult(
+  projectRoot: string,
+  taskId: string,
+  tier: TrustTier,
+  status: TierStatus,
+  started: number,
+  artefactText: string,
+  extra: { reason?: string; command?: string } = {},
+): TierResult {
+  return {
+    tier,
+    status,
+    passed: status === "pass",
+    durationMs: Date.now() - started,
+    outputPath: writeVerdict(projectRoot, taskId, tier, artefactText),
+    ...(extra.reason ? { reason: extra.reason } : {}),
+    ...(extra.command ? { command: extra.command } : {}),
+  };
+}
+
+function unknownTier(
+  projectRoot: string,
+  taskId: string,
+  tier: TrustTier,
+  started: number,
+  reason: string,
+): TierResult {
+  return tierResult(projectRoot, taskId, tier, "unknown", started,
+    `UNKNOWN: ${reason}\ncommand: (not executed)\n`, { reason });
+}
+
 function isRealTestScript(value: unknown): boolean {
   if (typeof value !== "string") return false;
   const trimmed = value.trim();
@@ -76,6 +135,75 @@ function isRealTestScript(value: unknown): boolean {
   return true;
 }
 
+function readPackageScripts(projectRoot: string): Record<string, unknown> {
+  try {
+    const pkgPath = join(projectRoot, "package.json");
+    if (!existsSync(pkgPath)) return {};
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as { scripts?: Record<string, unknown> };
+    return pkg.scripts ?? {};
+  } catch {
+    return {}; // malformed package.json — no runnable scripts
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Command execution — the only way a tier may earn "pass"
+// ---------------------------------------------------------------------------
+
+interface ExecOutcome {
+  status: TierStatus;
+  reason?: string;
+  output: string;
+}
+
+/** Run a project-defined script string through the shell, capturing capped evidence. */
+function runShellCommand(command: string, projectRoot: string): ExecOutcome {
+  const result = spawnSync(command, {
+    shell: true,
+    cwd: projectRoot,
+    encoding: "utf-8",
+    timeout: TIER_TIMEOUT_MS,
+    maxBuffer: 10 * 1024 * 1024,
+  });
+  const output = [result.stdout ?? "", result.stderr ?? ""].filter(Boolean).join("\n");
+  const err = (result as unknown as { error?: Error & { code?: string } }).error;
+  if (err) {
+    if (err.code === "ETIMEDOUT") {
+      return { status: "fail", reason: `timed out after ${TIER_TIMEOUT_MS}ms`, output };
+    }
+    if (err.code === "ENOENT") {
+      return { status: "unknown", reason: `command could not start: ${err.message}`, output };
+    }
+    return { status: "unknown", reason: `command could not run: ${err.message}`, output };
+  }
+  if (result.status === 0) return { status: "pass", output };
+  if (result.status === null) {
+    return { status: "fail", reason: `terminated by signal ${result.signal ?? "unknown"}`, output };
+  }
+  return { status: "fail", reason: `exit code ${result.status}`, output };
+}
+
+/** Run a package.json script tier (lint/tests/build) or report why it cannot run. */
+function runScriptTier(
+  projectRoot: string,
+  taskId: string,
+  tier: TrustTier,
+  scriptName: string,
+): TierResult {
+  const started = Date.now();
+  const scripts = readPackageScripts(projectRoot);
+  const script = scripts[scriptName];
+  if (!isRealTestScript(script)) {
+    return unknownTier(projectRoot, taskId, tier, started,
+      `no "${scriptName}" command configured in package.json — nothing was run, so this check cannot pass`);
+  }
+  const command = (script as string).trim();
+  const outcome = runShellCommand(command, projectRoot);
+  const header = `$ ${command}\nverdict: ${outcome.status}${outcome.reason ? ` (${outcome.reason})` : ""}\n`;
+  return tierResult(projectRoot, taskId, tier, outcome.status, started,
+    header + outcome.output, { command, ...(outcome.reason ? { reason: outcome.reason } : {}) });
+}
+
 // ---------------------------------------------------------------------------
 // Detection — does repo have any tests?
 // ---------------------------------------------------------------------------
@@ -83,6 +211,7 @@ function isRealTestScript(value: unknown): boolean {
 /**
  * Detect zero-test repos — triggers ephemeral bootstrap (GEM-11).
  * Checks **\/*.test.*, **\/*.spec.*, __tests__\/**, and test npm script.
+ * Our own generated smoke file never counts as evidence of real tests.
  */
 export function hasTests(projectRoot: string): boolean {
   const patterns = ["**/*.test.*", "**/*.spec.*", "__tests__/**"] as const;
@@ -94,25 +223,15 @@ export function hasTests(projectRoot: string): boolean {
   for (const pat of patterns) {
     try {
       const hits = globSync(pat, { cwd: projectRoot, exclude } as unknown as Record<string, unknown>);
-      if (hits.length > 0) return true;
+      if (hits.some((h) => h !== EPHEMERAL_PATH && !h.endsWith(`/${EPHEMERAL_PATH}`))) return true;
     } catch {
       // glob failure is not evidence of absence — fall through to package.json check
     }
   }
 
   // package.json scripts.test — must be present and not an echo placeholder
-  try {
-    const pkgPath = join(projectRoot, "package.json");
-    if (existsSync(pkgPath)) {
-      const raw = readFileSync(pkgPath, "utf-8");
-      const pkg = JSON.parse(raw) as { scripts?: Record<string, unknown> };
-      if (pkg.scripts && isRealTestScript(pkg.scripts["test"])) return true;
-    }
-  } catch {
-    // malformed package.json — treat as no valid test script
-  }
-
-  return false;
+  const scripts = readPackageScripts(projectRoot);
+  return isRealTestScript(scripts["test"]);
 }
 
 // ---------------------------------------------------------------------------
@@ -175,122 +294,127 @@ export function ensureEphemeralSuite(projectRoot: string): string | null {
 // ---------------------------------------------------------------------------
 
 function runCompileTier(projectRoot: string, taskId: string): TierResult {
-  const outPath = verdictPath(projectRoot, taskId, "compile");
   const started = Date.now();
-  ensureVerdictDir(projectRoot);
-
-  let passed = false;
-  let rawOutput = "";
-
-  try {
-    // Prefer npx tsc to respect local typescript install; fallback to tsc on PATH
-    const result = spawnSync("npx", ["tsc", "--noEmit"], {
-      cwd: projectRoot,
-      encoding: "utf-8",
-      timeout: 60_000,
-      maxBuffer: 10 * 1024 * 1024,
-    });
-
-    const stdout = result.stdout ?? "";
-    const stderr = result.stderr ?? "";
-    const status = result.status;
-    const errorMsg = (result as unknown as { error?: Error }).error?.message ?? "";
-
-    rawOutput = [stdout, stderr, errorMsg].filter(Boolean).join("\n");
-    if (rawOutput.length === 0 && status === 0) rawOutput = "tsc --noEmit: ok (no output)";
-    passed = status === 0;
-  } catch (err) {
-    rawOutput = err instanceof Error ? err.message : String(err);
-    passed = false;
+  if (!existsSync(join(projectRoot, "tsconfig.json"))) {
+    return unknownTier(projectRoot, taskId, "compile", started,
+      "no tsconfig.json — this project has nothing for the TypeScript checker to run on");
   }
-
-  const capped = byteCap(rawOutput);
-  try {
-    writeFileSync(outPath, capped, "utf-8");
-  } catch {
-    // verdict write failure must not mask compile result — still report pass/fail
+  // Prefer the project's own TypeScript; never download one silently via npx.
+  const localTsc = join(projectRoot, "node_modules", ".bin", "tsc");
+  let command: string | null = null;
+  let args: string[] = ["--noEmit"];
+  if (existsSync(localTsc)) {
+    command = localTsc;
+  } else {
+    const probe = spawnSync("tsc", ["--version"], { encoding: "utf-8", timeout: 15_000 });
+    if (!probe.error && probe.status === 0) command = "tsc";
   }
+  if (command === null) {
+    return unknownTier(projectRoot, taskId, "compile", started,
+      "TypeScript is not installed for this project (no node_modules/.bin/tsc, no tsc on PATH) — install typescript, then re-run");
+  }
+  const result = spawnSync(command, args, {
+    cwd: projectRoot,
+    encoding: "utf-8",
+    timeout: 60_000,
+    maxBuffer: 10 * 1024 * 1024,
+  });
+  const label = `${command} --noEmit`;
+  const err = (result as unknown as { error?: Error }).error;
+  if (err) {
+    return tierResult(projectRoot, taskId, "compile", "unknown", started,
+      `$ ${label}\nUNKNOWN: compiler could not run: ${err.message}\n`,
+      { reason: `compiler could not run: ${err.message}`, command: label });
+  }
+  const output = [result.stdout ?? "", result.stderr ?? ""].filter(Boolean).join("\n")
+    || (result.status === 0 ? "tsc --noEmit: ok (no output)" : "");
+  const status: TierStatus = result.status === 0 ? "pass" : "fail";
+  return tierResult(projectRoot, taskId, "compile", status, started,
+    `$ ${label}\nverdict: ${status}${result.status !== 0 && result.status !== null ? ` (exit code ${result.status})` : ""}\n${output}`,
+    { command: label, ...(status === "fail" ? { reason: `exit code ${result.status}` } : {}) });
+}
 
-  return {
-    tier: "compile",
-    passed,
-    durationMs: Date.now() - started,
-    outputPath: `${VERDICT_DIR}/${taskId}-compile.log`,
-  };
+function runTestsTier(projectRoot: string, taskId: string, tier: "tests" | "tests-x2", hadTests: boolean): TierResult {
+  const scripts = readPackageScripts(projectRoot);
+  if (isRealTestScript(scripts["test"])) {
+    return runScriptTier(projectRoot, taskId, tier, "test");
+  }
+  if (!hadTests) {
+    const started = Date.now();
+    return unknownTier(projectRoot, taskId, tier, started,
+      "no test command configured and no test files found — nothing was run, so this check cannot pass");
+  }
+  // Test files exist but no script: run them with bun test, for real.
+  const started = Date.now();
+  const result = spawnSync("bun", ["test"], {
+    cwd: projectRoot,
+    encoding: "utf-8",
+    timeout: TIER_TIMEOUT_MS,
+    maxBuffer: 10 * 1024 * 1024,
+  });
+  const err = (result as unknown as { error?: Error & { code?: string } }).error;
+  if (err) {
+    const reason = err.code === "ENOENT"
+      ? "bun is not available to run the test files — configure a \"test\" command in package.json instead"
+      : `test runner could not run: ${err.message}`;
+    return tierResult(projectRoot, taskId, tier, "unknown", started,
+      `$ bun test\nUNKNOWN: ${reason}\n`, { reason, command: "bun test" });
+  }
+  const output = [result.stdout ?? "", result.stderr ?? ""].filter(Boolean).join("\n");
+  const status: TierStatus = result.status === 0 ? "pass" : "fail";
+  return tierResult(projectRoot, taskId, tier, status, started,
+    `$ bun test\nverdict: ${status}${result.status !== 0 && result.status !== null ? ` (exit code ${result.status})` : ""}\n${output}`,
+    { command: "bun test", ...(status === "fail" ? { reason: `exit code ${result.status}` } : {}) });
 }
 
 /**
- * Run trust ladder in order: compile → lint → tests×2 → generated → judge-for-prose.
- * Stops on first failure and writes diagnosis artefact to .fence/verdicts/.
- * S-04 — diagnosis artefact before retry is mandatory.
- * S-12 — cheapest verify first; happy-path ~1.0-1.2×.
+ * Run trust ladder in order: compile → lint → tests×2 → build → generated.
+ * A real failure stops the ladder (diagnosis artefact first, S-04); an unknown
+ * tier does not — later checks still run so their evidence is on record.
+ * overall is "pass" only when every tier ran and passed.
  */
 export async function runTrustLadder(projectRoot: string, taskId: string): Promise<VerifyReport> {
   const tiers: TierResult[] = [];
+  const hadTests = hasTests(projectRoot);
   const ephemeralPath = ensureEphemeralSuite(projectRoot);
   const includeGenerated = ephemeralPath !== null;
 
-  // Ordered ladder — compile→lint→tests×2→generated→judge-for-prose-only
-  const ladder: TrustTier[] = ["compile", "lint", "tests", "tests-x2"];
+  const ladder: TrustTier[] = ["compile", "lint", "tests", "tests-x2", "build"];
   if (includeGenerated) ladder.push("generated");
   // judge-for-prose is never auto-added — caller must opt in for prose tasks only
-  // TODO(M3): add "judge-for-prose" only when task is prose/docs (check task metadata)
 
   for (const tier of ladder) {
     let result: TierResult;
-
     if (tier === "compile") {
       result = runCompileTier(projectRoot, taskId);
     } else if (tier === "lint") {
-      // TODO(M3): dispatch lint — `eslint .` or `biome check` — byte-capped to .fence/verdicts/<taskId>-lint.log
-      result = {
-        tier,
-        passed: true,
-        durationMs: 0,
-        outputPath: `${VERDICT_DIR}/${taskId}-${tier}.log`,
-      };
-    } else if (tier === "tests") {
-      // TODO(M3): dispatch tests — `npm test` / `vitest run` — single run, byte-capped
-      result = {
-        tier,
-        passed: true,
-        durationMs: 0,
-        outputPath: `${VERDICT_DIR}/${taskId}-${tier}.log`,
-      };
-    } else if (tier === "tests-x2") {
-      // TODO(M3): flake check — re-run tests and compare results (GEM-11 trust ladder)
-      result = {
-        tier,
-        passed: true,
-        durationMs: 0,
-        outputPath: `${VERDICT_DIR}/${taskId}-${tier}.log`,
-      };
-    } else if (tier === "generated") {
-      // TODO(M3): run ephemeral suite — `vitest run tests/.fence-smoke.test.ts` — byte-capped
-      result = {
-        tier,
-        passed: true,
-        durationMs: 0,
-        outputPath: `${VERDICT_DIR}/${taskId}-${tier}.log`,
-      };
+      result = runScriptTier(projectRoot, taskId, "lint", "lint");
+    } else if (tier === "tests" || tier === "tests-x2") {
+      result = runTestsTier(projectRoot, taskId, tier, hadTests);
+    } else if (tier === "build") {
+      result = runScriptTier(projectRoot, taskId, "build", "build");
     } else {
-      // exhaustive guard — should be unreachable
-      result = {
-        tier,
-        passed: true,
-        durationMs: 0,
-        outputPath: null,
-      };
+      // generated: the ephemeral suite is an unconfigured template (its checks are
+      // TODO stubs, C-10 unmeasured) — it must never stand in for real tests.
+      const started = Date.now();
+      result = unknownTier(projectRoot, taskId, "generated", started,
+        `ephemeral suite at ${EPHEMERAL_PATH} is a template, not a real check (C-10) — add real tests; this tier cannot pass a project`);
     }
 
     tiers.push(result);
-    if (!result.passed) break; // fail-fast — but artefact already written for diagnosis
+    if (result.status === "fail") break; // fail-fast — artefact already written for diagnosis
   }
+
+  const overall: VerifyReport["overall"] = tiers.some((t) => t.status === "fail")
+    ? "fail"
+    : tiers.some((t) => t.status === "unknown")
+      ? "unknown"
+      : "pass";
 
   return {
     taskId,
     tiers,
-    overall: tiers.every((t) => t.passed) ? "pass" : "fail",
+    overall,
     generatedEphemeral: includeGenerated,
   };
 }
@@ -298,28 +422,54 @@ export async function runTrustLadder(projectRoot: string, taskId: string): Promi
 /**
  * Judge-for-prose gate — LLM judge ONLY for prose/docs tasks, never for code.
  * S-12 + §6 #6 — execution > typecheck > lint > learned verifier > judge.
- * TODO(M3): wire to meta-client.ts architect tier (Wonder) if available; otherwise skip
+ * Not wired to any model yet: reports unknown, never an unearned pass.
  */
 export async function judgeForProse(
   _projectRoot: string,
   _taskId: string,
   _content: string,
 ): Promise<TierResult> {
-  // TODO(M3): call LLM judge with rubric — only for prose tasks (docs, PR descriptions, etc.)
-  // TODO(M3): never use for code correctness — deterministic checks are the gate
-  return { tier: "judge-for-prose", passed: true, durationMs: 0, outputPath: null };
+  return {
+    tier: "judge-for-prose",
+    status: "unknown",
+    passed: false,
+    durationMs: 0,
+    outputPath: null,
+    reason: "prose judge is not wired to a model yet — no judgement was made, so this cannot pass",
+  };
 }
 
 // ---------------------------------------------------------------------------
 // Anti-pattern guard (S-12 / §6 #14)
 // ---------------------------------------------------------------------------
 
+const SKIP_OR_ONLY_RE = /(?:describe|it|test)\.(?:skip|only)\s*\(|\bx(?:describe|it|test)\s*\(/;
+
 /**
  * Detect test deletion/skip to green CI — block-level violation.
  * S-04/S-12 — do not delete/skip tests to green CI (deepseek H-06).
- * TODO(M3): diff check — fail if assertions removed or .skip/.only added alongside a red run
+ * Flags skip/only markers added by the diff and net-removed expect() assertions.
  */
-export function detectTestTampering(_diff: string): { tampered: boolean; reason: string | null } {
-  // TODO(M3): scan diff for `it.skip`, `describe.skip`, `.only`, deleted assertions, `xdescribe`
+export function detectTestTampering(diff: string): { tampered: boolean; reason: string | null } {
+  let addedExpect = 0;
+  let removedExpect = 0;
+  for (const line of diff.split("\n")) {
+    const isAdded = line.startsWith("+") && !line.startsWith("+++");
+    const isRemoved = line.startsWith("-") && !line.startsWith("---");
+    if (isAdded) {
+      if (SKIP_OR_ONLY_RE.test(line)) {
+        return { tampered: true, reason: `diff adds a skipped/focused test: ${line.trim().slice(0, 120)}` };
+      }
+      if (line.includes("expect(")) addedExpect++;
+    } else if (isRemoved) {
+      if (line.includes("expect(")) removedExpect++;
+    }
+  }
+  if (removedExpect > addedExpect) {
+    return {
+      tampered: true,
+      reason: `diff removes ${removedExpect} expect() assertion(s) and adds only ${addedExpect} — deleting assertions to go green is blocked (S-12)`,
+    };
+  }
   return { tampered: false, reason: null };
 }

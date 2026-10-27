@@ -37,10 +37,26 @@ const CREDENTIAL_PATH_RES: Array<{ re: RegExp; label: string }> = [
   { re: /\.fence\/\.integrity\.json\b/, label: ".fence/.integrity.json" },
 ];
 
-// Read-like tools — only these trigger hard-deny (write/emit of credential content also covered via read→exfil)
-const READ_LIKE_RE = /\b(read|open|cat|view|show|load|fetch|get)\b/i;
+import { isExecutablePath, isProsePath, isQuotedAt, liveCode, stripStrings } from "./context.js";
 
-function isCredentialPath(text: string): { hit: boolean; label?: string; match?: string } {
+// Read-like tools — only these trigger hard-deny (write/emit of credential content also covered via read→exfil).
+// Covers display (cat/pagers), search (grep family), dump/encode (strings/xxd/od/base64),
+// and copy-out (cp/scp/sftp/rsync) — all exfiltrate file bytes to the caller.
+const READ_LIKE_RE =
+  /\b(read|open|cat|view|show|load|fetch|get|grep|rg|ag|ack|head|tail|less|more|strings|xxd|od|base64|cp|scp|sftp|rsync)\b/i;
+
+// Tree-scan mode (no toolName): prose mentions must pass, so a bare verb is
+// not enough — require a read SINK. Code sink: read-call with a QUOTED
+// credential path on the same line (exfil code; prose quotes no parens).
+const READ_SINK_CALL_RE =
+  /\b(?:readFileSync|readFile|createReadStream|openSync|fs\.open|open|read|load|cat|fetch|loadFile|readTextFile|Deno\.readTextFile)\s*\(/;
+// Shell sink: read command + credential path, executable files only (docs
+// showing the attack as an example pass at tree level; live execution is
+// gated by toolName=bash through the gate).
+const SHELL_READ_RE =
+  /(?:^|[;&|]\s*|&&\s*)(?:sudo\s+)?(cat|less|more|head|tail|open|code|cursor|bat|grep|rg|ag|ack|strings|xxd|od|base64|cp|scp|sftp|rsync)\s+[^\n]*$/;
+
+function isCredentialPath(text: string): { hit: boolean; label?: string; match?: string; index?: number } {
   // .env.example is explicitly safe — strip before check to avoid FP
   // We still want .env matching to fire, so skip .env.example as evidence
   for (const { re, label } of CREDENTIAL_PATH_RES) {
@@ -55,16 +71,9 @@ function isCredentialPath(text: string): { hit: boolean; label?: string; match?:
         if (/\.env\.example\b/.test(snippet)) continue;
       }
     }
-    return { hit: true, label, match: m[0].trim().slice(0, 200) };
+    return { hit: true, label, match: m[0].trim().slice(0, 200), index: m.index ?? 0 };
   }
   return { hit: false };
-}
-
-function isReadLike(toolName: string | undefined, content: string, args: string | undefined): boolean {
-  if (toolName) return READ_LIKE_RE.test(toolName);
-  // No toolName — infer from content/args containing read verbs
-  const haystack = `${content ?? ""} ${args ?? ""}`;
-  return READ_LIKE_RE.test(haystack);
 }
 
 export function check(ctx: CheckCtx): RuleVerdict {
@@ -76,22 +85,54 @@ export function check(ctx: CheckCtx): RuleVerdict {
     return { id: SEC02_ID, verdict: "unknown", reason: "no content to inspect (unknown≠pass)" };
   }
 
-  // Fast path: no credential path mentioned → pass
-  // Need to handle .env.example suppression: if only .env.example, treat as pass
-  const cred = isCredentialPath(haystack);
-  if (!cred.hit) {
-    return { id: SEC02_ID, verdict: "pass", reason: "no credential path detected" };
+  // Gate mode (live tool call): args are action — path + read-like tool fails.
+  if (ctx.toolName) {
+    const cred = isCredentialPath(haystack);
+    if (!cred.hit) {
+      return { id: SEC02_ID, verdict: "pass", reason: "no credential path detected" };
+    }
+    if (!READ_LIKE_RE.test(ctx.toolName)) {
+      return { id: SEC02_ID, verdict: "pass", reason: "credential path mentioned but not a read-like tool — pass (mention ≠ exfiltration)" };
+    }
+    return {
+      id: SEC02_ID,
+      verdict: "fail",
+      reason: `credential-path hard-deny: ${cred.label} — blocked by SEC-02 (S-09 block, GEM-01)`,
+      evidence: cred.match,
+    };
   }
 
-  // Credential path present — require read-like tool to fail (per spec: fail when credential-path regex matches and tool is read-like)
-  if (!isReadLike(ctx.toolName, content, args)) {
-    return { id: SEC02_ID, verdict: "pass", reason: "credential path mentioned but not a read-like tool — pass (mention ≠ exfiltration)" };
+  // Tree mode: prose must pass — require a read SINK on the credential line.
+  // Sink detection runs with strings blanked (a read call inside a string is
+  // a fixture assertion, not a read); the path itself must stay quoted.
+  if (isProsePath(ctx.filePath)) {
+    return { id: SEC02_ID, verdict: "pass", reason: "prose file — mentions are not reads (execution is gated live)" };
+  }
+  for (const rawLine of content.split("\n")) {
+    const line = liveCode(rawLine);
+    const cred = isCredentialPath(line);
+    if (!cred.hit || cred.index === undefined) continue;
+    const quoted = isQuotedAt(line, cred.index);
+    // Code sink: read-call with a quoted credential path (exfil code).
+    if (quoted && READ_SINK_CALL_RE.test(stripStrings(line))) {
+      return {
+        id: SEC02_ID,
+        verdict: "fail",
+        reason: `credential-path hard-deny: ${cred.label} read in code — blocked by SEC-02 (S-09 block, GEM-01)`,
+        evidence: rawLine.trim().slice(0, 200),
+      };
+    }
+    // Shell sink: read command + path, executable files only (docs showing
+    // the attack pass here; live execution is gated through the gate).
+    if (SHELL_READ_RE.test(line) && isExecutablePath(ctx.filePath)) {
+      return {
+        id: SEC02_ID,
+        verdict: "fail",
+        reason: `credential-path hard-deny: ${cred.label} read in shell — blocked by SEC-02 (S-09 block, GEM-01)`,
+        evidence: rawLine.trim().slice(0, 200),
+      };
+    }
   }
 
-  return {
-    id: SEC02_ID,
-    verdict: "fail",
-    reason: `credential-path hard-deny: ${cred.label} — blocked by SEC-02 (S-09 block, GEM-01)`,
-    evidence: cred.match,
-  };
+  return { id: SEC02_ID, verdict: "pass", reason: "no credential-path read sink detected" };
 }

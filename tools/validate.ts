@@ -76,7 +76,8 @@ const UNGROUNDED_PHRASES: RegExp[] = [
 const TOOL_SIGNAL_RE =
   /\b(tool signal|run\s+\S+|check with|verifier|diagnosis artefact|executable check|trust ladder)\b/i;
 
-function lintSkillText(skillPath: string, content: string): Problem[] {
+/** Exported for tests + bench harness (pure: path is label-only). */
+export function lintSkillText(skillPath: string, content: string): Problem[] {
   const problems: Problem[] = [];
   for (const re of UNGROUNDED_PHRASES) {
     if (re.test(content)) {

@@ -6,8 +6,9 @@
  * Sources: 04 A-15 (checkpoint before multi-file edits; fence undo), 05 A-06/A-07 (gated turbo).
  */
 
-import { execSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { execSync, execFileSync } from "node:child_process";
+import { existsSync, appendFileSync } from "node:fs";
+import { join } from "node:path";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -56,6 +57,30 @@ function git(cwd: string, cmd: string): string {
   return execSync(`git ${cmd}`, { cwd, encoding: "utf-8" }).trim();
 }
 
+/** Shell-free git invocation for anything carrying variables (no injection). */
+function gitArgs(cwd: string, args: string[]): string {
+  return execFileSync("git", args, { cwd, encoding: "utf-8" }).trim();
+}
+
+function tryGitArgs(cwd: string, args: string[]): string | null {
+  try {
+    return execFileSync("git", args, { cwd, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    return null;
+  }
+}
+
+/** Fence actor identity — checkpoint/undo commits never depend on user gitconfig. */
+const FENCE_IDENTITY = ["-c", "user.name=vibe-fence", "-c", "user.email=fence@local", "-c", "commit.gpgsign=false"];
+
+function logEvent(projectRoot: string, event: Record<string, unknown>): void {
+  try {
+    appendFileSync(join(projectRoot, ".fence", "events.ndjson"), JSON.stringify({ at: new Date().toISOString(), ...event }) + "\n", "utf-8");
+  } catch {
+    // Best-effort: fixtures and foreign trees may lack .fence/
+  }
+}
+
 function hasChanges(cwd: string): boolean {
   const out = git(cwd, "status --porcelain");
   return out.length > 0;
@@ -86,8 +111,7 @@ export function checkpoint(opts: CheckpointOptions): CheckpointResult {
   const cwd = opts.projectRoot ?? process.cwd();
 
   if (!isGitRepo(cwd)) {
-    // TODO: decide — should checkpoint init a repo if none exists? Or nudge to run `git init`?
-    return { committed: false, commitHash: null, message: "not a git repo — skipping checkpoint" };
+    return { committed: false, commitHash: null, message: "not a git repo — run `git init` first, then checkpoint" };
   }
 
   if (!hasChanges(cwd)) {
@@ -95,16 +119,19 @@ export function checkpoint(opts: CheckpointOptions): CheckpointResult {
   }
 
   const message = `${CHECKPOINT_PREFIX} [${opts.action}]`;
-  // TODO: stage only fence-relevant changes? Currently stages all tracked modifications.
-  // TODO: consider `git stash push -m "checkpoint: [action]" --keep-index` alternative for uncommitted WIP
-  // TODO: set author as fence actor — `git -c user.name="vibe-fence" -c user.email="fence@local"` ?
-
-  git(cwd, "add -A"); // TODO: respect .gitignore; consider -u vs -A per includeUntracked flag
-  git(cwd, `commit -m "${message.replace(/"/g, '\\"')}" --no-verify`);
+  // Tracked-only by default (untracked WIP stays out of the snapshot); -A only on request.
+  // Both respect .gitignore.
+  gitArgs(cwd, opts.includeUntracked ? ["add", "-A"] : ["add", "-u"]);
+  // Nothing stageable (e.g. only-untracked tree in tracked-only mode) → no-op, not an error.
+  if (tryGitArgs(cwd, ["diff", "--cached", "--quiet", "--"]) !== null) {
+    return { committed: false, commitHash: null, message: "nothing to snapshot — no staged changes (untracked files need --include-untracked)" };
+  }
+  // --no-verify is deliberate: a checkpoint captures WIP as-is (it may hold a
+  // leak the fence is about to fix). Enforcement runs at real commits + `check`.
+  gitArgs(cwd, [...FENCE_IDENTITY, "commit", "-m", message, "--no-verify"]);
   const hash = git(cwd, "rev-parse HEAD");
 
-  // TODO: log to .fence/events.ndjson — { type: "checkpoint", action, hash, at }
-  // TODO: enforce ≤3 gates/session budget — check .fence/state/gates.json before committing
+  logEvent(cwd, { type: "checkpoint", action: opts.action, hash });
 
   return { committed: true, commitHash: hash, message };
 }
@@ -118,10 +145,13 @@ export function checkpoint(opts: CheckpointOptions): CheckpointResult {
  * S-10 — fence undo spec: clean revert without detached HEAD.
  *
  * Strategy:
- * - Find last N commits with CHECKPOINT_PREFIX in message.
- * - If not pushed (no upstream or ahead of upstream) → `git reset --soft HEAD~N`.
- * - If pushed → `git revert --no-commit HEAD~N..HEAD` + commit (no force-push).
- * - Never detaches HEAD; never force-pushes.
+ * - Find last N commits with CHECKPOINT_PREFIX in message (fail closed if none).
+ * - Targets unpushed + contiguous at tip → `git reset --soft <parent-of-oldest>`
+ *   (work preserved as staged changes; untracked files untouched).
+ * - Otherwise (pushed, or interleaved with user commits) → `git revert
+ *   --no-commit` each checkpoint oldest-first + one revert commit. Requires a
+ *   clean worktree; aborts without changes on conflict.
+ * - Never detaches HEAD; never force-pushes; never pushes at all.
  */
 export function fenceUndo(opts: UndoOptions = {}): CheckpointResult {
   const cwd = opts.projectRoot ?? process.cwd();
@@ -130,25 +160,57 @@ export function fenceUndo(opts: UndoOptions = {}): CheckpointResult {
   if (!isGitRepo(cwd)) {
     throw new Error("not a git repo — cannot undo");
   }
-
-  // Find checkpoint commits
-  const log = git(cwd, `log --oneline --grep="^${CHECKPOINT_PREFIX}" -n ${steps}`);
-  if (!log) {
-    // TODO: emit actionable error — "no checkpoint commits found — nothing to undo"
-    throw new Error("no checkpoint commits found — nothing to undo");
+  if (!Number.isInteger(steps) || steps < 1) {
+    throw new Error(`invalid steps "${steps}" — want a positive integer`);
   }
 
-  const hashes = log.split("\n").map((l) => l.split(" ")[0]!);
-  void hashes;
+  // Newest-first checkpoint hashes (capped scan keeps this cheap on big repos).
+  const log = tryGitArgs(cwd, ["log", "--format=%H", `--grep=^${CHECKPOINT_PREFIX}`, "-n", String(steps)]);
+  const targets = (log ?? "").split("\n").map((h) => h.trim()).filter(Boolean);
+  if (targets.length === 0) {
+    throw new Error("no checkpoint commits found — nothing to undo");
+  }
+  if (targets.length < steps) {
+    throw new Error(`only ${targets.length} checkpoint commit(s) found — asked for ${steps}; refusing partial undo`);
+  }
+  const oldest = targets[targets.length - 1]!;
 
-  // TODO: detect pushed vs unpushed:
-  //   const upstream = git(cwd, "rev-parse --abbrev-ref --symbolic-full-name @{u}" 2>/dev/null || "");
-  //   if pushed → revert; else → reset --soft
-  // TODO: implement actual undo — currently stub
-  // TODO: log undo to .fence/events.ndjson — { type: "undo", steps, hashes, at }
+  // Contiguous at tip? Walk down from HEAD while subjects carry the prefix.
+  const tipSubjects = (tryGitArgs(cwd, ["log", "--format=%s", "-n", String(steps + 1)]) ?? "").split("\n");
+  const contiguous = tipSubjects.slice(0, steps).every((s) => s.startsWith(CHECKPOINT_PREFIX));
 
-  // Placeholder — real impl needs push detection + revert/reset branching
-  return { committed: false, commitHash: null, message: "TODO: implement fence undo — see spec above" };
+  // Pushed? The oldest target reachable from upstream means history is public.
+  const upstream = tryGitArgs(cwd, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]);
+  let pushed = false;
+  if (upstream) {
+    pushed = tryGitArgs(cwd, ["merge-base", "--is-ancestor", oldest, "@{u}", "--"]) !== null;
+  }
+
+  const parent = tryGitArgs(cwd, ["rev-parse", `${oldest}^`]);
+
+  if (!pushed && contiguous && parent) {
+    gitArgs(cwd, ["reset", "--soft", parent]);
+    const head = git(cwd, "rev-parse HEAD");
+    logEvent(cwd, { type: "undo", mode: "reset--soft", steps, hashes: targets });
+    return { committed: false, commitHash: head, message: `undone ${steps} checkpoint(s) via reset --soft — work preserved as staged changes` };
+  }
+
+  // Revert path — needs a clean tree so a conflict can't strand half-applied state.
+  if (hasChanges(cwd)) {
+    throw new Error("uncommitted changes present — commit, stash, or checkpoint first, then undo");
+  }
+  try {
+    for (const h of [...targets].reverse()) {
+      gitArgs(cwd, ["revert", "--no-commit", h]);
+    }
+    gitArgs(cwd, [...FENCE_IDENTITY, "commit", "-m", `revert: fence undo (${steps} checkpoint${steps === 1 ? "" : "s"})`, "--no-verify"]);
+  } catch (e) {
+    tryGitArgs(cwd, ["revert", "--abort"]);
+    throw new Error(`undo conflicted and was aborted without changes — resolve manually (${(e as Error).message})`);
+  }
+  const head = git(cwd, "rev-parse HEAD");
+  logEvent(cwd, { type: "undo", mode: "revert", steps, hashes: targets });
+  return { committed: true, commitHash: head, message: `undone ${steps} checkpoint(s) via revert commit ${head.slice(0, 7)}` };
 }
 
 // ---------------------------------------------------------------------------

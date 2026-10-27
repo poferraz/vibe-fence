@@ -9,6 +9,8 @@ Compare views: https://github.com/poferraz/vibe-fence/compare/
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-10-27
+
 ### Added
 - Track for `v0.2.0` — publishable `package.json`, governance files, CI, README resume.
 - `vibe-fence init --profile muse` preset (Claude adapter — demo-hero path; explicit `--adapters` overrides it).
@@ -48,5 +50,6 @@ First public scaffold — M1–M4 land on `main`.
 ### Research
 - Phase 0 locked: `docs/research/synthesis/FINAL-v4.md` (221 lines, 15 settled S-01…S-15+ S-06a/S-11a, 10 contested C-01…C-10+3) + `SOURCES.md` (186 entries) + deep-read vault (14 docs, 4 clusters)
 
-[Unreleased]: https://github.com/poferraz/vibe-fence/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/poferraz/vibe-fence/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/poferraz/vibe-fence/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/poferraz/vibe-fence/releases/tag/v0.1.0

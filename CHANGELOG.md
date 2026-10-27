@@ -19,6 +19,8 @@ Compare views: https://github.com/poferraz/vibe-fence/compare/
 - `vibe-fence check` skips 0-byte files instead of reporting per-rule unknowns (L7) — repo self-scan drops from 45 unknowns to 0.
 - Truth pass (C4/C8/C13/L9/L11/L13): README corrected (`muse-wonder-1.0`, `web`/Cordis/`encrypted` dropped or hedged, honest rule counts, npm 404 hedged, REHEARSAL refs 6/8 + 2 open); all 4 `SKILL.md` Usage blocks teach real subcommands only (enforced by `src/skills/skills.test.ts`); STATUS dates relabeled to Oct 26; REHEARSAL verdicts corrected to 6/8 + 2 open (T2/T8); 13 MB `.docx` blobs removed (`.md` retained); `severity-policy.json` labeled aspirational.
 - Removed the `npx vibe-fence tour` receipt from install output (`tour` stays an unadvertised stub, exit 2).
+- Corpus v2 (C5/L8): deduped the 4 verbatim unit-test overlaps with behavior-preserving payloads; fixed the "independently authored" note; added TOKEN-shaped positives + benign TOKEN must-pass cases with the `TOKEN` keyword extension to SEC-01; hardened `compareBaseline` with coverage floors (deleted positives/negatives fail `--check`) + unknown ceiling, with unknowns surfaced in the `--check` line. Baseline regenerated (26 TP / 23 TN, 1 unknown pinned, 0 misses).
+- Committed the adversarial sweep as `tests/adversarial/sweep.test.ts` with fresh S-labels (C12 — was an unreproducible `/tmp` script with drifted T-numbers).
 
 ## [0.1.0] — 2026-10-21
 

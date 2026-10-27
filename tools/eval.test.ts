@@ -62,12 +62,25 @@ describe("runEval scoring", () => {
 });
 
 describe("compareBaseline", () => {
-  test("perfect run matches committed (clean) baseline", () => {
+  test("partial runs trip coverage floors — deleted positives fail --check (C5)", () => {
+    // 1 positive / 1 negative where the baseline pins more: ratios are 1.000
+    // but the corpus shrank, so --check must fail.
     const report = runEval([
       { rule: "GIT-01", id: "t1", content: "git push -f origin main", toolName: "bash", expect: "fail" },
       { rule: "GIT-01", id: "f1", content: "git pull --rebase", toolName: "bash", expect: "pass" },
     ]);
-    expect(compareBaseline(report)).toEqual([]);
+    expect(report.totals.precision).toBe(1);
+    expect(report.totals.recall).toBe(1);
+    const out = compareBaseline(report);
+    expect(out.some((l) => l.includes("coverage floor"))).toBe(true);
+  });
+
+  test("unknowns above baseline trip the unknown ceiling", () => {
+    const report = runEval(loadCorpus());
+    report.rules[0]!.unknowns += 5;
+    report.totals.unknowns += 5;
+    const out = compareBaseline(report);
+    expect(out.some((l) => l.includes("unknown ceiling"))).toBe(true);
   });
 
   test("flags a recall regression with the rule name", () => {

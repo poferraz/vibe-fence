@@ -26,6 +26,20 @@ describe("SEC-01", () => {
     }
   });
 
+  it("fails on TOKEN-shaped pairings (L8 recall hole)", () => {
+    for (const content of [
+      "const t = process.env.NEXT_PUBLIC_STRIPE_TOKEN;",
+      "VITE_SESSION_TOKEN=live_9x8",
+    ]) {
+      expect(check({ content }).verdict).toBe("fail");
+    }
+  });
+
+  it("passes on placeholder TOKEN values (template, not a leak)", () => {
+    const v = check({ content: "NEXT_PUBLIC_API_TOKEN=your-token-here", filePath: ".env" });
+    expect(v.verdict).toBe("pass");
+  });
+
   it("passes on benign public vars without secret keywords", () => {
     for (const content of [
       "const url = process.env.NEXT_PUBLIC_API_URL;",

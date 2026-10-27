@@ -12,6 +12,11 @@
  * Usage:
  *   bun run tools/eval.ts [--rule SEC-01] [--check] [--write-baseline] [--json]
  *   bun run tools/eval.ts --redteam 10 --rule NET-01 --model <id> [--provider fireworks|custom] [--base-url U]
+ *
+ * --check is a FULL-run gate: ratios must not drop, case counts must not
+ * shrink (coverage floors — deleting positives fails even at 1.000), and
+ * unknowns must not grow (unknown ceiling). Partial --rule runs trip the
+ * floors by design — gate the full corpus, inspect subsets without --check.
  */
 import { execSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -149,6 +154,8 @@ export function compareBaseline(report: EvalReport): string[] {
   if (!existsSync(BASELINE_PATH)) {
     throw new Error("no baseline — run with --write-baseline first (review the scores before committing it)");
   }
+  const positives = (t: { tp: number; fn: number }): number => t.tp + t.fn;
+  const negatives = (t: { tn: number; fp: number }): number => t.tn + t.fp;
   const base = JSON.parse(readFileSync(BASELINE_PATH, "utf-8") as string) as EvalReport;
   const regressions: string[] = [];
   const byRule = new Map(base.rules.map((r) => [r.rule, r]));
@@ -160,12 +167,36 @@ export function compareBaseline(report: EvalReport): string[] {
     }
     if (r.precision < b.precision) regressions.push(`${r.rule}: precision ${b.precision.toFixed(3)} → ${r.precision.toFixed(3)}`);
     if (r.recall < b.recall) regressions.push(`${r.rule}: recall ${b.recall.toFixed(3)} → ${r.recall.toFixed(3)}`);
+    // Coverage floors (C5 amplifier): ratios alone pass a gutted corpus
+    // (0/0→1), so case counts must never shrink below the baseline.
+    if (positives(r) < positives(b)) {
+      regressions.push(`${r.rule}: positives ${positives(b)} → ${positives(r)} (coverage floor — deleted positives fail --check)`);
+    }
+    if (negatives(r) < negatives(b)) {
+      regressions.push(`${r.rule}: negatives ${negatives(b)} → ${negatives(r)} (coverage floor — deleted negatives fail --check)`);
+    }
+    // Unknown ceiling: unknowns must not grow silently (PRV-09 once hid
+    // 1 unknown inside a 1.000/1.000 headline).
+    if (r.unknowns > b.unknowns) {
+      regressions.push(`${r.rule}: unknowns ${b.unknowns} → ${r.unknowns} (unknown ceiling)`);
+    }
   }
   if (report.totals.precision < base.totals.precision) {
     regressions.push(`TOTAL precision ${base.totals.precision.toFixed(3)} → ${report.totals.precision.toFixed(3)}`);
   }
   if (report.totals.recall < base.totals.recall) {
     regressions.push(`TOTAL recall ${base.totals.recall.toFixed(3)} → ${report.totals.recall.toFixed(3)}`);
+  }
+  // Totals floors catch a rule dropped from the report entirely (the per-rule
+  // loop above only sees rules present in the run).
+  if (positives(report.totals) < positives(base.totals)) {
+    regressions.push(`TOTAL positives ${positives(base.totals)} → ${positives(report.totals)} (coverage floor)`);
+  }
+  if (negatives(report.totals) < negatives(base.totals)) {
+    regressions.push(`TOTAL negatives ${negatives(base.totals)} → ${negatives(report.totals)} (coverage floor)`);
+  }
+  if (report.totals.unknowns > base.totals.unknowns) {
+    regressions.push(`TOTAL unknowns ${base.totals.unknowns} → ${report.totals.unknowns} (unknown ceiling)`);
   }
   return regressions;
 }
@@ -316,7 +347,8 @@ async function main(argv: string[]): Promise<number> {
       for (const r of regressions) console.log(`  ${r}`);
       return 1;
     }
-    console.log("\nno regressions vs baseline");
+    const t = report.totals;
+    console.log(`\nno regressions vs baseline (${t.unknowns} unknown, ${t.tp + t.fn} positives / ${t.tn + t.fp} negatives)`);
   }
   return 0;
 }

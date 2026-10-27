@@ -4,7 +4,7 @@
  * `NEXT_PUBLIC_*` / `VITE_*` / `PUBLIC_*` / `EXPO_PUBLIC_*` values are baked
  * into browser JS — a secret under a public prefix is published, not stored.
  * Zero-FP design (04 A-01): fail only when a public prefix pairs with a
- * secret-shaped keyword (SECRET, SERVICE_ROLE, PRIVATE). A bare public var
+ * secret-shaped keyword (SECRET, SERVICE_ROLE, PRIVATE, TOKEN). A bare public var
  * (NEXT_PUBLIC_API_URL) is pass. Placeholder values, `.env.example`, and
  * markdown docs are suppressed (mention ≠ leak).
  * Severity: block. Rationale for skipping the warn-first two-phase
@@ -41,7 +41,7 @@ export interface RuleVerdict {
 const PUBLIC_PREFIX_RE = /\b(?:NEXT_PUBLIC_|VITE_|EXPO_PUBLIC_|PUBLIC_)([A-Z0-9_]+)/g;
 
 // Secret-shaped keywords that must never sit under a public prefix.
-const SECRET_KEYWORD_RE = /(?:SECRET|SERVICE_ROLE|PRIVATE)/;
+const SECRET_KEYWORD_RE = /(?:SECRET|SERVICE_ROLE|PRIVATE|TOKEN)/;
 
 // Placeholder values are docs/templates, not leaks.
 const PLACEHOLDER_RE =

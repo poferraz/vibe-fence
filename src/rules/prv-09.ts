@@ -50,6 +50,9 @@ const PII_PATTERNS: Array<{ re: RegExp; label: string }> = [
   { re: /\+\d{1,3}[-.\s]\d{4}[-.\s]\d{6}\b/, label: "phone-intl" },
 ];
 
+/** Card context: the line must talk about cards for a digit run to count. */
+const CARD_CONTEXT_RE = /\b(card|pan|cvc|cvv|ccnum|cc_num|cardnumber|card_number|expir)/i;
+
 /** Luhn checksum: separates real card numbers from coincidental digit runs. */
 function luhnValid(candidate: string): boolean {
   const d = candidate.replace(/\D/g, "");
@@ -117,16 +120,20 @@ export function check(ctx: CheckCtx): RuleVerdict {
   }
 
   for (const { re, label } of PII_PATTERNS) {
-    // Card-like digit runs fire only when Luhn-valid (strong context).
+    // Card-like digit runs fire only when Luhn-valid AND beside card
+    // context (a 13-digit timestamp can be Luhn-valid by chance).
     if (label.startsWith("card-like")) {
-      const candidates = src.match(new RegExp(re.source, "g")) ?? [];
-      const hit = candidates.find((c) => luhnValid(c));
+      const hit = src.split("\n").find((line) => {
+        if (!CARD_CONTEXT_RE.test(line)) return false;
+        const candidates = line.match(new RegExp(re.source, "g")) ?? [];
+        return candidates.some((c) => luhnValid(c));
+      });
       if (!hit) continue;
       return {
         id: PRV09_ID,
         verdict: "fail",
         reason: "fixture contains a Luhn-valid card number — replace with synthetic PII (see tools/anonymize.ts GEM-06)",
-        evidence: hit.slice(0, 120),
+        evidence: hit.trim().slice(0, 120),
       };
     }
     const m = src.match(re);

@@ -41,7 +41,15 @@ import { isExecutablePath, isProsePath, isQuotedAt, liveCode, stripStrings } fro
 
 // Read-like tools — only these trigger hard-deny (write/emit of credential content also covered via read→exfil).
 // Covers display (cat/pagers), search (grep family), dump/encode (strings/xxd/od/base64),
-// and copy-out (cp/scp/sftp/rsync) — all exfiltrate file bytes to the caller.
+// copy-out (cp/scp/sftp/rsync) and archive-out (tar/zip/7z) — all exfiltrate
+// file bytes to the caller.
+/** Archive exclusion operands are not reads: `tar --exclude=.env ...`
+ * and `zip ... -x .env` never touch the excluded file. Strip before
+ * credential-path classification (review finding). */
+const EXCLUDE_OPERAND_RE = /--exclude(?:=[^\s]+|\s+[^\s]+)?|--exclude-from[=\s][^\s]+|(?:^|\s)-x\s+[^\s]+/g;
+function stripExclusions(cmd: string): string {
+  return cmd.replace(EXCLUDE_OPERAND_RE, " ");
+}
 const READ_LIKE_RE =
   /\b(read|open|cat|view|show|load|fetch|get|grep|rg|ag|ack|head|tail|less|more|strings|xxd|od|base64|cp|scp|sftp|rsync|tar|zip|7z)\b/i;
 
@@ -79,7 +87,7 @@ function isCredentialPath(text: string): { hit: boolean; label?: string; match?:
 export function check(ctx: CheckCtx): RuleVerdict {
   const content = ctx.content ?? "";
   const args = ctx.args ?? "";
-  const haystack = `${content} ${args}`;
+  const haystack = stripExclusions(`${content} ${args}`);
 
   if (!haystack.trim()) {
     return { id: SEC02_ID, verdict: "unknown", reason: "no content to inspect (unknown≠pass)" };
@@ -109,7 +117,7 @@ export function check(ctx: CheckCtx): RuleVerdict {
     return { id: SEC02_ID, verdict: "pass", reason: "prose file — mentions are not reads (execution is gated live)" };
   }
   for (const rawLine of content.split("\n")) {
-    const line = liveCode(rawLine);
+    const line = stripExclusions(liveCode(rawLine));
     const cred = isCredentialPath(line);
     if (!cred.hit || cred.index === undefined) continue;
     const quoted = isQuotedAt(line, cred.index);

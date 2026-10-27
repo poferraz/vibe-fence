@@ -32,14 +32,35 @@ export interface RuleVerdict {
 
 const FORBIDDEN_RM_BARE = new Set(["/", "~", "$HOME", "/root", ".git", "./.git", ".."]);
 
+/** Normalize a target lexically (resolve . and .. without touching the
+ * filesystem) so /var/tmp/../../etc can't dodge the carve-out boundary. */
+function normalizeTarget(p: string): string {
+  const absolute = p.startsWith("/");
+  const parts: string[] = [];
+  for (const seg of p.split("/")) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") {
+      if (parts.length > 0) parts.pop();
+      continue;
+    }
+    parts.push(seg);
+  }
+  return (absolute ? "/" : "") + parts.join("/");
+}
+
 /** System trees: wiping the root itself or anything under it is never
- * routine. /var/tmp is the carve-out (build caches live there). */
-const PROTECTED_ROOTS = ["/etc", "/usr", "/bin", "/sbin", "/boot", "/sys", "/proc", "/root", "/home", "/var"];
+ * routine. /var/tmp is the carve-out (build caches live there).
+ * /home is depth-capped: wiping a whole home is catastrophic, but deep
+ * paths like /home/alice/app/dist are routine project cleanup. */
+const PROTECTED_ROOTS = ["/etc", "/usr", "/bin", "/sbin", "/boot", "/sys", "/proc", "/root", "/var"];
 function isProtectedRoot(bare: string): boolean {
-  if (bare === "/") return true;
+  const target = normalizeTarget(bare);
+  if (target === "/") return true;
+  if (target === "/home") return true;
+  if (/^\/home\/[^/]+$/.test(target)) return true; // a whole home, not its projects
   for (const r of PROTECTED_ROOTS) {
-    if (bare === r) return true;
-    if (bare.startsWith(r + "/") && !bare.startsWith("/var/tmp/")) return true;
+    if (target === r) return true;
+    if (target.startsWith(r + "/") && !target.startsWith("/var/tmp/")) return true;
   }
   return false;
 }

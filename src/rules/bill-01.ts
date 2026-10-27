@@ -28,10 +28,15 @@ export interface RuleVerdict {
   evidence?: string;
 }
 
-/** Loop keywords — for / while / forEach / .map / setInterval / for..of / for..in.
+/** Statement loops — for / while / forEach / for..of / for..in (windowed
+ * proximity to the billable call, as before). */
+const STMT_LOOP_RE = /\b(for\s*\(|while\s*\(|\.forEach\s*\(|for\s*\(\s*(?:let|const|var)\s+\w+\s+of\b|for\s*\(\s*(?:let|const|var)\s+\w+\s+in\b)/;
+/** Callback loops — .map / setInterval. A bare same-file call elsewhere is
+ * not iteration: these require the billable call on the SAME line, or a
+ * one-off fetch next to a local .map warns (review finding).
  * Bare setTimeout is deliberately absent: a one-shot delayed call is a
  * debounce, not a loop (recursive polls surface via setInterval twins). */
-const LOOP_RE = /\b(for\s*\(|while\s*\(|\.forEach\s*\(|\.map\s*\(|setInterval\s*\(|for\s*\(\s*(?:let|const|var)\s+\w+\s+of\b|for\s*\(\s*(?:let|const|var)\s+\w+\s+in\b)/;
+const CALLBACK_LOOP_RE = /\.(?:map)\s*\(|setInterval\s*\(/;
 
 /** Service/billable call hints — vendor names + generic API-call shapes */
 const SERVICE_CALL_RE =
@@ -51,7 +56,7 @@ export function check(ctx: CheckCtx): RuleVerdict {
   }
 
   // Quick exit: no loop at all
-  if (!LOOP_RE.test(src)) {
+  if (!STMT_LOOP_RE.test(src) && !CALLBACK_LOOP_RE.test(src)) {
     return { id: BILL01_ID, verdict: "pass", reason: "no loop detected" };
   }
 
@@ -72,7 +77,13 @@ export function check(ctx: CheckCtx): RuleVerdict {
   // is a fixture assertion, not a loop.
   const lines = src.split("\n").map((l) => stripStrings(liveCode(l)));
   for (let loopIdx = 0; loopIdx < lines.length; loopIdx++) {
-    if (!LOOP_RE.test(lines[loopIdx] ?? "")) continue;
+    const line = lines[loopIdx] ?? "";
+    const isStmt = STMT_LOOP_RE.test(line);
+    const isCallback = !isStmt && CALLBACK_LOOP_RE.test(line);
+    if (!isStmt && !isCallback) continue;
+    // Callback loops (.map/setInterval) must share the line with the
+    // billable call — a one-off fetch next to a local .map is not a loop.
+    if (isCallback && !SERVICE_CALL_RE.test(line)) continue;
     const near = lines.slice(Math.max(0, loopIdx - 5), loopIdx + 6);
     if (!near.some((l) => SERVICE_CALL_RE.test(l))) continue;
     const wider = lines.slice(Math.max(0, loopIdx - 10), loopIdx + 11);

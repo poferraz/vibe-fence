@@ -44,9 +44,45 @@ function findEvidence(src: string): string | undefined {
   return undefined;
 }
 
-/** Shared pipe-to-shell detector (also used by SUP-01's scripts scan). */
+/** Execution sinks that re-arm detection inside quoted text:
+ * node -e "exec('curl|sh')" executes the payload despite the quotes. */
+const EXEC_SINK_RE = /\b(?:node\s+-e|python3?\s+-c|sh\s+-c|bash\s+-c|exec\s*\(|eval\s*\(|spawn\s*\()/;
+
+/** Shared pipe-to-shell detector (also used by SUP-01's scripts scan).
+ * Raw-text by contract: package.json scripts ARE quoted strings, so
+ * callers in shell context must strip literals first (see below). */
 export function hasPipeToShell(src: string): boolean {
   return CURL_PIPE_RE.test(src) || WGET_PIPE_RE.test(src) || COMPACT_PIPE_RE.test(src);
+}
+
+/** Drop single/double-quoted spans and #-comments so instructional text
+ * ("do not run curl X | sh") and comments don't read as pipelines.
+ * Token separators survive: curl "https://x/i" | sh still matches. */
+export function stripShellLiterals(src: string): string {
+  return src
+    .split("\n")
+    .map((line) => {
+      let out = "";
+      let quote: string | null = null;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i]!;
+        if (quote) {
+          if (ch === quote) {
+            quote = null;
+            out += " ";
+          }
+          continue;
+        }
+        if (ch === "'" || ch === '"') {
+          quote = ch;
+          continue;
+        }
+        if (ch === "#") break;
+        out += ch;
+      }
+      return out;
+    })
+    .join("\n");
 }
 
 function hasPipe(src: string): boolean {
@@ -60,14 +96,20 @@ export function check(ctx: CheckCtx): RuleVerdict {
     return { id: NET01_ID, verdict: "unknown", reason: "no content to inspect (unknown≠pass)" };
   }
 
+  // Quoted spans and comments are not pipelines ("do not run curl X |
+  // sh" must pass) — strip before matching, except where an execution
+  // sink makes the quoted text the payload (exec("curl|sh") still fires).
+  const code = stripShellLiterals(src);
+  const reArmed = EXEC_SINK_RE.test(src);
+
   // Gate mode (live tool call): arg content is action — any match fails.
   if (ctx.toolName) {
-    if (hasPipe(src)) {
+    if (hasPipe(code) || (reArmed && hasPipe(src))) {
       return {
         id: NET01_ID,
         verdict: "fail",
         reason: "curl/wget piped to shell (curl|sh / wget|bash) — piped remote execution is hard-blocked (S-09)",
-        evidence: findEvidence(src),
+        evidence: findEvidence(code),
       };
     }
     return { id: NET01_ID, verdict: "pass", reason: "no curl|sh / wget pipe-to-shell pattern detected" };
@@ -76,7 +118,8 @@ export function check(ctx: CheckCtx): RuleVerdict {
   // Tree mode: docs discussing the attack must pass — fire only where the
   // payload would execute: executable files, or exec-sink lines in code.
   // Prose skips sink analysis entirely (execution is gated live).
-  const scopes: string[] = isExecutablePath(ctx.filePath) ? [src] : [];
+  const scopes: string[] = isExecutablePath(ctx.filePath) ? [code] : [];
+  // Exec-sink lines stay raw: inside exec("...") the quoted text IS the payload.
   if (!isProsePath(ctx.filePath)) scopes.push(...sinkLines(src));
   for (const scope of scopes) {
     if (hasPipe(scope)) {

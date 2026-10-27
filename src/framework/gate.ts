@@ -20,7 +20,7 @@ import { check as checkCmd01, CMD01_ID, CMD01_SEVERITY } from "../rules/cmd-01.j
 import { check as checkGit01, GIT01_ID, GIT01_SEVERITY } from "../rules/git-01.js";
 import { check as checkSup01, SUP01_ID, SUP01_SEVERITY } from "../rules/sup-01.js";
 import { check as checkDb01, DB01_ID, DB01_SEVERITY } from "../rules/db-01.js";
-import { READ_LIKE_TOOL_RE as READ_LIKE, WRITE_LIKE_TOOL_RE as WRITE_LIKE, SHELL_LIKE_TOOL_RE as SHELL_LIKE } from "../rules/context.js";
+import { READ_LIKE_TOOL_RE as READ_LIKE, SHELL_LIKE_TOOL_RE as SHELL_LIKE, isWriteLikeTool } from "../rules/context.js";
 
 export interface ToolCall {
   tool: string;
@@ -74,22 +74,52 @@ function shellVerb(command: string): string {
   return slash === -1 ? first : first.slice(slash + 1);
 }
 
+const INTERPRETER_BASENAMES = new Set(["sh", "bash", "zsh", "source", "."]);
+
+/**
+ * Resolve the script a shell command executes (C10). Direct execution
+ * (`./evil.sh`) names it in the first token; interpreter invocation
+ * (`bash ./evil.sh`) names it in the first non-flag arg. Returns null for
+ * PATH commands, `-c` inline scripts (command text already audited), and
+ * flag-only invocations.
+ */
+function scriptPathFromCommand(command: string): string | null {
+  const tokens = command.trim().split(/\s+/).filter(Boolean);
+  const first = tokens[0] ?? "";
+  if (!first) return null;
+  const base = first.includes("/") ? first.slice(first.lastIndexOf("/") + 1) : first;
+  if (!INTERPRETER_BASENAMES.has(base)) {
+    return first.includes("/") ? first : null; // bare word → PATH command, not a file
+  }
+  const args = tokens.slice(1);
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i]!;
+    if (t === "-c" || t === "--command") return null;
+    if (t === "-o") {
+      i++; // value-taking flag — skip its value (pipefail, vi, …)
+      continue;
+    }
+    if (t.startsWith("-") && t.length > 1) continue; // flags, incl. bundled (-eux)
+    return t;
+  }
+  return null;
+}
+
 /**
  * When bash executes a LOCAL script, audit the script body too — otherwise a
  * payload laundered through a committed file bypasses command-text rules.
  * PATH commands, missing files, and oversize/binary files are skipped
  * (audited at commit time by `check` instead).
  */
-function localScriptBody(command: string, projectRoot: string | undefined): string | null {
+function localScriptBody(command: string, projectRoot: string | undefined): { body: string; script: string } | null {
   if (!projectRoot) return null;
-  const first = command.trim().split(/\s+/, 1)[0] ?? "";
-  if (!first || !first.includes("/")) return null; // bare word → PATH command, not a file
-  if (first.includes("\0")) return null;
-  const abs = resolve(projectRoot, first);
+  const script = scriptPathFromCommand(command);
+  if (!script || script.includes("\0")) return null;
+  const abs = resolve(projectRoot, script);
   try {
     const st = statSync(abs);
     if (!st.isFile() || st.size > MAX_CONTENT) return null;
-    return readFileSync(abs, "utf-8");
+    return { body: readFileSync(abs, "utf-8"), script };
   } catch {
     return null;
   }
@@ -114,7 +144,7 @@ export function evaluateToolCall(call: ToolCall): GateFinding[] {
     push(FS01_ID, FS01_SEVERITY, checkFs01({ filePath, projectRoot }));
   }
 
-  if (WRITE_LIKE.test(tool)) {
+  if (isWriteLikeTool(tool)) {
     const content = joinedStrings(args);
     push(SEC01_ID, SEC01_SEVERITY, checkSec01({ content, filePath, projectRoot }));
     push(DB01_ID, DB01_SEVERITY, checkDb01({ content, filePath, projectRoot }));
@@ -137,13 +167,13 @@ export function evaluateToolCall(call: ToolCall): GateFinding[] {
     push(SUP01_ID, SUP01_SEVERITY, checkSup01({ content: command, toolName: tool, projectRoot }));
     push(FS01_ID, FS01_SEVERITY, checkFs01({ content: command, toolName: tool, projectRoot }));
     // Local script execution: audit the body, same rules, attributed to the file.
-    const body = localScriptBody(command, projectRoot);
-    if (body) {
-      const first = command.trim().split(/\s+/, 1)[0] ?? "";
+    const local = localScriptBody(command, projectRoot);
+    if (local) {
+      const { body, script } = local;
       const f = (ruleId: string, severity: string, v: { verdict: string; reason: string; evidence?: string }): void => {
         if (v.verdict !== "fail") return;
         // Re-attribute: the payload is in the script, not the command line.
-        push(ruleId, severity, { verdict: v.verdict, reason: `${v.reason} [in ${first}]`, evidence: v.evidence });
+        push(ruleId, severity, { verdict: v.verdict, reason: `${v.reason} [in ${script}]`, evidence: v.evidence });
       };
       f(SEC02_ID, SEC02_SEVERITY, checkSec02({ content: body, toolName: "bash", projectRoot }));
       f(NET01_ID, NET01_SEVERITY, checkNet01({ content: body, toolName: "bash", projectRoot }));

@@ -59,8 +59,30 @@ export function isProsePath(filePath: string | undefined): boolean {
 
 /** Tool-name classes shared by the gate and path/command rules. */
 export const READ_LIKE_TOOL_RE = /^(read|view|open|cat|show|load)$/i;
-export const WRITE_LIKE_TOOL_RE = /^(write|edit|create|apply|patch|multiedit)$/i;
 export const SHELL_LIKE_TOOL_RE = /^(bash|shell|sh|exec|run|command)$/i;
+
+const WRITE_LIKE_TOKENS = new Set(["write", "edit", "create", "apply", "patch", "multiedit"]);
+
+/**
+ * Write-like tool names (L3): exact verbs plus the real-world family —
+ * apply_patch, edit_file, MultiEdit — via delimiter/camelCase token match.
+ * Unknown tools still pass (C-01); this only routes MORE names into the
+ * content rules, which still require a payload to block. Substring
+ * lookalikes (dispatch, credit) do NOT route — tokens must match whole.
+ */
+export function isWriteLikeTool(tool: string): boolean {
+  const lower = tool.toLowerCase();
+  if (WRITE_LIKE_TOKENS.has(lower)) return true;
+  // snake/kebab/space/colon-delimited tokens: apply_patch → [apply, patch]
+  for (const tok of lower.split(/[_\-:\s]+/)) {
+    if (WRITE_LIKE_TOKENS.has(tok)) return true;
+  }
+  // camelCase boundaries: applyPatch → apply|Patch, MultiEdit → Multi|Edit
+  for (const tok of tool.split(/(?=[A-Z])/)) {
+    if (WRITE_LIKE_TOKENS.has(tok.toLowerCase())) return true;
+  }
+  return false;
+}
 
 function isOpenerBoundary(line: string, i: number): boolean {
   return i === 0 || /[\s;{[(=,]/.test(line[i - 1] ?? "");

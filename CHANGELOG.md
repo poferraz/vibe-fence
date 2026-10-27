@@ -24,6 +24,7 @@ Compare views: https://github.com/poferraz/vibe-fence/compare/
 - Committed the adversarial sweep as `tests/adversarial/sweep.test.ts` with fresh S-labels (C12 — was an unreproducible `/tmp` script with drifted T-numbers).
 - Closed the staged-blob smuggle (L1): managed hooks now run the index-aware scan plus the worktree scan; the synthesis repro (staged leak + clean worktree) is a `proof-beats` regression that must block.
 - `vibe-fence checkpoint` scans the staged snapshot and warns loudly (stderr + `blockingFindings` in `.fence/events.ndjson`) when an undo point holds blocks — checkpoints still always land (D7/L15).
+- Gate audits local script bodies through interpreter invocations (C10): `bash ./evil.sh` (plus `sh`/`zsh`/`source`/`.`/flags) now blocks like `./evil.sh`; findings attribute the resolved script. `apply_patch`-family tool names (`apply_patch`, `edit_file`, `MultiEdit`, …) route into the write lens via token match (L3); substring lookalikes (`dispatch`, `credit`) still pass per C-01.
 
 ## [0.1.0] — 2026-10-21
 

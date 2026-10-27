@@ -191,24 +191,31 @@ describe("index-aware scans (L1)", () => {
 describe("fence-owned integrity in check (C7/S-06)", () => {
   it("blocks on attested-file drift, stays silent without attestation", () => {
     const root = makeProject({ "AGENTS.md": "canonical\n", "a.ts": "export const x = 1;\n" });
-    // No store → silent (nothing to verify against).
-    expect(runCheck(root).findings.some((f) => f.ruleId === "S-06")).toBe(false);
-    mkdirSync(join(root, ".fence"), { recursive: true });
+    // Hermetic vs file order: install.test.ts may run first in this process
+    // (it does on Linux CI) and install() mints FENCE_SYNC_TOKEN, which
+    // sync-bypasses verifyAttestation. This test asserts no-sync behavior,
+    // so the token stays cleared except around persistAttestation (same
+    // pattern as sweep S8).
     const saved = process.env[FENCE_SYNC_TOKEN_ENV];
-    process.env[FENCE_SYNC_TOKEN_ENV] = "test-token";
+    delete process.env[FENCE_SYNC_TOKEN_ENV];
     try {
+      // No store → silent (nothing to verify against).
+      expect(runCheck(root).findings.some((f) => f.ruleId === "S-06")).toBe(false);
+      mkdirSync(join(root, ".fence"), { recursive: true });
+      process.env[FENCE_SYNC_TOKEN_ENV] = "test-token";
       persistAttestation(root);
+      delete process.env[FENCE_SYNC_TOKEN_ENV];
+      // Clean → no S-06 finding.
+      expect(runCheck(root).findings.some((f) => f.ruleId === "S-06")).toBe(false);
+      // Tamper → S-06 block.
+      writeFileSync(join(root, "AGENTS.md"), "evil AGENTS\n", "utf-8");
+      const drifted = runCheck(root);
+      expect(drifted.blocks).toBeGreaterThanOrEqual(1);
+      expect(drifted.findings.some((f) => f.ruleId === "S-06" && f.verdict === "fail")).toBe(true);
+      expect(exitCodeForReport(drifted)).toBe(1);
     } finally {
       if (saved === undefined) delete process.env[FENCE_SYNC_TOKEN_ENV];
       else process.env[FENCE_SYNC_TOKEN_ENV] = saved;
     }
-    // Clean → no S-06 finding.
-    expect(runCheck(root).findings.some((f) => f.ruleId === "S-06")).toBe(false);
-    // Tamper → S-06 block.
-    writeFileSync(join(root, "AGENTS.md"), "evil AGENTS\n", "utf-8");
-    const drifted = runCheck(root);
-    expect(drifted.blocks).toBeGreaterThanOrEqual(1);
-    expect(drifted.findings.some((f) => f.ruleId === "S-06" && f.verdict === "fail")).toBe(true);
-    expect(exitCodeForReport(drifted)).toBe(1);
   });
 });

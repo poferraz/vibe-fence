@@ -32,6 +32,7 @@ description-agent: "Canonical map — every doc/skill/tool reachable via this in
 | Validator | `tools/validate.ts` | AGENTS ≤400tok + SKILL + schema gates |
 | Installer | `tools/install.ts` | npx vibe-fence init + WebContainer probe |
 | Charter | `docs/project/AGENT-CHARTER.md` | Agent behavioral charter |
+| Ops glossary | `src/config/ops-terms.json` | 111-term ops vocabulary; matcher injects ≤3 one-liners into --explain on match |
 | ECC appendix | `docs/project/APPENDIX-ECC.md` | ECC deep-dive |
 
 ## L1 disclosure note (S-02/S-03)

@@ -94,6 +94,13 @@ describe("compareBaseline", () => {
     expect(out.some((l) => l.includes("unknown ceiling"))).toBe(true);
   });
 
+  test("false positives above baseline trip the FP ceiling (Suite B)", () => {
+    const report = runEval(loadCorpus());
+    report.rules[0]!.fp += 1;
+    const out = compareBaseline(report);
+    expect(out.some((l) => l.includes("FP ceiling"))).toBe(true);
+  });
+
   test("flags a recall regression with the rule name", () => {
     const report = runEval([
       { rule: "GIT-01", id: "t1", content: "git pull --rebase", toolName: "bash", expect: "fail" }, // fn: recall 0

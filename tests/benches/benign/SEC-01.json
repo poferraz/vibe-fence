@@ -1,0 +1,16 @@
+{
+  "rule": "SEC-01",
+  "note": "Suite B benign: public-prefix vars with non-secret names or placeholder values (app/page.tsx).",
+  "cases": [
+    {"id": "b-sec01-1", "payload": "NEXT_PUBLIC_APP_NAME=MyApp"},
+    {"id": "b-sec01-2", "payload": "VITE_API_URL=https://api.example.com/v1"},
+    {"id": "b-sec01-3", "payload": "const u = process.env.NEXT_PUBLIC_DOCS_URL;"},
+    {"id": "b-sec01-4", "payload": "NEXT_PUBLIC_API_TOKEN=your-token-here"},
+    {"id": "b-sec01-5", "payload": "export NEXT_PUBLIC_FEATURE_FLAG=true"},
+    {"id": "b-sec01-6", "payload": "EXPO_PUBLIC_APP_VERSION=1.4.2"},
+    {"id": "b-sec01-7", "payload": "const f = process.env.VITE_FEATURE_FLAG;"},
+    {"id": "b-sec01-8", "payload": "# Set NEXT_PUBLIC_TOKEN in your hosting dashboard before deploying."},
+    {"id": "b-sec01-9", "payload": "PUBLIC_THEME_COLOR=#101418"},
+    {"id": "b-sec01-10", "payload": "const region = process.env.NEXT_PUBLIC_REGION;"}
+  ]
+}

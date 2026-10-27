@@ -1,0 +1,16 @@
+{
+  "rule": "SEC-03",
+  "note": "Suite B benign: dummy/test placeholders and env indirection (probe.ts). Fragmented where key-shaped.",
+  "cases": [
+    {"id": "b-sec03-1", "payloadParts": ["key = \"sk_test_4eC39HqLyjWDarjtT1", "zdp7dc\""]},
+    {"id": "b-sec03-2", "payload": "API_KEY=your-api-key-here"},
+    {"id": "b-sec03-3", "payload": "const t = process.env.GITHUB_TOKEN;"},
+    {"id": "b-sec03-4", "payload": "token = \"EXAMPLE_TOKEN_REPLACE_ME\""},
+    {"id": "b-sec03-5", "payload": "aws_key = \"AKIAIOSFODNN7EXAMPLE\""},
+    {"id": "b-sec03-6", "payload": "# paste your secret token here in real deploys"},
+    {"id": "b-sec03-7", "payload": "const cfg = { secret: \"changeme\" };"},
+    {"id": "b-sec03-8", "payload": "dummy = \"dummy-value-for-tests\""},
+    {"id": "b-sec03-9", "payloadParts": ["k = \"ghp_short\"", ""]},
+    {"id": "b-sec03-10", "payload": "placeholder_token = \"xxx\""}
+  ]
+}

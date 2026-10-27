@@ -188,6 +188,11 @@ export function compareBaseline(report: EvalReport): string[] {
     if (r.unknowns > b.unknowns) {
       regressions.push(`${r.rule}: unknowns ${b.unknowns} → ${r.unknowns} (unknown ceiling)`);
     }
+    // FP ceiling (Suite B): false positives must never grow past baseline,
+    // even when a large TN set would keep precision-looking ratios high.
+    if (r.fp > b.fp) {
+      regressions.push(`${r.rule}: false positives ${b.fp} → ${r.fp} (FP ceiling)`);
+    }
   }
   if (report.totals.precision < base.totals.precision) {
     regressions.push(`TOTAL precision ${base.totals.precision.toFixed(3)} → ${report.totals.precision.toFixed(3)}`);
@@ -528,12 +533,13 @@ export interface BenchSet {
 }
 
 const HOSTILE_DIR = join(ROOT, "tests", "benches", "hostile");
+const BENIGN_DIR = join(ROOT, "tests", "benches", "benign");
 
-export function loadHostileBenches(): BenchSet[] {
-  if (!existsSync(HOSTILE_DIR)) return [];
+function loadBenchDir(dir: string): BenchSet[] {
+  if (!existsSync(dir)) return [];
   const sets: BenchSet[] = [];
-  for (const file of readdirSync(HOSTILE_DIR).filter((f) => f.endsWith(".json")).sort()) {
-    const raw = JSON.parse(readFileSync(join(HOSTILE_DIR, file), "utf-8")) as {
+  for (const file of readdirSync(dir).filter((f) => f.endsWith(".json")).sort()) {
+    const raw = JSON.parse(readFileSync(join(dir, file), "utf-8")) as {
       rule: string;
       cases: Array<{ id: string; payload?: string; payloadParts?: string[]; path?: string; note?: string }>;
     };
@@ -548,6 +554,14 @@ export function loadHostileBenches(): BenchSet[] {
     });
   }
   return sets;
+}
+
+export function loadHostileBenches(): BenchSet[] {
+  return loadBenchDir(HOSTILE_DIR);
+}
+
+export function loadBenignBenches(): BenchSet[] {
+  return loadBenchDir(BENIGN_DIR);
 }
 
 export function runBenchHostile(argv: string[]): number {
@@ -589,6 +603,47 @@ export function runBenchHostile(argv: string[]): number {
   return 0;
 }
 
+/** Suite B: benign fixtures must fire on NEITHER surface (0 FP budget). */
+export function runBenchBenign(argv: string[]): number {
+  const only = flag(argv, "--rule") ?? undefined;
+  const sets = loadBenignBenches().filter((s) => !only || s.rule === only);
+  if (sets.length === 0) {
+    console.error(`bench benign: no fixture sets found${only ? ` for --rule ${only}` : ""}`);
+    return 1;
+  }
+  let fps = 0;
+  let problems = 0;
+  let total = 0;
+  for (const set of sets) {
+    if (set.cases.length < 10) {
+      console.log(`${set.rule}: only ${set.cases.length} fixtures (<10 required)`);
+      problems++;
+    }
+    const tmpRoot = mkdtempSync(join(tmpdir(), "vf-bench-"));
+    execSync("git init -q .", { cwd: tmpRoot, stdio: "ignore" });
+    let clean = 0;
+    try {
+      for (const c of set.cases) {
+        total++;
+        const s = scoreVariant(set.rule, c.payload, tmpRoot, c.path);
+        if (s.caught) {
+          fps++;
+          console.log(`  [FP] ${set.rule} ${c.id}: gate=${s.gateBlocked} tree=${s.treeBlocked} — ${c.payload.slice(0, 100)}`);
+        } else clean++;
+      }
+    } finally {
+      rmSync(tmpRoot, { recursive: true, force: true });
+    }
+    console.log(`bench ${set.rule} (benign): ${clean}/${set.cases.length} clean`);
+  }
+  if (fps > 0 || problems > 0) {
+    console.log(`bench benign: ${fps}/${total} false positives, ${problems} problem(s) — FP budget is 0`);
+    return 1;
+  }
+  console.log(`bench benign: 0/${total} false positives`);
+  return 0;
+}
+
 // ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
@@ -616,8 +671,11 @@ async function main(argv: string[]): Promise<number> {
   if (bench === "hostile") {
     return runBenchHostile(argv);
   }
+  if (bench === "benign") {
+    return runBenchBenign(argv);
+  }
   if (bench !== null) {
-    console.error(`eval: unknown --bench '${bench}' (try: hostile)`);
+    console.error(`eval: unknown --bench '${bench}' (try: hostile, benign)`);
     return 2;
   }
 

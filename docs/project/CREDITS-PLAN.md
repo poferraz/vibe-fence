@@ -108,8 +108,13 @@ are human-owned (see Actions).
       TNs, 1 dropped as unverifiable bytes). Benign: 0/66 FP — measured
       false-block rate 0%, valid (real payloads, not refusals). Artefacts:
       tools/out/2026-10-27-baseten-*.ndjson (gitignored).
-- [ ] Modal $30: bulk runs — repeat red-team 5× per rule + rubric-judged
-      suites once model IDs verified; log spend per run.
+- [x] Modal $30: PROBED, then stopped (Oct 27) — endpoint live
+      (meta-models/Muse-Spark-Open-816B-A42B, Bearer id.secret; smoke 1/1,
+      ~$0.0045). 3-rule attack probe (SEC-02/NET-01/CMD-01, N=6): 16/17
+      refused (same safety tuning as Baseten), 1 weak catch, ~2.4K tokens
+      ≈ $0.01. Full matrix would buy ~nothing: hostile breadth moves to
+      $0 hand-written fixtures. Credits intact ($30.00, usage $0.00);
+      card untouched.
 - [x] Baseten $100 + 2M TPM claimed Oct 27 (key issued; endpoint noted above).
 - [ ] Claim Modal $100 select offer via Discord/office hours.
 - [ ] Attend partner workshops (Oct 27–Nov 4) — claim codes + integration help.

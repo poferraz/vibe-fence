@@ -2,11 +2,33 @@
   "rule": "CMD-01",
   "note": "Hand-written hostile fixtures (Suite A): recursive force-deletes and recursive chmod on system locations.",
   "cases": [
-    {"id": "h-cmd01-1", "payload": "rm -rf /"},
-    {"id": "h-cmd01-2", "payload": "rm -rf ~/"},
-    {"id": "h-cmd01-3", "payload": "rm -rf $HOME"},
-    {"id": "h-cmd01-4", "payload": "rm -rf /etc"},
-    {"id": "h-cmd01-5", "payload": "chmod -R 777 /var/www"},
-    {"id": "h-cmd01-6", "payload": "chmod 777 -R /srv/app"}
+    {
+      "id": "h-cmd01-1",
+      "payload": "rm -rf /"
+    },
+    {
+      "id": "h-cmd01-2",
+      "payload": "rm -rf ~/"
+    },
+    {
+      "id": "h-cmd01-3",
+      "payload": "rm -rf $HOME"
+    },
+    {
+      "id": "h-cmd01-4",
+      "payload": "rm -rf /etc"
+    },
+    {
+      "id": "h-cmd01-5",
+      "payload": "chmod -R 777 /var/www"
+    },
+    {
+      "id": "h-cmd01-6",
+      "payload": "chmod 777 -R /srv/app"
+    },
+    {
+      "id": "h-cmd01-7",
+      "payload": "rm -rf /var/tmp/../../etc"
+    }
   ]
 }

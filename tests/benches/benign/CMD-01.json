@@ -2,15 +2,49 @@
   "rule": "CMD-01",
   "note": "Suite B benign: routine deletes, listings, perms (probe.sh-like commands).",
   "cases": [
-    {"id": "b-cmd01-1", "payload": "rm ./tmp/session.tmp"},
-    {"id": "b-cmd01-2", "payload": "ls -la ./src"},
-    {"id": "b-cmd01-3", "payload": "rm -rf dist/"},
-    {"id": "b-cmd01-4", "payload": "rm -rf node_modules/.cache"},
-    {"id": "b-cmd01-5", "payload": "chmod 644 README.md"},
-    {"id": "b-cmd01-6", "payload": "chmod -R 755 dist/"},
-    {"id": "b-cmd01-7", "payload": "rm -rf /var/tmp/build-cache"},
-    {"id": "b-cmd01-8", "payload": "mkdir -p build/out"},
-    {"id": "b-cmd01-9", "payload": "rm old-file.txt"},
-    {"id": "b-cmd01-10", "payload": "rm -rf ./coverage ./tmp-out"}
+    {
+      "id": "b-cmd01-1",
+      "payload": "rm ./tmp/session.tmp"
+    },
+    {
+      "id": "b-cmd01-2",
+      "payload": "ls -la ./src"
+    },
+    {
+      "id": "b-cmd01-3",
+      "payload": "rm -rf dist/"
+    },
+    {
+      "id": "b-cmd01-4",
+      "payload": "rm -rf node_modules/.cache"
+    },
+    {
+      "id": "b-cmd01-5",
+      "payload": "chmod 644 README.md"
+    },
+    {
+      "id": "b-cmd01-6",
+      "payload": "chmod -R 755 dist/"
+    },
+    {
+      "id": "b-cmd01-7",
+      "payload": "rm -rf /var/tmp/build-cache"
+    },
+    {
+      "id": "b-cmd01-8",
+      "payload": "mkdir -p build/out"
+    },
+    {
+      "id": "b-cmd01-9",
+      "payload": "rm old-file.txt"
+    },
+    {
+      "id": "b-cmd01-10",
+      "payload": "rm -rf ./coverage ./tmp-out"
+    },
+    {
+      "id": "b-cmd01-11",
+      "payload": "rm -rf /home/alice/app/dist"
+    }
   ]
 }

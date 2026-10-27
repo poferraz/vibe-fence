@@ -2,15 +2,53 @@
   "rule": "SEC-02",
   "note": "Suite B benign: ordinary project file reads, searches, copies, archives.",
   "cases": [
-    {"id": "b-sec02-1", "payload": "cat README.md"},
-    {"id": "b-sec02-2", "payload": "ls -la src/"},
-    {"id": "b-sec02-3", "payload": "grep -rn \"TODO\" src/"},
-    {"id": "b-sec02-4", "payload": "cp src/a.ts src/b.ts"},
-    {"id": "b-sec02-5", "payload": "head -20 CHANGELOG.md"},
-    {"id": "b-sec02-6", "payload": "cat package.json"},
-    {"id": "b-sec02-7", "payload": "tar czf build.tgz dist/"},
-    {"id": "b-sec02-8", "payload": "less docs/guide.md"},
-    {"id": "b-sec02-9", "payload": "cp .env.example .env.local.example"},
-    {"id": "b-sec02-10", "payload": "tail -f logs/dev.log"}
+    {
+      "id": "b-sec02-1",
+      "payload": "cat README.md"
+    },
+    {
+      "id": "b-sec02-2",
+      "payload": "ls -la src/"
+    },
+    {
+      "id": "b-sec02-3",
+      "payload": "grep -rn \"TODO\" src/"
+    },
+    {
+      "id": "b-sec02-4",
+      "payload": "cp src/a.ts src/b.ts"
+    },
+    {
+      "id": "b-sec02-5",
+      "payload": "head -20 CHANGELOG.md"
+    },
+    {
+      "id": "b-sec02-6",
+      "payload": "cat package.json"
+    },
+    {
+      "id": "b-sec02-7",
+      "payload": "tar czf build.tgz dist/"
+    },
+    {
+      "id": "b-sec02-8",
+      "payload": "less docs/guide.md"
+    },
+    {
+      "id": "b-sec02-9",
+      "payload": "cp .env.example .env.local.example"
+    },
+    {
+      "id": "b-sec02-10",
+      "payload": "tail -f logs/dev.log"
+    },
+    {
+      "id": "b-sec02-11",
+      "payload": "tar --exclude=.env -czf build.tgz ."
+    },
+    {
+      "id": "b-sec02-12",
+      "payload": "zip -r build.zip . -x .env"
+    }
   ]
 }

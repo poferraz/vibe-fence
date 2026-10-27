@@ -18,7 +18,7 @@
  * - Node-compatible: no bun-only APIs (no import.meta.dir/main) — this file is bundled.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync, realpathSync, readdirSync, unlinkSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync, realpathSync, readdirSync, unlinkSync } from "node:fs";
 import { join, resolve, relative, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
@@ -77,6 +77,35 @@ export const DEFAULT_ADAPTER_IDS = Object.keys(ADAPTERS);
 /** Dir of this module: src/ in dev, dist/ in the packed bundle (skills/templates ship beside it). */
 export function hereDir(): string {
   return dirname(fileURLToPath(import.meta.url));
+}
+
+/** Fence-specific markers of the pre-fix guard shims (generic `|| true` excluded — users write that too). */
+export function isLegacyPostinstallGuard(content: string): boolean {
+  return content.includes("tools/validate.ts") || content.includes("integrity.js");
+}
+
+/** Minimal guard when the template file is missing (degraded but correct: check, loud, graceful). */
+const POSTINSTALL_GUARD_FALLBACK = [
+  "#!/bin/sh",
+  "# vibe-fence postinstall guard (managed fallback) — reinstall via `vibe-fence init`.",
+  "set -e",
+  'BIN=""',
+  'if [ -n "$FENCE_BIN" ]; then case "$FENCE_BIN" in *"/"*) [ -x "$FENCE_BIN" ] && BIN="$FENCE_BIN" || true ;; *) BIN=$(command -v "$FENCE_BIN" || true) ;; esac; fi',
+  'if [ -z "$BIN" ]; then BIN=$(command -v vibe-fence || true); fi',
+  'if [ -n "$BIN" ]; then exec "$BIN" check; else echo "vibe-fence: postinstall guard skipped — binary not found." >&2; echo "vibe-fence: WARNING: install ran WITHOUT the fence; run \'vibe-fence check\' before building." >&2; exit 0; fi',
+  "",
+].join("\n");
+
+/** Template-owned guard content (src/templates/postinstall-guard.sh ships beside this module). */
+export function loadPostinstallGuard(): string {
+  const override = process.env["VIBE_FENCE_TEMPLATES_DIR"];
+  const p = join(override ?? hereDir(), "templates", "postinstall-guard.sh");
+  try {
+    if (existsSync(p)) return readFileSync(p, "utf-8");
+  } catch {
+    // Fall through to the inline fallback.
+  }
+  return POSTINSTALL_GUARD_FALLBACK;
 }
 
 // ---------------------------------------------------------------------------
@@ -251,20 +280,24 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
     }
   }
 
-  // 7. .fence/hooks/postinstall-guard.sh — GEM-01 hash attestation guard
+  // 7. .fence/hooks/postinstall-guard.sh — postinstall re-scan (P0).
+  // Template-owned (src/templates/postinstall-guard.sh): fresh installs copy
+  // it; legacy shims (the `|| true` validate stub, the integrity.js stub) are
+  // migrated; user-modified guards are never touched.
   {
     const p = join(projectRoot, ".fence", "hooks", "postinstall-guard.sh");
-    if (!existsSync(p) && !opts.dryRun) {
-      writeFileSync(p, [
-        "#!/bin/sh",
-        "# vibe-fence postinstall guard — GEM-01 P0",
-        "# Runs integrity check so `npm install` cannot silently plant a malicious AGENTS.md.",
-        "set -e",
-        'bun run --cwd "$(dirname "$0")/../.." --silent tools/validate.ts 2>/dev/null || true',
-        "",
-      ].join("\n"), "utf-8");
-      try { execSync(`chmod +x "${p}"`); } catch {}
-      filesWritten.push(".fence/hooks/postinstall-guard.sh");
+    if (!opts.dryRun) {
+      const prev = existsSync(p) ? readFileSync(p, "utf-8") : null;
+      const next = loadPostinstallGuard();
+      if (prev !== null && prev !== next && !isLegacyPostinstallGuard(prev)) {
+        console.warn(`[vibe-fence] .fence/hooks/postinstall-guard.sh exists and is not fence-managed — leaving it alone.`);
+      } else {
+        if (prev !== next) {
+          writeFileSync(p, next, "utf-8");
+          filesWritten.push(".fence/hooks/postinstall-guard.sh");
+        }
+        chmodSync(p, 0o755);
+      }
     }
   }
 

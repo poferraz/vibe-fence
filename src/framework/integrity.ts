@@ -81,11 +81,14 @@ export function computeAttestation(projectRoot: string): Record<string, string> 
 
 /**
  * Persist attestation to .fence/.integrity.json.
- * Called by `npx vibe-fence init` and `tools/generate.ts` (fence sync).
- * Caller MUST have FENCE_SYNC_TOKEN set — enforced below.
+ * Called by `vibe-fence init`, which mints FENCE_SYNC_TOKEN first.
+ * Re-attestation is installer-only (L4): without the token the caller is the
+ * model or a foreign script, never the installer — refuse to mint.
  */
 export function persistAttestation(projectRoot: string): void {
-  // TODO: assert FENCE_SYNC_TOKEN present — refuse to overwrite attestation without it
+  if (!process.env[FENCE_SYNC_TOKEN_ENV]) {
+    throw new Error(`refusing to (re-)attest without ${FENCE_SYNC_TOKEN_ENV} — attestation is installer-only (S-06)`);
+  }
   // TODO: write atomically (tmp + rename) to avoid torn reads during concurrent fence validate
   const files = computeAttestation(projectRoot);
   const record: IntegrityRecord = {
@@ -103,7 +106,8 @@ export function persistAttestation(projectRoot: string): void {
 
 /**
  * Verify current files against persisted attestation.
- * Called by `fence validate` and every pre-commit hook invocation.
+ * Called by `vibe-fence check` (drift becomes an S-06 block finding) and
+ * therefore by every managed pre-commit hook invocation.
  *
  * Gate logic (GEM-01):
  * - If hash mismatches AND FENCE_SYNC_TOKEN is set → pass (legit fence sync in progress).

@@ -13,6 +13,7 @@ Compare views: https://github.com/poferraz/vibe-fence/compare/
 - Track for `v0.2.0` — publishable `package.json`, governance files, CI, README resume.
 - `vibe-fence init --profile muse` preset (Claude adapter — demo-hero path; explicit `--adapters` overrides it).
 - `vibe-fence check --staged` (scan staged blobs — pre-commit gate) and `vibe-fence check --push [<range>]` (scan outgoing commits — pre-push gate; default range from pre-push stdin, else `@{u}..HEAD`).
+- Claude/Cursor PreToolUse gate hooks: managed `fence-gate.sh` scripts evaluate every tool call via `vibe-fence gate` (exit 2 blocks; missing binary/jq warns + allows — fail-open-with-warn mirroring the OpenCode plugin).
 
 ### Fixed
 - `release.yml` now runs `bun test` + `bun run eval` before `npm publish` (L5) — a tagged release can no longer ship with red tests or eval regressions.
@@ -25,6 +26,9 @@ Compare views: https://github.com/poferraz/vibe-fence/compare/
 - Closed the staged-blob smuggle (L1): managed hooks now run the index-aware scan plus the worktree scan; the synthesis repro (staged leak + clean worktree) is a `proof-beats` regression that must block.
 - `vibe-fence checkpoint` scans the staged snapshot and warns loudly (stderr + `blockingFindings` in `.fence/events.ndjson`) when an undo point holds blocks — checkpoints still always land (D7/L15).
 - Gate audits local script bodies through interpreter invocations (C10): `bash ./evil.sh` (plus `sh`/`zsh`/`source`/`.`/flags) now blocks like `./evil.sh`; findings attribute the resolved script. `apply_patch`-family tool names (`apply_patch`, `edit_file`, `MultiEdit`, …) route into the write lens via token match (L3); substring lookalikes (`dispatch`, `credit`) still pass per C-01.
+- Host configs keep vendor-supported keys only (L2/L14): the schema-invalid top-level `fence` block is gone (OpenCode `additionalProperties: false` verified live); fence metadata moved to `.fence/adapters/<id>.json`; legacy keys scrubbed, user keys never touched. Per-adapter conformance tests pin the allow-lists (R1).
+- Re-attestation requires `FENCE_SYNC_TOKEN` (L4 — `persistAttestation` throws without it); `verifyAttestation` is wired into `vibe-fence check` (attested-file drift is an S-06 block; never-attested trees stay silent) (C7).
+- The postinstall guard runs `vibe-fence check` (template-owned) instead of the `|| true` validate stub: exit codes propagate, missing binary warns loudly + exits 0 (never bricks install); legacy shims migrate, custom guards preserved (C7/T8).
 
 ## [0.1.0] — 2026-10-21
 

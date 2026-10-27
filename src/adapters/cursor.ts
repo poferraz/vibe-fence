@@ -5,17 +5,21 @@
  *
  * Runtime contract (Cursor-specific):
  * - Rules: .cursor/rules/<rule>.mdc  (Cursor Rules, MDC frontmatter)
- * - Hooks: .cursor/hooks.json  (PreToolUse/PostToolUse lifecycle)
+ * - Hooks: .cursor/hooks.json — real `preToolUse` gate hook (lowercase event
+ *   names per the hooks.json schema; fence metadata lives in
+ *   `.fence/adapters/cursor.json`).
  * - Canonical policy still AGENTS.md — Cursor reads it natively; rules are mirrors.
  *
  * Install: file-writing only; Cursor picks up .cursor/rules/ automatically.
  * Hooks FP budget minimal per S-10/C-01.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Adapter } from "./types";
 import { AGENTS_FENCE_BLOCK_START, AGENTS_FENCE_BLOCK_END, buildAgentsFenceBlock, mergeAgentsMd } from "./claude";
+import { scrubFenceKey, writeAdapterReceipt } from "./receipts";
+import { GATE_HOOK_MARKER, GATE_HOOK_SCRIPT, GATE_HOOK_SCRIPT_NAME } from "./gate-hook";
 
 export const cursorAdapter: Adapter = {
   name: "cursor",
@@ -27,8 +31,8 @@ export const cursorAdapter: Adapter = {
     precedence: "AGENTS.md canonical; .cursor/rules/*.mdc as Cursor-native mirrors",
   },
   hookSurface: {
-    hooks: ["PreToolUse", "PostToolUse"],
-    fpBudgetNotes: "Minimal hooks — Cursor .cursor/hooks.json; FP budget per S-10/C-01.",
+    hooks: ["preToolUse"],
+    fpBudgetNotes: "preToolUse gate hook, fail-open-with-warn (S-10/C-01).",
   },
   skillsDir: ".cursor/skills",
 };
@@ -81,26 +85,47 @@ export function buildFenceRouterMdc(): CursorRuleMdc {
 }
 
 // ---------------------------------------------------------------------------
-// .cursor/hooks.json — lifecycle hooks (PreToolUse/PostToolUse)
+// .cursor/hooks.json — real preToolUse gate hook (vendor keys only)
+// Schema (verified Oct 26 — no official schema URL; Cursor forum threads +
+// https://ntorres.dev/blog/cursor-hooks-json-guide, consistent):
+// `{version: 1, hooks: {preToolUse: [{command, matcher?, failClosed?}]}}` —
+// lowercase event names, exit 2 denies, failClosed defaults false.
 // ---------------------------------------------------------------------------
 
-export interface CursorFenceHooksBlock {
-  version: 1;
-  model_mode: "standard" | "contributor";
-  companion_model: string;
-  architect_model: string;
-  installedAt: string;
-  hooks: string[]; // hook ids managed by fence
+export interface CursorPreToolUseEntry {
+  command: string;
+  failClosed: boolean;
 }
 
-export function mergeCursorHooks(
-  existing: Record<string, unknown> | null,
-  fenceBlock: CursorFenceHooksBlock,
-): Record<string, unknown> {
+export function buildCursorPreToolUseEntry(): CursorPreToolUseEntry {
+  return { command: `.cursor/hooks/${GATE_HOOK_SCRIPT_NAME}`, failClosed: false };
+}
+
+function isOurCursorEntry(entry: unknown): boolean {
+  if (typeof entry !== "object" || entry === null) return false;
+  const command = (entry as Record<string, unknown>).command;
+  return typeof command === "string" && command.includes(GATE_HOOK_MARKER);
+}
+
+export function mergeCursorHooks(existing: Record<string, unknown> | null): Record<string, unknown> {
   const base: Record<string, unknown> = existing ? { ...existing } : {};
-  base["fence"] = fenceBlock as unknown as Record<string, unknown>;
-  // Ensure fence hooks present without clobbering user hooks
-  const hooks = (base["hooks"] as unknown[] | undefined) ?? [];
+  scrubFenceKey(base);
+  if (base["version"] === undefined) base["version"] = 1;
+  const hooksRaw = base["hooks"];
+  if (Array.isArray(hooksRaw)) {
+    // Legacy shape (our old versions wrote `hooks: []`): an empty array is
+    // safe to replace; a non-empty one is user data in a schema-invalid
+    // shape — leave it untouched rather than destroy it.
+    if (hooksRaw.length > 0) return base;
+    base["hooks"] = { preToolUse: [buildCursorPreToolUseEntry()] };
+    return base;
+  }
+  const hooks: Record<string, unknown> =
+    typeof hooksRaw === "object" && hooksRaw !== null ? { ...(hooksRaw as Record<string, unknown>) } : {};
+  const prev = hooks["preToolUse"];
+  const list = Array.isArray(prev) ? prev.filter((e) => !isOurCursorEntry(e)) : [];
+  list.push(buildCursorPreToolUseEntry());
+  hooks["preToolUse"] = list;
   base["hooks"] = hooks;
   return base;
 }
@@ -111,7 +136,7 @@ export function mergeCursorHooks(
 
 export function installCursorAdapter(projectRoot: string, opts: { modelMode?: string } = {}): string[] {
   const written: string[] = [];
-  const modelMode = (opts.modelMode ?? "standard") as CursorFenceHooksBlock["model_mode"];
+  const modelMode = opts.modelMode ?? "standard";
 
   // 1. AGENTS.md — canonical router (shared with Claude adapter)
   {
@@ -132,30 +157,64 @@ export function installCursorAdapter(projectRoot: string, opts: { modelMode?: st
     if (prev !== next) { writeFileSync(p, next, "utf-8"); written.push(`.cursor/rules/${mdc.filename}`); }
   }
 
-  // 3. .cursor/hooks.json — merge fence block
+  // 3. .cursor/hooks.json — real preToolUse gate hook (L14 was `hooks: []`).
+  // Merge-only: user keys and hooks preserved; our entry deduped by marker.
   {
     const p = join(projectRoot, ".cursor", "hooks.json");
-    const existing = existsSync(p) ? JSON.parse(readFileSync(p, "utf-8") as string) as Record<string, unknown> : null;
-    const prevInstalledAt = (existing?.["fence"] as { installedAt?: unknown } | undefined)?.installedAt;
-    const fenceBlock: CursorFenceHooksBlock = {
-      version: 1,
-      model_mode: modelMode,
-      companion_model: process.env["MUSE_MODEL_COMPANION"] ?? "muse-spark-1.3",
-      architect_model: process.env["MUSE_MODEL_ARCHITECT"] ?? "muse-wonder-1.0",
-      // Preserve first-install timestamp — init ×3 must be zero-churn (FINAL-v2 §7).
-      installedAt: typeof prevInstalledAt === "string" ? prevInstalledAt : new Date().toISOString(),
-      hooks: ["PreToolUse", "PostToolUse"],
-    };
-    const merged = mergeCursorHooks(existing, fenceBlock);
-    const nextStr = JSON.stringify(merged, null, 2) + "\n";
-    const prevStr = existing ? JSON.stringify(existing, null, 2) + "\n" : null;
-    if (nextStr !== prevStr) { writeFileSync(p, nextStr, "utf-8"); written.push(".cursor/hooks.json"); }
+    let existing: Record<string, unknown> | null = null;
+    let readable = true;
+    if (existsSync(p)) {
+      try {
+        existing = JSON.parse(readFileSync(p, "utf-8") as string) as Record<string, unknown>;
+      } catch {
+        readable = false;
+        console.warn(`[vibe-fence] .cursor/hooks.json is not valid JSON — leaving it alone.`);
+      }
+    }
+    if (readable) {
+      const merged = mergeCursorHooks(existing);
+      const nextStr = JSON.stringify(merged, null, 2) + "\n";
+      const prevStr = existing ? JSON.stringify(existing, null, 2) + "\n" : null;
+      if (nextStr !== prevStr) {
+        mkdirSync(join(projectRoot, ".cursor"), { recursive: true });
+        writeFileSync(p, nextStr, "utf-8");
+        written.push(".cursor/hooks.json");
+      }
+    }
   }
 
   // 4. .cursor/skills/ dir
   {
     const dir = join(projectRoot, ".cursor", "skills");
     if (!existsSync(dir)) { mkdirSync(dir, { recursive: true }); }
+  }
+
+  // 5. .cursor/hooks/fence-gate.sh — managed hook script (executable)
+  {
+    const dir = join(projectRoot, ".cursor", "hooks");
+    const p = join(dir, GATE_HOOK_SCRIPT_NAME);
+    const prev = existsSync(p) ? readFileSync(p, "utf-8") : null;
+    if (prev !== null && !prev.includes(GATE_HOOK_MARKER)) {
+      console.warn(`[vibe-fence] .cursor/hooks/${GATE_HOOK_SCRIPT_NAME} exists and is not fence-managed — leaving it alone.`);
+    } else {
+      if (prev !== GATE_HOOK_SCRIPT) {
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(p, GATE_HOOK_SCRIPT, "utf-8");
+        written.push(`.cursor/hooks/${GATE_HOOK_SCRIPT_NAME}`);
+      }
+      chmodSync(p, 0o755);
+    }
+  }
+
+  // 6. .fence/adapters/cursor.json — install receipt (host file keeps vendor keys only)
+  {
+    const receipt = writeAdapterReceipt(projectRoot, "cursor", {
+      model_mode: modelMode,
+      companion_model: process.env["MUSE_MODEL_COMPANION"] ?? "muse-spark-1.3",
+      architect_model: process.env["MUSE_MODEL_ARCHITECT"] ?? "muse-wonder-1.0",
+      receipt: "🛡️ vibe-fence active — Cursor adapter",
+    });
+    if (receipt.changed) written.push(receipt.path.replace(projectRoot + "/", ""));
   }
 
   void readdirSync;

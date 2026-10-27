@@ -85,9 +85,13 @@ describe("adversarial sweep (S1–S8b)", () => {
     mkdirSync(join(root, ".fence"), { recursive: true });
     writeFileSync(join(root, "AGENTS.md"), "canonical\n", "utf-8");
     const saved = process.env[FENCE_SYNC_TOKEN_ENV];
+    // Re-attestation is installer-only: no token, no mint (L4).
     delete process.env[FENCE_SYNC_TOKEN_ENV];
+    expect(() => persistAttestation(root)).toThrow(/installer-only/);
     try {
+      process.env[FENCE_SYNC_TOKEN_ENV] = "test-token";
       persistAttestation(root);
+      delete process.env[FENCE_SYNC_TOKEN_ENV];
       writeFileSync(join(root, "AGENTS.md"), "evil AGENTS\n", "utf-8");
       expect(verifyAttestation(root).status).toBe("fail");
     } finally {

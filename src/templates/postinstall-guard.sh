@@ -1,15 +1,26 @@
 #!/bin/sh
-# vibe-fence postinstall guard (GEM-01 P0) — runs integrity check on npm install
-# Installed to .fence/hooks/postinstall-guard.sh by tools/install.ts
-# Exits 1 on attestation fail, 0 on pass/unknown.
-
-# Prefer bun if available, fallback to node
-if command -v bun >/dev/null 2>&1; then
-  bun -e "const { postinstallGuard } = require('./src/framework/integrity.js'); postinstallGuard()" 2>&1
-  _rc=$?
-  if [ $_rc -ne 0 ]; then exit $_rc; fi
+# vibe-fence postinstall guard (managed) — safe to delete; reinstall via `vibe-fence init`.
+# Re-scan the tree after `npm install` so a dependency cannot silently plant a
+# malicious AGENTS.md/SKILL.md before the agent ever runs. Wire it from your
+# package.json (`"prepare": ".fence/hooks/postinstall-guard.sh"`) or run manually.
+# Graceful when the binary is absent (never bricks install), loud always (L6).
+# A set-but-broken FENCE_BIN falls through to PATH, then to the loud skip.
+# NOTE: no bare `&&` as a statement — under `set -e` a false `&&` list exits.
+set -e
+BIN=""
+if [ -n "$FENCE_BIN" ]; then
+  case "$FENCE_BIN" in
+    *"/"*) [ -x "$FENCE_BIN" ] && BIN="$FENCE_BIN" || true ;;
+    *) BIN=$(command -v "$FENCE_BIN" || true) ;;
+  esac
+fi
+if [ -z "$BIN" ]; then
+  BIN=$(command -v vibe-fence || true)
+fi
+if [ -n "$BIN" ]; then
+  exec "$BIN" check
 else
-  node -e "require('./src/framework/integrity.js').postinstallGuard()" 2>&1
-  _rc=$?
-  if [ $_rc -ne 0 ]; then exit $_rc; fi
+  echo "vibe-fence: postinstall guard skipped — binary not found (install vibe-fence or set FENCE_BIN)." >&2
+  echo "vibe-fence: WARNING: install ran WITHOUT the fence; run 'vibe-fence check' before building." >&2
+  exit 0
 fi

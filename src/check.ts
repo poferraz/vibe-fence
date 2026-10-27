@@ -12,6 +12,7 @@ import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node
 import { execFileSync } from "node:child_process";
 import { join, relative } from "node:path";
 import { REGISTRY } from "./rules/index.js";
+import { verifyAttestation } from "./framework/integrity.js";
 
 export interface CheckFinding {
   file: string;
@@ -125,6 +126,25 @@ export function runCheck(projectRoot: string, opts: CheckOptions = {}): CheckRep
       continue;
     }
     findings.push(...scanContent(rel, content, files, projectRoot));
+  }
+
+  // C7: fence-owned integrity (S-06) is enforced here, not just at install.
+  // Drift fails loud; unknown (never attested) stays silent — there is
+  // nothing to verify against.
+  try {
+    const att = verifyAttestation(projectRoot);
+    if (att.status === "fail") {
+      findings.push({
+        file: ".fence/.integrity.json",
+        ruleId: "S-06",
+        severity: "block",
+        verdict: "fail",
+        reason: att.message,
+        evidence: att.mismatched.join(", "),
+      });
+    }
+  } catch {
+    // Attestation must never crash a tree scan; drift still reports above.
   }
 
   return summarize(files.length, skipped, findings);

@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execSync } from "node:child_process";
 import { runCheck, runIndexCheck, runPushCheck, exitCodeForReport } from "./check";
+import { persistAttestation, FENCE_SYNC_TOKEN_ENV } from "./framework/integrity";
 
 const created: string[] = [];
 afterEach(() => {
@@ -184,5 +185,30 @@ describe("index-aware scans (L1)", () => {
     const pushed = runPushCheck(root, [`${"0".repeat(40)}..HEAD`]);
     expect(pushed.blocks).toBe(1);
     expect(exitCodeForReport(pushed)).toBe(1);
+  });
+});
+
+describe("fence-owned integrity in check (C7/S-06)", () => {
+  it("blocks on attested-file drift, stays silent without attestation", () => {
+    const root = makeProject({ "AGENTS.md": "canonical\n", "a.ts": "export const x = 1;\n" });
+    // No store → silent (nothing to verify against).
+    expect(runCheck(root).findings.some((f) => f.ruleId === "S-06")).toBe(false);
+    mkdirSync(join(root, ".fence"), { recursive: true });
+    const saved = process.env[FENCE_SYNC_TOKEN_ENV];
+    process.env[FENCE_SYNC_TOKEN_ENV] = "test-token";
+    try {
+      persistAttestation(root);
+    } finally {
+      if (saved === undefined) delete process.env[FENCE_SYNC_TOKEN_ENV];
+      else process.env[FENCE_SYNC_TOKEN_ENV] = saved;
+    }
+    // Clean → no S-06 finding.
+    expect(runCheck(root).findings.some((f) => f.ruleId === "S-06")).toBe(false);
+    // Tamper → S-06 block.
+    writeFileSync(join(root, "AGENTS.md"), "evil AGENTS\n", "utf-8");
+    const drifted = runCheck(root);
+    expect(drifted.blocks).toBeGreaterThanOrEqual(1);
+    expect(drifted.findings.some((f) => f.ruleId === "S-06" && f.verdict === "fail")).toBe(true);
+    expect(exitCodeForReport(drifted)).toBe(1);
   });
 });

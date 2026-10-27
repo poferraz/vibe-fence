@@ -21,7 +21,13 @@ export type AdapterRuntime =
   | "hermes"
   | "antigravity";
 
-export type HookKind = "PreToolUse" | "PostToolUse" | "PreToolExecution" | "PostToolExecution";
+export type HookKind =
+  | "PreToolUse"
+  | "PostToolUse"
+  | "PreToolExecution"
+  | "PostToolExecution"
+  | "preToolUse"
+  | "postToolUse"; // lowercase: Cursor hooks.json event names (verified Oct 26)
 
 export interface HookSurface {
   hooks: HookKind[];

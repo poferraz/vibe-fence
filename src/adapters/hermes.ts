@@ -6,7 +6,8 @@
  * Runtime contract (Hermes-specific):
  * - Canonical policy: AGENTS.md — Hermes reads natively.
  * - Skills: .agents/skills/<skill>/SKILL.md + ~/.hermes/skills/ global
- * - Config: .hermes/config.json — fence block merged (never clobber).
+ * - Config: .hermes/config.json is NEVER written (host keys only; fence
+ *   metadata lives in `.fence/adapters/hermes.json`). Legacy keys scrubbed.
  * - Hooks: PreToolUse/PostToolUse — minimal FP budget (S-10/C-01).
  */
 
@@ -14,6 +15,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Adapter } from "./types";
 import { buildAgentsFenceBlock, mergeAgentsMd } from "./claude";
+import { scrubFenceKey, writeAdapterReceipt } from "./receipts";
 
 export const hermesAdapter: Adapter = {
   name: "hermes",
@@ -31,27 +33,12 @@ export const hermesAdapter: Adapter = {
   skillsDir: ".agents/skills",
 };
 
-export interface HermesFenceBlock {
-  version: 1;
-  model_mode: "standard" | "contributor";
-  companion_model: string;
-  architect_model: string;
-  installedAt: string;
-  receipt: string;
-}
-
-export function mergeHermesConfig(
-  existing: Record<string, unknown> | null,
-  fenceBlock: HermesFenceBlock,
-): Record<string, unknown> {
-  const base: Record<string, unknown> = existing ? { ...existing } : {};
-  base["fence"] = fenceBlock as unknown as Record<string, unknown>;
-  return base;
-}
+// NOTE: no merge function — .hermes/config.json is never written. Legacy
+// fence-managed keys are scrubbed by the installer (see below).
 
 export function installHermesAdapter(projectRoot: string, opts: { modelMode?: string } = {}): string[] {
   const written: string[] = [];
-  const modelMode = (opts.modelMode ?? "standard") as HermesFenceBlock["model_mode"];
+  const modelMode = opts.modelMode ?? "standard";
 
   // 1. AGENTS.md — canonical router
   {
@@ -67,28 +54,28 @@ export function installHermesAdapter(projectRoot: string, opts: { modelMode?: st
     if (!existsSync(dir)) { mkdirSync(dir, { recursive: true }); }
   }
 
-  // 3. .hermes/config.json — merge fence block
+  // 3. .hermes/config.json — NEVER written (host keys only). Scrub legacy
+  // fence-managed keys; never create the file, never touch user keys.
   {
     const p = join(projectRoot, ".hermes", "config.json");
-    const existing = existsSync(p) ? JSON.parse(readFileSync(p, "utf-8") as string) as Record<string, unknown> : null;
-    const prevInstalledAt = (existing?.["fence"] as { installedAt?: unknown } | undefined)?.installedAt;
-    const fenceBlock: HermesFenceBlock = {
-      version: 1,
+    if (existsSync(p)) {
+      try {
+        const existing = JSON.parse(readFileSync(p, "utf-8") as string) as Record<string, unknown>;
+        if (scrubFenceKey(existing)) {
+          writeFileSync(p, JSON.stringify(existing, null, 2) + "\n", "utf-8");
+          written.push(".hermes/config.json");
+        }
+      } catch {
+        // Unparseable host config — leave it alone, never clobber.
+      }
+    }
+    const receipt = writeAdapterReceipt(projectRoot, "hermes", {
       model_mode: modelMode,
       companion_model: process.env["MUSE_MODEL_COMPANION"] ?? "muse-spark-1.3",
       architect_model: process.env["MUSE_MODEL_ARCHITECT"] ?? "muse-wonder-1.0",
-      // Preserve first-install timestamp — init ×3 must be zero-churn (FINAL-v2 §7).
-      installedAt: typeof prevInstalledAt === "string" ? prevInstalledAt : new Date().toISOString(),
       receipt: "🛡️ vibe-fence active — Hermes adapter",
-    };
-    const merged = mergeHermesConfig(existing, fenceBlock);
-    const nextStr = JSON.stringify(merged, null, 2) + "\n";
-    const prevStr = existing ? JSON.stringify(existing, null, 2) + "\n" : null;
-    if (nextStr !== prevStr) {
-      mkdirSync(join(projectRoot, ".hermes"), { recursive: true });
-      writeFileSync(p, nextStr, "utf-8");
-      written.push(".hermes/config.json");
-    }
+    });
+    if (receipt.changed) written.push(receipt.path.replace(projectRoot + "/", ""));
   }
 
   void buildAgentsFenceBlock;

@@ -6,7 +6,8 @@
  * Runtime contract (Codex-specific):
  * - Canonical policy: AGENTS.md (repo root) — Codex reads natively per Codex docs.
  * - Memory: .agents/memory/MEMORY.md  — Codex memory file; untrusted (S-06/GEM-01).
- * - Config: .codex/config.json or ~/.codex/config — merge fence block (never clobber).
+ * - Config: .codex/config.json is NEVER written (host keys only; fence
+ *   metadata lives in `.fence/adapters/codex.json`). Legacy keys scrubbed.
  * - Skills: .agents/skills/<skill>/SKILL.md — shared with Claude/Cursor adapters.
  *
  * Security: .agents/memory/ never stores secrets; trust-gated AGENTS.md is sole authority (GEM-01).
@@ -16,6 +17,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Adapter } from "./types";
 import { buildAgentsFenceBlock, mergeAgentsMd } from "./claude";
+import { scrubFenceKey, writeAdapterReceipt } from "./receipts";
 
 export const codexAdapter: Adapter = {
   name: "codex",
@@ -33,27 +35,12 @@ export const codexAdapter: Adapter = {
   skillsDir: ".agents/skills",
 };
 
-export interface CodexFenceBlock {
-  version: 1;
-  model_mode: "standard" | "contributor";
-  companion_model: string;
-  architect_model: string;
-  installedAt: string;
-  receipt: string;
-}
-
-export function mergeCodexConfig(
-  existing: Record<string, unknown> | null,
-  fenceBlock: CodexFenceBlock,
-): Record<string, unknown> {
-  const base: Record<string, unknown> = existing ? { ...existing } : {};
-  base["fence"] = fenceBlock as unknown as Record<string, unknown>;
-  return base;
-}
+// NOTE: no merge function — .codex/config.json is never written. Legacy
+// fence-managed keys are scrubbed by the installer (see below).
 
 export function installCodexAdapter(projectRoot: string, opts: { modelMode?: string } = {}): string[] {
   const written: string[] = [];
-  const modelMode = (opts.modelMode ?? "standard") as CodexFenceBlock["model_mode"];
+  const modelMode = opts.modelMode ?? "standard";
 
   // 1. AGENTS.md — canonical router
   {
@@ -88,28 +75,28 @@ export function installCodexAdapter(projectRoot: string, opts: { modelMode?: str
     if (!existsSync(dir)) { mkdirSync(dir, { recursive: true }); }
   }
 
-  // 4. .codex/config.json — merge fence block
+  // 4. .codex/config.json — NEVER written (host keys only). Scrub legacy
+  // fence-managed keys; never create the file, never touch user keys.
   {
     const p = join(projectRoot, ".codex", "config.json");
-    const existing = existsSync(p) ? JSON.parse(readFileSync(p, "utf-8") as string) as Record<string, unknown> : null;
-    const prevInstalledAt = (existing?.["fence"] as { installedAt?: unknown } | undefined)?.installedAt;
-    const fenceBlock: CodexFenceBlock = {
-      version: 1,
+    if (existsSync(p)) {
+      try {
+        const existing = JSON.parse(readFileSync(p, "utf-8") as string) as Record<string, unknown>;
+        if (scrubFenceKey(existing)) {
+          writeFileSync(p, JSON.stringify(existing, null, 2) + "\n", "utf-8");
+          written.push(".codex/config.json");
+        }
+      } catch {
+        // Unparseable host config — leave it alone, never clobber.
+      }
+    }
+    const receipt = writeAdapterReceipt(projectRoot, "codex", {
       model_mode: modelMode,
       companion_model: process.env["MUSE_MODEL_COMPANION"] ?? "muse-spark-1.3",
       architect_model: process.env["MUSE_MODEL_ARCHITECT"] ?? "muse-wonder-1.0",
-      // Preserve first-install timestamp — init ×3 must be zero-churn (FINAL-v2 §7).
-      installedAt: typeof prevInstalledAt === "string" ? prevInstalledAt : new Date().toISOString(),
       receipt: "🛡️ vibe-fence active — Codex adapter",
-    };
-    const merged = mergeCodexConfig(existing, fenceBlock);
-    const nextStr = JSON.stringify(merged, null, 2) + "\n";
-    const prevStr = existing ? JSON.stringify(existing, null, 2) + "\n" : null;
-    if (nextStr !== prevStr) {
-      mkdirSync(join(projectRoot, ".codex"), { recursive: true });
-      writeFileSync(p, nextStr, "utf-8");
-      written.push(".codex/config.json");
-    }
+    });
+    if (receipt.changed) written.push(receipt.path.replace(projectRoot + "/", ""));
   }
 
   void buildAgentsFenceBlock;

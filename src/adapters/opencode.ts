@@ -5,8 +5,10 @@
  *
  * Runtime contract (OpenCode-specific):
  * - Canonical policy: AGENTS.md (repo root) — OpenCode reads natively.
- * - Config: opencode.json / .opencode/ — merge fence block there.
- * - Hooks: OpenCode plugin hooks (PreToolUse/PreToolExecution) — minimal FP budget (S-10/C-01).
+ * - Config: opencode.json is NEVER written — the vendor schema forbids extra
+ *   keys (additionalProperties false, no `fence`); fence metadata lives in
+ *   `.fence/adapters/opencode.json`. Legacy fence-managed keys are scrubbed.
+ * - Hooks: .opencode/plugins/fence-guard.js (tool.execute.before) — minimal FP budget (S-10/C-01).
  * - Skills: ~/.config/opencode/skills/ (global) + .agents/skills/ (project)
  */
 
@@ -14,6 +16,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Adapter } from "./types";
 import { buildAgentsFenceBlock, mergeAgentsMd } from "./claude";
+import { scrubFenceKey, writeAdapterReceipt } from "./receipts";
 
 export const openCodeAdapter: Adapter = {
   name: "opencode",
@@ -22,7 +25,7 @@ export const openCodeAdapter: Adapter = {
   agentsMapping: {
     canonical: "AGENTS.md",
     runtimePaths: ["AGENTS.md", "opencode.json", ".opencode/config.json"],
-    precedence: "AGENTS.md canonical; opencode.json for runtime config + fence block",
+    precedence: "AGENTS.md canonical; opencode.json untouched (vendor schema forbids extra keys)",
   },
   hookSurface: {
     hooks: ["PreToolUse", "PreToolExecution"],
@@ -30,24 +33,6 @@ export const openCodeAdapter: Adapter = {
   },
   skillsDir: ".agents/skills",
 };
-
-export interface OpenCodeFenceBlock {
-  version: 1;
-  model_mode: "standard" | "contributor";
-  companion_model: string;
-  architect_model: string;
-  installedAt: string;
-  receipt: string;
-}
-
-export function mergeOpenCodeConfig(
-  existing: Record<string, unknown> | null,
-  fenceBlock: OpenCodeFenceBlock,
-): Record<string, unknown> {
-  const base: Record<string, unknown> = existing ? { ...existing } : {};
-  base["fence"] = fenceBlock as unknown as Record<string, unknown>;
-  return base;
-}
 
 export const OPENCODE_PLUGIN_NAME = "fence-guard.js";
 export const OPENCODE_PLUGIN_MARKER = "vibe-fence managed plugin";
@@ -103,7 +88,7 @@ export function buildFenceGuardPlugin(): string {
 
 export function installOpenCodeAdapter(projectRoot: string, opts: { modelMode?: string } = {}): string[] {
   const written: string[] = [];
-  const modelMode = (opts.modelMode ?? "standard") as OpenCodeFenceBlock["model_mode"];
+  const modelMode = opts.modelMode ?? "standard";
 
   // 1. AGENTS.md — canonical router
   {
@@ -113,31 +98,30 @@ export function installOpenCodeAdapter(projectRoot: string, opts: { modelMode?: 
     if (next !== existing) { writeFileSync(p, next, "utf-8"); written.push("AGENTS.md"); }
   }
 
-  // 2. opencode.json — merge fence block (or .opencode/config.json fallback)
+  // 2. opencode.json — NEVER written (L2: additionalProperties false, no `fence`
+  // key). Scrub legacy fence-managed keys; never create the file, never touch
+  // user keys. (The old `.opencode/config.json` fallback was dead — prior
+  // versions always wrote root opencode.json — so only root is scrubbed.)
   {
-    const candidates = [join(projectRoot, "opencode.json"), join(projectRoot, ".opencode", "config.json")];
-    const p = candidates[0]!;
-    const existing = existsSync(p) ? JSON.parse(readFileSync(p, "utf-8") as string) as Record<string, unknown> : null;
-    const prevInstalledAt = (existing?.["fence"] as { installedAt?: unknown } | undefined)?.installedAt;
-    const fenceBlock: OpenCodeFenceBlock = {
-      version: 1,
+    const p = join(projectRoot, "opencode.json");
+    if (existsSync(p)) {
+      try {
+        const existing = JSON.parse(readFileSync(p, "utf-8") as string) as Record<string, unknown>;
+        if (scrubFenceKey(existing)) {
+          writeFileSync(p, JSON.stringify(existing, null, 2) + "\n", "utf-8");
+          written.push("opencode.json");
+        }
+      } catch {
+        // Unparseable host config — leave it alone, never clobber.
+      }
+    }
+    const receipt = writeAdapterReceipt(projectRoot, "opencode", {
       model_mode: modelMode,
       companion_model: process.env["MUSE_MODEL_COMPANION"] ?? "muse-spark-1.3",
       architect_model: process.env["MUSE_MODEL_ARCHITECT"] ?? "muse-wonder-1.0",
-      // Preserve first-install timestamp — init ×3 must be zero-churn (FINAL-v2 §7).
-      installedAt: typeof prevInstalledAt === "string" ? prevInstalledAt : new Date().toISOString(),
       receipt: "🛡️ vibe-fence active — OpenCode adapter",
-    };
-    const merged = mergeOpenCodeConfig(existing, fenceBlock);
-    const nextStr = JSON.stringify(merged, null, 2) + "\n";
-    const prevStr = existing ? JSON.stringify(existing, null, 2) + "\n" : null;
-    if (nextStr !== prevStr) {
-      mkdirSync(join(projectRoot, ".opencode"), { recursive: true });
-      // Prefer existing location if it existed; otherwise write opencode.json at root
-      const target = existing ? p : candidates[0]!;
-      writeFileSync(target, nextStr, "utf-8");
-      written.push(target.replace(projectRoot + "/", ""));
-    }
+    });
+    if (receipt.changed) written.push(receipt.path.replace(projectRoot + "/", ""));
   }
 
   // 3. .agents/skills/ dir

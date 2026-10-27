@@ -12,6 +12,9 @@ Compare views: https://github.com/poferraz/vibe-fence/compare/
 ### Added
 - Track for `v0.2.0` — publishable `package.json`, governance files, CI, README resume.
 
+### Fixed
+- `release.yml` now runs `bun test` + `bun run eval` before `npm publish` (L5) — a tagged release can no longer ship with red tests or eval regressions.
+
 ## [0.1.0] — 2026-10-21
 
 First public scaffold — M1–M4 land on `main`.

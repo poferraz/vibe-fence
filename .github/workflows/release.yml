@@ -23,6 +23,8 @@ jobs:
       - run: bunx tsc --noEmit
       - run: bun run validate
       - run: bun run build
+      - run: bun test
+      - run: bun run eval
       - run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

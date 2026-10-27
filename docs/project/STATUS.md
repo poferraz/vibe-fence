@@ -2,6 +2,8 @@
 
 ## Current handoff — October 26, 2026 (v2, supersedes owned-CLI direction)
 
+- **Oct 26 (synthesis fixes, `feat/synthesis-fixes` — Phase 0a):** [release.yml](../../.github/workflows/release.yml) now runs `bun test` + `bun run eval` before `npm publish` (L5). Publish itself stays human-owned (`NPM_TOKEN` secret + `v0.2.0` tag).
+
 - **Locked goal (user, 2026-10-26):** plug-and-play senior-developer fence for ANY coding tool, tiered honestly (Enforced via host hooks — OpenCode demo hero / Guarded via `check` + git hooks everywhere / Advisory via briefing files). Meta = fence's brain (Spark plan + explanations, key present) + demo driver + Muse Code builds it on the record. Fence core needs no model; no user forced to switch tools/models. Teaching optional; no UI. Full decisions + week plan: [updated audit & goal lock](../clief/audits/code-security/2026-10-26-updated-audit-goal-lock.md) — **read this first**; the owned-CLI design in `docs/superpowers/specs/` is superseded.
 - Audited implementation baseline: `4efad330ca1776bd05febbcc677bfde28c44f326`. Findings A1–A10 (fake verification pass, empty hooks, broken packed CLI, stub containment/undo, red CI, unwired Meta) in the goal-lock file § Verified findings. Existing workspace typecheck/validation passed; those checks do not establish runtime protection.
 - Sessions to date changed planning/routing documents only. No runtime fixes, API calls, or deployments yet.

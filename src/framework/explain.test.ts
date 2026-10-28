@@ -96,6 +96,20 @@ describe("explainBlocking contract (mocked fetch)", () => {
     expect(events).toContain('"model":"muse-spark-1.3"');
   });
 
+  it("extracts message text from the real Responses output shape", async () => {
+    process.env["MUSE_API_KEY"] = "test-key";
+    const root = makeProject();
+    mockFetch(() => new Response(JSON.stringify({
+      id: "resp_real",
+      output: [
+        { type: "reasoning", id: "rs_1", summary: [], status: "completed" },
+        { type: "message", id: "msg_1", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Move the key server-side.", annotations: [] }] },
+      ],
+    }), { status: 200 }));
+    const out = await explainBlocking(FAILURES, { kind: "gate", target: "write" }, { projectRoot: root });
+    expect(out).toEqual({ status: "explained", text: "Move the key server-side.", requestId: "resp_real", model: "muse-spark-1.3" });
+  });
+
   it("fails open on API errors (skipped, never throws)", async () => {
     process.env["MUSE_API_KEY"] = "test-key";
     const { calls } = mockFetch(() => new Response("boom", { status: 500 }));

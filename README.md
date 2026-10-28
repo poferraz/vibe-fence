@@ -18,7 +18,7 @@ The [rule registry](src/rules/index.ts), [gate](src/framework/gate.ts), and [che
 
 | Integration | Current implementation | Limitations |
 |---|---|---|
-| Claude Code and Cursor | Installer configures a pre-tool gate script. | These hooks allow the action with a warning if their parser or fence executable is unavailable or the gate errors. Host behavior still needs end-to-end verification in your environment. |
+| Claude Code and Cursor | Installer configures a pre-tool gate script. `status --host=claude` reports its configuration state. | These hooks allow the action with a warning if their parser or fence executable is unavailable or the gate errors. The installed script was exercised with host-format input locally; a real host session still needs end-to-end verification in your environment. |
 | OpenCode | Installer creates a plugin that invokes the gate. | It can allow actions if the gate is unavailable. Verify the plugin is loaded in your environment. |
 | Codex | Installer adds guidance and a project-local pre-tool hook for Bash and `apply_patch` when it can safely merge the configuration. | Codex must trust and load the hook; this implementation has not yet been verified in a real session. Other tool paths may not be covered, and hook failures can allow the action. |
 | Hermes and Antigravity | Installer writes guidance and adapter metadata. | Do not assume pre-tool enforcement from adapter metadata alone. |
@@ -44,6 +44,7 @@ To inspect a project, use the built CLI from that project's directory:
 cd /path/to/your/project
 node /path/to/vibe-fence/dist/cli.js init --dry-run
 node /path/to/vibe-fence/dist/cli.js init
+node /path/to/vibe-fence/dist/cli.js status --host=claude
 node /path/to/vibe-fence/dist/cli.js status --host=codex
 node /path/to/vibe-fence/dist/cli.js check
 ```

@@ -10,6 +10,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { installCodexAdapter } from "./adapters/codex";
+import { installClaudeAdapter } from "./adapters/claude";
 
 const CLI_PATH = join(import.meta.dir, "cli.ts");
 
@@ -177,6 +178,37 @@ describe("cli status", () => {
     const emptyPath = join(root, "empty-path");
     mkdirSync(emptyPath);
     const result = runCli(["status", "--host=codex", "--json"], { cwd: root, env: { ...gitEnv(), FENCE_BIN: "/usr/bin/true", PATH: emptyPath } });
+    expect(result.exit).toBe(0);
+    expect(JSON.parse(result.stdout).toolGate.state).toBe("degraded");
+  });
+});
+
+describe("cli status --host=claude", () => {
+  it("reports an installed Claude hook as configured but not verified", () => {
+    const root = mkdtempSync(join(tmpdir(), "vf-status-claude-"));
+    created.push(root);
+    installClaudeAdapter(root);
+    const result = runCli(["status", "--host=claude", "--json"], { cwd: root, env: { ...gitEnv(), FENCE_BIN: "/usr/bin/true" } });
+    expect(result.exit).toBe(0);
+    const status = JSON.parse(result.stdout);
+    expect(status.toolGate.state).toBe("configured-unverified");
+    expect(status.jqExecutable).toBeTruthy();
+  });
+
+  it("reports Claude as advisory when no hook is installed", () => {
+    const root = mkdtempSync(join(tmpdir(), "vf-status-claude-none-"));
+    created.push(root);
+    const result = runCli(["status", "--host=claude", "--json"], { cwd: root, env: gitEnv() });
+    expect(result.exit).toBe(0);
+    expect(JSON.parse(result.stdout).toolGate.state).toBe("advisory");
+  });
+
+  it("reports a present but modified Claude hook script as degraded", () => {
+    const root = mkdtempSync(join(tmpdir(), "vf-status-claude-bad-"));
+    created.push(root);
+    installClaudeAdapter(root);
+    writeFileSync(join(root, ".claude/hooks/fence-gate.sh"), "# user script\n");
+    const result = runCli(["status", "--host=claude", "--json"], { cwd: root, env: { ...gitEnv(), FENCE_BIN: "/usr/bin/true" } });
     expect(result.exit).toBe(0);
     expect(JSON.parse(result.stdout).toolGate.state).toBe("degraded");
   });

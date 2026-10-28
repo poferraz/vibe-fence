@@ -212,7 +212,7 @@ export function installCursorAdapter(projectRoot: string, opts: { modelMode?: st
       model_mode: modelMode,
       companion_model: process.env["MUSE_MODEL_COMPANION"] ?? "muse-spark-1.3",
       architect_model: process.env["MUSE_MODEL_ARCHITECT"] ?? "muse-wonder-1.0",
-      receipt: "🛡️ vibe-fence active — Cursor adapter",
+      receipt: "vibe-fence Cursor adapter installed — host execution not verified",
     });
     if (receipt.changed) written.push(receipt.path.replace(projectRoot + "/", ""));
   }

@@ -119,7 +119,7 @@ export function installOpenCodeAdapter(projectRoot: string, opts: { modelMode?: 
       model_mode: modelMode,
       companion_model: process.env["MUSE_MODEL_COMPANION"] ?? "muse-spark-1.3",
       architect_model: process.env["MUSE_MODEL_ARCHITECT"] ?? "muse-wonder-1.0",
-      receipt: "🛡️ vibe-fence active — OpenCode adapter",
+      receipt: "vibe-fence OpenCode adapter installed — host execution not verified",
     });
     if (receipt.changed) written.push(receipt.path.replace(projectRoot + "/", ""));
   }

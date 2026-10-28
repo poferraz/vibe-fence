@@ -6,9 +6,10 @@
  */
 import { describe, it, expect, afterEach } from "bun:test";
 import { execFileSync, execSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { installCodexAdapter } from "./adapters/codex";
 
 const CLI_PATH = join(import.meta.dir, "cli.ts");
 
@@ -99,6 +100,93 @@ describe("cli --profile", () => {
     const r = runCli(["--help"]);
     expect(r.exit).toBe(0);
     expect(r.stdout).toContain("--profile=muse");
+  });
+});
+
+describe("cli status", () => {
+  it("does not claim installation automatically watches the next write", () => {
+    const root = mkdtempSync(join(tmpdir(), "vf-init-status-"));
+    created.push(root);
+    const result = runCli(["init", "--adapters=codex"], { cwd: root, env: gitEnv() });
+    expect(result.exit).toBe(0);
+    expect(result.stdout).not.toContain("watches your next write");
+    expect(result.stdout).toContain("status");
+    expect(result.stdout).toContain("trust");
+  });
+
+  it("reports an advisory Codex adapter and an inactive redirected Git hook path", () => {
+    const root = mkdtempSync(join(tmpdir(), "vf-status-"));
+    created.push(root);
+    execFileSync("git", ["init", "-q", root], { env: gitEnv() });
+    execFileSync("git", ["config", "--local", "core.hooksPath", join(root, "missing-hooks")], { cwd: root, env: gitEnv() });
+    const result = runCli(["status", "--host=codex", "--json"], { cwd: root, env: gitEnv() });
+    expect(result.exit).toBe(0);
+    const status = JSON.parse(result.stdout);
+    expect(status.host).toBe("codex");
+    expect(status.toolGate.state).toBe("advisory");
+    expect(status.gitHooks.state).toBe("inactive");
+    expect(status.gitHooks.path).toBe(join(root, "missing-hooks"));
+  });
+
+  it("does not treat a different matcher or modified hook script as configured protection", () => {
+    const root = mkdtempSync(join(tmpdir(), "vf-status-hook-"));
+    created.push(root);
+    mkdirSync(join(root, ".codex/hooks"), { recursive: true });
+    writeFileSync(join(root, ".codex/hooks/fence-gate.cjs"), "// user script");
+    writeFileSync(join(root, ".codex/hooks.json"), JSON.stringify({ hooks: { PreToolUse: [{ matcher: "Read", hooks: [{ type: "command", command: 'node "$(git rev-parse --show-toplevel)/.codex/hooks/fence-gate.cjs"' }] }] } }));
+    const result = runCli(["status", "--host=codex", "--json"], { cwd: root, env: { ...gitEnv(), FENCE_BIN: "/usr/bin/true" } });
+    expect(result.exit).toBe(0);
+    expect(JSON.parse(result.stdout).toolGate.state).toBe("degraded");
+  });
+
+  it("reports a configured Codex hook as degraded when the fence executable is missing", () => {
+    const root = mkdtempSync(join(tmpdir(), "vf-status-bin-"));
+    created.push(root);
+    installCodexAdapter(root);
+    const result = runCli(["status", "--host=codex", "--json"], { cwd: root, env: { ...gitEnv(), FENCE_BIN: join(root, "missing-fence") } });
+    expect(result.exit).toBe(0);
+    expect(JSON.parse(result.stdout).toolGate.state).toBe("degraded");
+  });
+
+  it("reports an unverified state when no host is selected", () => {
+    const root = mkdtempSync(join(tmpdir(), "vf-status-unknown-"));
+    created.push(root);
+    const result = runCli(["status", "--json"], { cwd: root, env: gitEnv() });
+    expect(result.exit).toBe(0);
+    const status = JSON.parse(result.stdout);
+    expect(status.host).toBe("unknown");
+    expect(status.toolGate.state).toBe("unverified");
+  });
+
+  it("finds a configured Codex hook from a project subdirectory without claiming it is trusted", () => {
+    const root = mkdtempSync(join(tmpdir(), "vf-status-subdir-"));
+    created.push(root);
+    execFileSync("git", ["init", "-q", root], { env: gitEnv() });
+    installCodexAdapter(root);
+    const nested = join(root, "src");
+    mkdirSync(nested);
+    const result = runCli(["status", "--host=codex", "--json"], { cwd: nested, env: { ...gitEnv(), FENCE_BIN: "/usr/bin/true" } });
+    expect(result.exit).toBe(0);
+    expect(JSON.parse(result.stdout).toolGate.state).toBe("configured-unverified");
+  });
+
+  it("reports a configured Codex hook as degraded when Node is unavailable on PATH", () => {
+    const root = mkdtempSync(join(tmpdir(), "vf-status-node-"));
+    created.push(root);
+    installCodexAdapter(root);
+    const emptyPath = join(root, "empty-path");
+    mkdirSync(emptyPath);
+    const result = runCli(["status", "--host=codex", "--json"], { cwd: root, env: { ...gitEnv(), FENCE_BIN: "/usr/bin/true", PATH: emptyPath } });
+    expect(result.exit).toBe(0);
+    expect(JSON.parse(result.stdout).toolGate.state).toBe("degraded");
+  });
+});
+
+describe("cli gate stdin", () => {
+  it("checks tool arguments supplied on stdin without requiring them in command arguments", () => {
+    const result = runCli(["gate", "--tool", "bash", "--args-stdin"], { input: JSON.stringify({ command: "rm -rf /" }) });
+    expect(result.exit).toBe(1);
+    expect(result.stdout).toContain("CMD-01");
   });
 });
 

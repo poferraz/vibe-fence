@@ -64,7 +64,7 @@ describe("scenario replay (demo beats, packed CLI)", () => {
     const init = fence(root, ["init"]);
     expect(init.exit).toBe(0);
     expect(init.ms, "init must stay under the 3s rubric budget").toBeLessThan(3000);
-    expect(init.stdout + init.stderr).toContain("vibe-fence active");
+    expect(init.stdout + init.stderr).toContain("vibe-fence installed");
 
     // Beat 2-3: activate the leak, expect the SEC-01 block.
     const cfg = join(root, "config.env");

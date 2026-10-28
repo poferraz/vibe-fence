@@ -20,7 +20,7 @@ The [rule registry](src/rules/index.ts), [gate](src/framework/gate.ts), and [che
 |---|---|---|
 | Claude Code and Cursor | Installer configures a pre-tool gate script. | These hooks allow the action with a warning if their parser or fence executable is unavailable or the gate errors. Host behavior still needs end-to-end verification in your environment. |
 | OpenCode | Installer creates a plugin that invokes the gate. | It can allow actions if the gate is unavailable. Verify the plugin is loaded in your environment. |
-| Codex | Installer writes project guidance and an adapter receipt. | The adapter does not install a pre-tool interceptor; guidance is not an enforced block. |
+| Codex | Installer adds guidance and a project-local pre-tool hook for Bash and `apply_patch` when it can safely merge the configuration. | Codex must trust and load the hook; this implementation has not yet been verified in a real session. Other tool paths may not be covered, and hook failures can allow the action. |
 | Hermes and Antigravity | Installer writes guidance and adapter metadata. | Do not assume pre-tool enforcement from adapter metadata alone. |
 | Git | Installer attempts to install pre-commit and pre-push hooks. | Git may use a different `core.hooksPath`, existing hooks may need attention, and Git hooks do not stop arbitrary tool calls before execution. |
 
@@ -44,10 +44,11 @@ To inspect a project, use the built CLI from that project's directory:
 cd /path/to/your/project
 node /path/to/vibe-fence/dist/cli.js init --dry-run
 node /path/to/vibe-fence/dist/cli.js init
+node /path/to/vibe-fence/dist/cli.js status --host=codex
 node /path/to/vibe-fence/dist/cli.js check
 ```
 
-`init` changes files in the project; the dry run previews its intent. Read any warnings, especially warnings about `core.hooksPath`, and verify the integration in your own environment. If Git uses a redirected hook path, hooks installed in `.git/hooks` may not run.
+`init` changes files in the project; the dry run previews its intent. For Codex, review and trust the configured hook in the host before testing it. `status` reports configuration, not proof that a host has trusted or executed it. Read any warnings, especially warnings about `core.hooksPath`, and verify the integration in your own environment. If Git uses a redirected hook path, hooks installed in `.git/hooks` may not run.
 
 ## Evidence and limitations
 

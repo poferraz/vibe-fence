@@ -29,5 +29,8 @@ dist/
 # internal tooling (hermes)
 .hermes/
 
+# Local working plans, prompts, audits, and session handoffs
+/.fence/private/
+
 # bun / tooling caches
 tools/out/

@@ -9,6 +9,7 @@ import { runCheck, runIndexCheck, runPushCheck, exitCodeForReport, formatHuman }
 import { explainBlocking, type ExplainContext, type ExplainFinding } from "./framework/explain.js";
 import { checkpoint, fenceUndo } from "./framework/git.js";
 import { evaluateToolCall } from "./framework/gate.js";
+import { getProtectionStatus } from "./framework/status.js";
 
 function version(): string {
   try {
@@ -22,14 +23,15 @@ function version(): string {
 
 function help(): string {
   return [
-    "vibe-fence — one command makes any AI coding agent safe.",
+    "vibe-fence — checks and guardrails for coding-agent workflows.",
     "",
     "Usage:",
     "  vibe-fence init [--dry-run] [--contributor-mode] [--full] [--adapters=a,b]",
     "  vibe-fence check [--json] [--staged] [--push [<range>]] [--explain]",
     "  vibe-fence checkpoint --action <label> [--include-untracked]",
     "  vibe-fence undo [--steps N]",
-    "  vibe-fence gate --tool <name> --args '<json>' [--root <dir>] [--explain]",
+    "  vibe-fence gate --tool <name> (--args '<json>' | --args-stdin) [--root <dir>] [--explain]",
+    "  vibe-fence status [--host=codex|claude] [--json]",
     "  vibe-fence --help | --version",
     "",
     "Commands:",
@@ -38,6 +40,7 @@ function help(): string {
     "  checkpoint  Snapshot tracked WIP as a checkpoint commit (safe undo point)",
     "  undo    Revert the last checkpoint(s) — never detaches, never force-pushes",
     "  gate    Evaluate one tool call (Enforced tier plugins; exit 1 blocks)",
+    "  status  Describe configured protection and its verification limits",
     "",
     "Options (init):",
     "  --dry-run            Print what would change; write nothing",
@@ -114,6 +117,19 @@ function pushRangesFromStdinOrDefault(): string[] {
 
 export async function main(argv: string[]): Promise<number> {
   const [cmd, ...rest] = argv;
+  if (cmd === "status") {
+    const host = rest.find((arg) => arg.startsWith("--host="))?.slice("--host=".length) || "unknown";
+    const report = getProtectionStatus(process.cwd(), host);
+    if (rest.includes("--json")) console.log(JSON.stringify(report, null, 2));
+    else {
+      console.log(`Host: ${report.host}`);
+      console.log(`Pre-action protection: ${report.toolGate.state} — ${report.toolGate.next}`);
+      console.log(`Git hooks: ${report.gitHooks.state} — ${report.gitHooks.next}`);
+      if (report.gitHooks.path) console.log(`Git hook directory: ${report.gitHooks.path}`);
+      console.log(`Fence executable: ${report.gateExecutable ?? "not found"}`);
+    }
+    return 0;
+  }
   if (cmd === "--help" || cmd === "-h" || cmd === "help") {
     console.log(help());
     return 0;
@@ -232,7 +248,11 @@ export async function main(argv: string[]): Promise<number> {
       return i !== -1 && rest[i + 1] ? rest[i + 1]! : null;
     };
     const tool = flag("--tool");
-    const rawArgs = flag("--args");
+    if (rest.includes("--args-stdin") && flag("--args") !== null) {
+      console.error("vibe-fence: gate takes only one of --args and --args-stdin.");
+      return 2;
+    }
+    const rawArgs = rest.includes("--args-stdin") ? readFileSync(0, "utf-8") : flag("--args");
     if (!tool || rawArgs === null) {
       console.error("vibe-fence: gate needs --tool <name> --args '<json>'.");
       return 2;

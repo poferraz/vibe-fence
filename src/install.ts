@@ -404,15 +404,14 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
 
   if (!opts.dryRun) {
     // Print receipt
-    console.log(`🛡️  vibe-fence active — ${receipt.mode} mode — ${receipt.adaptersInstalled.length} adapters — ${receipt.elapsedMs}ms`);
+    console.log(`🛡️  vibe-fence installed — ${receipt.mode} mode — ${receipt.adaptersInstalled.length} adapters — ${receipt.elapsedMs}ms`);
     console.log(`   Files: ${receipt.filesWritten.slice(0, 6).join(", ")}${receipt.filesWritten.length > 6 ? ` +${receipt.filesWritten.length - 6} more` : ""}`);
-    console.log(`   Verification: Read→Think→Write→Check — deterministic fence decides, model explains.`);
-    // Paved path — 3 steps (05 A-11/S-02): keep building → you'll see a card → approve and agent handles it
+    console.log(`   Protection depends on your host and working hooks; installation alone does not verify enforcement.`);
     console.log("");
     console.log("Next steps:");
-    console.log("  1. Keep building — the fence watches your next write.");
-    console.log("  2. You'll see a card when the fence finds something to harden.");
-    console.log("  3. Approve — the agent handles the fix in your repo.");
+    console.log("  1. Run 'vibe-fence status --host=codex' for a configuration report.");
+    console.log("  2. Review and trust applicable host hooks, then verify them in a safe project.");
+    console.log("  3. Run 'vibe-fence check' and review the findings.");
 
     // Scope guard note — Desktop CLIs v1 (GEM-02)
     if (probe.runtime === "webcontainer") {

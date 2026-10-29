@@ -6,6 +6,7 @@
  */
 import { describe, it, expect } from "bun:test";
 import { check } from "./sec-02";
+import { evaluateToolCall } from "../framework/gate";
 
 describe("SEC-02 gate mode", () => {
   it("fails on read tool + credential path", () => {
@@ -32,6 +33,19 @@ describe("SEC-02 gate mode", () => {
     for (const cmd of ["cp -x .env /tmp/copied-secrets", "rsync -x .env dst/"]) {
       expect(check({ content: cmd, toolName: cmd.split(" ")[0] }).verdict, cmd).toBe("fail");
     }
+  });
+
+  it("does not mistake an operand named zip or 7z for the executable", () => {
+    for (const command of ["cp -x .env zip", "cp -x .env /tmp/zip", "cp -x .env 7z", "rsync -x .env zip"]) {
+      const findings = evaluateToolCall({ tool: "bash", args: { command } });
+      expect(findings.some((f) => f.ruleId === "SEC-02"), command).toBe(true);
+    }
+  });
+
+  it("does not strip exclusions across independent inputs or embedded commands", () => {
+    expect(check({ content: "zip -r out.zip . -x .env", args: "cp -x .env zip", toolName: "cp" }).verdict).toBe("fail");
+    const command = "zip -r out.zip . -x .env $(cp -x .env zip)";
+    expect(evaluateToolCall({ tool: "bash", args: { command } }).some((f) => f.ruleId === "SEC-02")).toBe(true);
   });
 
   it("still honors real archive exclusions (tar/zip/rsync)", () => {

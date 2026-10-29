@@ -103,12 +103,24 @@ function emitBacktickSub(line: string, start: number, out: { text: string }): nu
 function extractLineSubstitutions(line: string): string {
   const out = { text: "" };
   let i = 0;
+  // In shell syntax # starts a comment only at the beginning of a word.
+  // A quote, substitution or escaped character contributes to that word.
+  let wordStart = true;
   while (i < line.length) {
     const ch = line[i]!;
-    if (ch === "'") {
+    if (ch === "#" && wordStart) {
+      break;
+    } else if (ch === "\\" && i + 1 < line.length) {
+      // The escaped character is literal: in particular it cannot open a
+      // quote, start a comment or act as a pipe or substitution operator.
+      out.text += " ";
+      i += 2;
+      wordStart = false;
+    } else if (ch === "'") {
       const end = line.indexOf("'", i + 1);
       out.text += " ";
       i = end === -1 ? line.length : end + 1;
+      wordStart = false;
     } else if (ch === '"') {
       out.text += " ";
       i++;
@@ -119,12 +131,16 @@ function extractLineSubstitutions(line: string): string {
         else i++;
       }
       if (i < line.length) i++;
+      wordStart = false;
     } else if (ch === "`") {
       i = emitBacktickSub(line, i, out);
+      wordStart = false;
     } else if (ch === "$" && line[i + 1] === "(") {
       i = emitParenSub(line, i, out);
+      wordStart = false;
     } else {
       out.text += ch;
+      wordStart = /[\s;|&()<>]/.test(ch);
       i++;
     }
   }
@@ -139,27 +155,6 @@ export function stripShellLiterals(src: string): string {
   return src
     .split("\n")
     .map(extractLineSubstitutions)
-    .map((line) => {
-      let out = "";
-      let quote: string | null = null;
-      for (let i = 0; i < line.length; i++) {
-        const ch = line[i]!;
-        if (quote) {
-          if (ch === quote) {
-            quote = null;
-            out += " ";
-          }
-          continue;
-        }
-        if (ch === "'" || ch === '"') {
-          quote = ch;
-          continue;
-        }
-        if (ch === "#") break;
-        out += ch;
-      }
-      return out;
-    })
     .join("\n");
 }
 

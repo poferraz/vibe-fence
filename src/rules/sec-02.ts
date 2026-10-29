@@ -54,11 +54,16 @@ const EXCLUDE_SHORT_RE = /(?:^|\s)-x\s+[^\s]+/g;
  * Verbs match path-qualified and sudo-wrapped forms (`/usr/bin/tar`,
  * `sudo -u root tar`) — otherwise a legitimate exclusion reads as a
  * credential read (independent-review finding). */
-const VERB_PREFIX_RE = String.raw`(?:^|\s)(?:sudo(?:\s+-\S+)*\s+)?(\S*/)?`;
+// Match the command position only. A later argument named `zip` or
+// `/tmp/zip` must never give `cp -x .env zip` archive semantics.
+const VERB_PREFIX_RE = String.raw`^\s*(?:sudo\s+(?:(?:-u|-g|-h|-p|-C|-R|-T)\s+\S+\s+|-\S+\s+)*)?(?:\S*/)?`;
 const LONG_EXCLUDE_VERB_RE = new RegExp(`${VERB_PREFIX_RE}(tar|rsync)\\b`);
 const SHORT_EXCLUDE_VERB_RE = new RegExp(`${VERB_PREFIX_RE}(zip|7z)\\b`);
 function stripSegmentExclusions(segment: string): string {
   let out = segment;
+  // An embedded shell command can contain its own flags. Without parsing
+  // that command, suppressing any operand risks hiding a real read.
+  if (segment.includes("$(") || segment.includes("`")) return out;
   if (LONG_EXCLUDE_VERB_RE.test(segment)) out = out.replace(EXCLUDE_LONG_RE, " ");
   if (SHORT_EXCLUDE_VERB_RE.test(segment)) out = out.replace(EXCLUDE_SHORT_RE, " ");
   return out;
@@ -109,7 +114,9 @@ function isCredentialPath(text: string): { hit: boolean; label?: string; match?:
 export function check(ctx: CheckCtx): RuleVerdict {
   const content = ctx.content ?? "";
   const args = ctx.args ?? "";
-  const haystack = stripExclusions(`${content} ${args}`);
+  // Treat the two sources separately: an archive command in one must not
+  // cause flags belonging to a different command in the other to be erased.
+  const haystack = `${stripExclusions(content)} ${stripExclusions(args)}`;
 
   if (!haystack.trim()) {
     return { id: SEC02_ID, verdict: "unknown", reason: "no content to inspect (unknown≠pass)" };

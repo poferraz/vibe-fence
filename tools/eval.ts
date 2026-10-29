@@ -318,7 +318,11 @@ export interface RedteamAttempt {
   caught: boolean;
   /** The named rule fired on either surface (per-rule recall). */
   targetHit: boolean;
-  /** A block-severity finding exists on either surface (would actually block). */
+  /** The named rule itself produced a block-severity finding. */
+  targetBlocked: boolean;
+  /** The named rule fired, but only at warning severity. */
+  targetWarnOnly: boolean;
+  /** Any rule produced a block-severity finding (system-wide). */
   blocked: boolean;
   error?: string;
 }
@@ -337,6 +341,10 @@ export interface RedteamRun {
   targetHits: number;
   /** Variants with a block-severity finding (would actually stop execution). */
   blocked: number;
+  /** Variants blocked by the named rule, independently of other rules. */
+  targetBlocked: number;
+  /** Variants where the named rule fired only as a warning. */
+  targetWarnOnly: number;
   promptTokens: number | null;
   completionTokens: number | null;
   totalTokens: number | null;
@@ -397,6 +405,7 @@ function gateFindings(rule: string, payload: string, filePath: string, projectRo
  * One payload scored on both real surfaces (gate legs + tree scan).
  * Attribution vocabulary (honest by construction):
  * - `targetHit`: the NAMED rule fired (per-rule recall).
+ * - `targetBlocked` / `targetWarnOnly`: severity of the NAMED rule itself.
  * - `blocked`: a BLOCK-severity finding exists (would actually stop execution).
  * - `warnOnly`: something fired but every finding is warn-grade (queued, never gates).
  * - `caught`: legacy system-wide catch (any rule, any severity) — kept for
@@ -408,6 +417,8 @@ export interface VariantScore {
   treeUnknowns: number;
   caught: boolean;
   targetHit: boolean;
+  targetBlocked: boolean;
+  targetWarnOnly: boolean;
   blocked: boolean;
   warnOnly: boolean;
   gateRules: string[];
@@ -429,6 +440,7 @@ export function scoreVariant(rule: string, payload: string, relOverride?: string
   let treeBlocks = 0;
   let treeWarns = 0;
   let treeUnknowns = 0;
+  let targetTreeBlocked = false;
   let error: string | undefined;
   try {
     execSync("git init -q .", { cwd: tmpRoot, stdio: "ignore" });
@@ -441,6 +453,7 @@ export function scoreVariant(rule: string, payload: string, relOverride?: string
     treeRules = [...new Set(fails.map((f) => f.ruleId))];
     treeBlocks = fails.filter((f) => f.severity === "block").length;
     treeWarns = fails.length - treeBlocks;
+    targetTreeBlocked = fails.some((f) => f.ruleId === rule && f.severity === "block");
     treeUnknowns = rep.unknowns;
   } catch (err) {
     error = (err as Error).message;
@@ -451,6 +464,8 @@ export function scoreVariant(rule: string, payload: string, relOverride?: string
   const gateBlocked = gate.some((f) => f.severity === "block");
   const treeBlocked = treeBlocks > 0;
   const targetHit = gateRules.includes(rule) || treeRules.includes(rule);
+  const targetBlocked = gate.some((f) => f.ruleId === rule && f.severity === "block") || targetTreeBlocked;
+  const targetWarnOnly = targetHit && !targetBlocked;
   const blocked = gateBlocked || treeBlocked;
   const caught = gate.length > 0 || treeRules.length > 0;
   return {
@@ -459,6 +474,8 @@ export function scoreVariant(rule: string, payload: string, relOverride?: string
     treeUnknowns,
     caught,
     targetHit,
+    targetBlocked,
+    targetWarnOnly,
     blocked,
     warnOnly: caught && !blocked,
     gateRules,
@@ -539,13 +556,15 @@ export async function redteam(opts: RedteamOpts): Promise<number> {
         treeUnknowns: s.treeUnknowns,
         caught: s.caught,
         targetHit: s.targetHit,
+        targetBlocked: s.targetBlocked,
+        targetWarnOnly: s.targetWarnOnly,
         blocked: s.blocked,
         ...(s.error ? { error: s.error } : {}),
       });
       const tag =
         opts.mode === "attack"
           ? s.targetHit
-            ? s.blocked
+            ? s.targetBlocked
               ? "CAUGHT"
               : "CAUGHT-WARN"
             : s.caught
@@ -554,13 +573,16 @@ export async function redteam(opts: RedteamOpts): Promise<number> {
           : s.caught
             ? "FP"
             : "CLEAN";
-      console.log(`  [${tag}] ${v.slice(0, 120)}${s.error ? ` (eval error: ${s.error})` : ""}`);
+      const context = s.targetWarnOnly && s.blocked ? " (another rule blocks)" : "";
+      console.log(`  [${tag}] ${v.slice(0, 120)}${context}${s.error ? ` (eval error: ${s.error})` : ""}`);
     }
   }
 
   const caught = attempts.filter((a) => a.caught).length;
   const targetHits = attempts.filter((a) => a.targetHit).length;
   const blocked = attempts.filter((a) => a.blocked).length;
+  const targetBlocked = attempts.filter((a) => a.targetBlocked).length;
+  const targetWarnOnly = attempts.filter((a) => a.targetWarnOnly).length;
   const run: RedteamRun = {
     type: "redteam_run",
     rule: opts.rule,
@@ -573,6 +595,8 @@ export async function redteam(opts: RedteamOpts): Promise<number> {
     rate: attempts.length > 0 ? caught / attempts.length : 0,
     targetHits,
     blocked,
+    targetBlocked,
+    targetWarnOnly,
     promptTokens,
     completionTokens,
     totalTokens,
@@ -586,7 +610,7 @@ export async function redteam(opts: RedteamOpts): Promise<number> {
   const pct = ((caught / Math.max(attempts.length, 1)) * 100).toFixed(1);
   if (opts.mode === "attack") {
     console.log(
-      `redteam ${opts.rule}: ${caught}/${attempts.length} caught (${pct}%) — target-rule ${targetHits}, blocked ${blocked}`,
+      `redteam ${opts.rule}: ${caught}/${attempts.length} system catches (${pct}%) — target-rule ${targetHits}, target-blocked ${targetBlocked}, target-warn-only ${targetWarnOnly}, system-blocked ${blocked}`,
     );
   } else {
     console.log(`redteam ${opts.rule} (benign): ${caught}/${attempts.length} false positives — lower is better`);
@@ -663,23 +687,26 @@ export function runBenchHostile(argv: string[]): number {
     // target hits (a neighbour rule's block or a BILL-01 warn is not a
     // per-rule block).
     let target = 0;
-    let blocked = 0;
+    let targetBlocked = 0;
+    let systemBlocked = 0;
     for (const c of set.cases) {
       const s = scoreVariant(set.rule, c.payload, c.path);
       if (s.error) {
         problems++;
         console.log(`  [ERROR] ${set.rule} ${c.id}: ${s.error}`);
       } else if (!s.targetHit) {
+        if (s.blocked) systemBlocked++;
         misses++;
         const via = s.caught ? ` (system catch via ${[...s.gateRules, ...s.treeRules].join(",")})` : "";
         console.log(`  [MISS] ${set.rule} ${c.id}: ${c.payload.slice(0, 100)}${via}`);
       } else {
         target++;
-        if (s.blocked) blocked++;
-        else console.log(`  [WARN-ONLY] ${set.rule} ${c.id}: target fired warn-grade, nothing would block`);
+        if (s.blocked) systemBlocked++;
+        if (s.targetBlocked) targetBlocked++;
+        else console.log(`  [WARN-ONLY] ${set.rule} ${c.id}: target fired warn-grade${s.blocked ? "; another rule blocks" : ", nothing would block"}`);
       }
     }
-    console.log(`bench ${set.rule}: ${target}/${set.cases.length} target-hit (${blocked} blocked, ${target - blocked} warn-only)`);
+    console.log(`bench ${set.rule}: ${target}/${set.cases.length} target-hit (${targetBlocked} target-blocked, ${target - targetBlocked} target-warn-only, ${systemBlocked} system-blocked)`);
   }
   if (misses > 0 || problems > 0) {
     console.log(`bench hostile: ${misses} miss(es), ${problems} problem(s) — triage before corpus fold-in`);

@@ -90,10 +90,33 @@ function wouldCommit(projectRoot: string, filePath: string, env: Record<string, 
   }
 }
 
+/**
+ * Is this path in the Git index (staged or tracked)? `git ls-files`
+ * consults the index, so a staged-new file and a tracked file both count.
+ * A tracked file stays committable even when an ignore rule now matches it —
+ * ignore rules never untrack. Any git failure → false (no repo context).
+ */
+function isIndexed(projectRoot: string, filePath: string, env: Record<string, string>): boolean {
+  try {
+    execFileSync("git", ["ls-files", "--error-unmatch", "-z", "--", filePath], { cwd: projectRoot, env, stdio: ["ignore", "ignore", "ignore"] });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function check(ctx: CheckCtx): RuleVerdict {
   // Half 2: committable .env — decided by git, not by content.
   if (isEnvFile(ctx.filePath)) {
     const env = ctx.env ?? (process.env as Record<string, string>);
+    if (ctx.projectRoot && isIndexed(ctx.projectRoot, ctx.filePath as string, env)) {
+      return {
+        id: SEC03_ID,
+        verdict: "fail",
+        reason: `sensitive env file is tracked in Git — ignore rules do not untrack it; run \`git rm --cached ${ctx.filePath}\` (keeps your local copy), commit the removal, and rotate any exposed secret (S-09 block)`,
+        evidence: ctx.filePath,
+      };
+    }
     if (ctx.projectRoot && wouldCommit(ctx.projectRoot, ctx.filePath as string, env)) {
       return {
         id: SEC03_ID,
@@ -102,7 +125,7 @@ export function check(ctx: CheckCtx): RuleVerdict {
         evidence: ctx.filePath,
       };
     }
-    return { id: SEC03_ID, verdict: "pass", reason: ".env correctly ignored (or no repo context)" };
+    return { id: SEC03_ID, verdict: "pass", reason: ".env correctly ignored and untracked (or no repo context)" };
   }
 
   const content = ctx.content ?? "";

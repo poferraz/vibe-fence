@@ -49,6 +49,10 @@
     {
       "id": "b-sec02-12",
       "payload": "zip -r build.zip . -x .env"
+    },
+    {
+      "id": "b-sec02-13",
+      "payload": "cp -x README.md /tmp/docs/"
     }
   ]
 }

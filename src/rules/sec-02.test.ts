@@ -26,6 +26,34 @@ describe("SEC-02 gate mode", () => {
   it("passes .env.example templates", () => {
     expect(check({ content: ".env.example", toolName: "read" }).verdict).toBe("pass");
   });
+
+  it("does not treat -x as an exclusion outside zip/7z (cp/rsync -x copies for real)", () => {
+    // GNU cp/rsync -x means --one-file-system, not --exclude.
+    for (const cmd of ["cp -x .env /tmp/copied-secrets", "rsync -x .env dst/"]) {
+      expect(check({ content: cmd, toolName: cmd.split(" ")[0] }).verdict, cmd).toBe("fail");
+    }
+  });
+
+  it("still honors real archive exclusions (tar/zip/rsync)", () => {
+    for (const [cmd, tool] of [
+      ["tar --exclude=.env -czf a.tar.gz .", "tar"],
+      ["tar --exclude .env -czf a.tar.gz .", "tar"],
+      ["zip -r out.zip . -x .env", "zip"],
+      ["rsync --exclude=.env src/ dst/", "rsync"],
+    ] as Array<[string, string]>) {
+      expect(check({ content: cmd, toolName: tool }).verdict, cmd).toBe("pass");
+    }
+    // ...but an exclusion for one tool never disarms a neighbour command.
+    expect(check({ content: "tar --exclude=.env -czf a.tar.gz . && cp .env /tmp/x", toolName: "tar" }).verdict).toBe("fail");
+    // Path-qualified and sudo-wrapped verbs own their flags too.
+    for (const [cmd, tool] of [
+      ["/usr/bin/tar --exclude=.env -czf a.tar.gz .", "tar"],
+      ["sudo -u root tar --exclude=.env -czf a.tar.gz .", "tar"],
+      ["/usr/bin/zip -r out.zip . -x .env", "zip"],
+    ] as Array<[string, string]>) {
+      expect(check({ content: cmd, toolName: tool }).verdict, cmd).toBe("pass");
+    }
+  });
 });
 
 describe("SEC-02 tree mode", () => {

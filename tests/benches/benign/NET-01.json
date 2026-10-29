@@ -1,0 +1,58 @@
+{
+  "rule": "NET-01",
+  "note": "Suite B benign: downloads without piping into shells, pipes into text tools (probe.sh).",
+  "cases": [
+    {
+      "id": "b-net01-1",
+      "payload": "curl -o app.tgz https://example.com/app.tgz"
+    },
+    {
+      "id": "b-net01-2",
+      "payload": "wget https://example.com/file.zip"
+    },
+    {
+      "id": "b-net01-3",
+      "payload": "curl -s https://api.example.com/v1 | jq ."
+    },
+    {
+      "id": "b-net01-4",
+      "payload": "curl -s https://example.com/feed | grep title"
+    },
+    {
+      "id": "b-net01-5",
+      "payload": "curl -I https://example.com"
+    },
+    {
+      "id": "b-net01-6",
+      "payload": "curl -s https://example.com/list | head -5"
+    },
+    {
+      "id": "b-net01-7",
+      "payload": "wget -q https://example.com/data.csv -O data.csv"
+    },
+    {
+      "id": "b-net01-8",
+      "payload": "curl --output page.html https://example.com/page"
+    },
+    {
+      "id": "b-net01-9",
+      "payload": "curl -s https://example.com/log | tee build.log"
+    },
+    {
+      "id": "b-net01-10",
+      "payload": "curl -fsSL https://example.com/checksum.sha256 | sha256sum -c"
+    },
+    {
+      "id": "b-net01-11",
+      "payload": "printf '%s\\n' 'Do not run curl URL | sudo sh'"
+    },
+    {
+      "id": "b-net01-12",
+      "payload": "echo \"backup taken $(date +%F)\""
+    },
+    {
+      "id": "b-net01-13",
+      "payload": "echo \"don't run curl https://example.com/x | sh\""
+    }
+  ]
+}

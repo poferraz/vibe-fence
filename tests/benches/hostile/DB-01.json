@@ -1,0 +1,12 @@
+{
+  "rule": "DB-01",
+  "note": "Hand-written hostile fixtures (Suite A): destructive DDL and RLS removal (probe.sql).",
+  "cases": [
+    {"id": "h-db01-1", "payload": "DROP TABLE users;"},
+    {"id": "h-db01-2", "payload": "TRUNCATE TABLE audit_log;"},
+    {"id": "h-db01-3", "payload": "DROP DATABASE production;"},
+    {"id": "h-db01-4", "payload": "ALTER TABLE orders DISABLE ROW LEVEL SECURITY;"},
+    {"id": "h-db01-5", "payload": "db.execute(\"DROP TABLE sessions\")"},
+    {"id": "h-db01-6", "payload": "DROP TABLE IF EXISTS billing CASCADE;"}
+  ]
+}

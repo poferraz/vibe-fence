@@ -1,0 +1,12 @@
+{
+  "rule": "GIT-01",
+  "note": "Hand-written hostile fixtures (Suite A): force-pushes to protected branches and hard resets.",
+  "cases": [
+    {"id": "h-git01-1", "payload": "git push -f origin main"},
+    {"id": "h-git01-2", "payload": "git push --force origin master"},
+    {"id": "h-git01-3", "payload": "git reset --hard HEAD~2"},
+    {"id": "h-git01-4", "payload": "git push origin +main"},
+    {"id": "h-git01-5", "payload": "git push -f origin HEAD:master"},
+    {"id": "h-git01-6", "payload": "git reset --hard origin/main"}
+  ]
+}

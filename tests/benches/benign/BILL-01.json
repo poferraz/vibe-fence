@@ -1,0 +1,50 @@
+{
+  "rule": "BILL-01",
+  "note": "Suite B benign: capped loops, local-data iteration, debounce (probe.ts).",
+  "cases": [
+    {
+      "id": "b-bill01-1",
+      "payload": "for (const u of users.slice(0, 10)) {\n  await stripe.charges.create(u);\n}"
+    },
+    {
+      "id": "b-bill01-2",
+      "payload": "const names = items.map((i) => i.name.toUpperCase());"
+    },
+    {
+      "id": "b-bill01-3",
+      "payload": "setTimeout(() => { fetch('/api/poll'); }, 30000);"
+    },
+    {
+      "id": "b-bill01-4",
+      "payload": "let calls = 0;\nwhile (calls < MAX_CALLS) { await api.fetchPage(calls); calls++; }"
+    },
+    {
+      "id": "b-bill01-5",
+      "payload": "for (const row of rows) { totals[row.k] = (totals[row.k] ?? 0) + row.v; }"
+    },
+    {
+      "id": "b-bill01-6",
+      "payload": "users.forEach((u) => console.log(u.email));"
+    },
+    {
+      "id": "b-bill01-7",
+      "payload": "const capped = list.slice(0, LIMIT).map((x) => x.id);"
+    },
+    {
+      "id": "b-bill01-8",
+      "payload": "await Promise.all(batch.map((b) => processLocal(b)));"
+    },
+    {
+      "id": "b-bill01-9",
+      "payload": "if (budget.remaining > 0) { await openai.chat.completions.create(req); }"
+    },
+    {
+      "id": "b-bill01-10",
+      "payload": "setInterval(() => { metrics.flush(); }, 60000);"
+    },
+    {
+      "id": "b-bill01-11",
+      "payload": "fetch(\"/api/users\");\nusers.map(u => u.name);"
+    }
+  ]
+}

@@ -41,9 +41,44 @@ import { isExecutablePath, isProsePath, isQuotedAt, liveCode, stripStrings } fro
 
 // Read-like tools — only these trigger hard-deny (write/emit of credential content also covered via read→exfil).
 // Covers display (cat/pagers), search (grep family), dump/encode (strings/xxd/od/base64),
-// and copy-out (cp/scp/sftp/rsync) — all exfiltrate file bytes to the caller.
+// copy-out (cp/scp/sftp/rsync) and archive-out (tar/zip/7z) — all exfiltrate
+// file bytes to the caller.
+/** Archive exclusion operands are not reads: `tar --exclude=.env ...`
+ * and `zip ... -x .env` never touch the excluded file. Strip before
+ * credential-path classification (review finding) — but only beside the
+ * tool that owns the flag. `-x` is `--one-file-system` for cp/rsync, so
+ * `cp -x .env ...` copies the file for real and must still fail. */
+const EXCLUDE_LONG_RE = /--exclude(?:=[^\s]+|\s+[^\s]+)?|--exclude-from[=\s][^\s]+/g;
+const EXCLUDE_SHORT_RE = /(?:^|\s)-x\s+[^\s]+/g;
+/** `tar`/`rsync` own `--exclude*`; `zip`/`7z` own `-x <pattern>`.
+ * Verbs match path-qualified and sudo-wrapped forms (`/usr/bin/tar`,
+ * `sudo -u root tar`) — otherwise a legitimate exclusion reads as a
+ * credential read (independent-review finding). */
+// Match the command position only. A later argument named `zip` or
+// `/tmp/zip` must never give `cp -x .env zip` archive semantics.
+const VERB_PREFIX_RE = String.raw`^\s*(?:sudo\s+(?:(?:-u|-g|-h|-p|-C|-R|-T)\s+\S+\s+|-\S+\s+)*)?(?:\S*/)?`;
+const LONG_EXCLUDE_VERB_RE = new RegExp(`${VERB_PREFIX_RE}(tar|rsync)\\b`);
+const SHORT_EXCLUDE_VERB_RE = new RegExp(`${VERB_PREFIX_RE}(zip|7z)\\b`);
+function stripSegmentExclusions(segment: string): string {
+  let out = segment;
+  // An embedded shell command can contain its own flags. Without parsing
+  // that command, suppressing any operand risks hiding a real read.
+  if (segment.includes("$(") || segment.includes("`")) return out;
+  if (LONG_EXCLUDE_VERB_RE.test(segment)) out = out.replace(EXCLUDE_LONG_RE, " ");
+  if (SHORT_EXCLUDE_VERB_RE.test(segment)) out = out.replace(EXCLUDE_SHORT_RE, " ");
+  return out;
+}
+function stripExclusions(cmd: string): string {
+  // Decide per command segment (`a && b`, `a | b`): an exclusion flag only
+  // disarms its own tool's operand, never a neighbour's (`cp -x .env` next
+  // to an unrelated `tar` must still fail).
+  return cmd
+    .split(/&&|\|\||[;\n|]/)
+    .map(stripSegmentExclusions)
+    .join(" ");
+}
 const READ_LIKE_RE =
-  /\b(read|open|cat|view|show|load|fetch|get|grep|rg|ag|ack|head|tail|less|more|strings|xxd|od|base64|cp|scp|sftp|rsync)\b/i;
+  /\b(read|open|cat|view|show|load|fetch|get|grep|rg|ag|ack|head|tail|less|more|strings|xxd|od|base64|cp|scp|sftp|rsync|tar|zip|7z)\b/i;
 
 // Tree-scan mode (no toolName): prose mentions must pass, so a bare verb is
 // not enough — require a read SINK. Code sink: read-call with a QUOTED
@@ -54,7 +89,7 @@ const READ_SINK_CALL_RE =
 // showing the attack as an example pass at tree level; live execution is
 // gated by toolName=bash through the gate).
 const SHELL_READ_RE =
-  /(?:^|[;&|]\s*|&&\s*)(?:sudo\s+)?(cat|less|more|head|tail|open|code|cursor|bat|grep|rg|ag|ack|strings|xxd|od|base64|cp|scp|sftp|rsync)\s+[^\n]*$/;
+  /(?:^|[;&|]\s*|&&\s*)(?:sudo\s+)?(cat|less|more|head|tail|open|code|cursor|bat|grep|rg|ag|ack|strings|xxd|od|base64|cp|scp|sftp|rsync|tar|zip|7z)\s+[^\n]*$/;
 
 function isCredentialPath(text: string): { hit: boolean; label?: string; match?: string; index?: number } {
   // .env.example is explicitly safe — strip before check to avoid FP
@@ -79,7 +114,9 @@ function isCredentialPath(text: string): { hit: boolean; label?: string; match?:
 export function check(ctx: CheckCtx): RuleVerdict {
   const content = ctx.content ?? "";
   const args = ctx.args ?? "";
-  const haystack = `${content} ${args}`;
+  // Treat the two sources separately: an archive command in one must not
+  // cause flags belonging to a different command in the other to be erased.
+  const haystack = `${stripExclusions(content)} ${stripExclusions(args)}`;
 
   if (!haystack.trim()) {
     return { id: SEC02_ID, verdict: "unknown", reason: "no content to inspect (unknown≠pass)" };
@@ -109,7 +146,7 @@ export function check(ctx: CheckCtx): RuleVerdict {
     return { id: SEC02_ID, verdict: "pass", reason: "prose file — mentions are not reads (execution is gated live)" };
   }
   for (const rawLine of content.split("\n")) {
-    const line = liveCode(rawLine);
+    const line = stripExclusions(liveCode(rawLine));
     const cred = isCredentialPath(line);
     if (!cred.hit || cred.index === undefined) continue;
     const quoted = isQuotedAt(line, cred.index);

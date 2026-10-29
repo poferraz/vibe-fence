@@ -6,6 +6,7 @@
  */
 import { describe, it, expect } from "bun:test";
 import { check } from "./sec-02";
+import { evaluateToolCall } from "../framework/gate";
 
 describe("SEC-02 gate mode", () => {
   it("fails on read tool + credential path", () => {
@@ -25,6 +26,47 @@ describe("SEC-02 gate mode", () => {
 
   it("passes .env.example templates", () => {
     expect(check({ content: ".env.example", toolName: "read" }).verdict).toBe("pass");
+  });
+
+  it("does not treat -x as an exclusion outside zip/7z (cp/rsync -x copies for real)", () => {
+    // GNU cp/rsync -x means --one-file-system, not --exclude.
+    for (const cmd of ["cp -x .env /tmp/copied-secrets", "rsync -x .env dst/"]) {
+      expect(check({ content: cmd, toolName: cmd.split(" ")[0] }).verdict, cmd).toBe("fail");
+    }
+  });
+
+  it("does not mistake an operand named zip or 7z for the executable", () => {
+    for (const command of ["cp -x .env zip", "cp -x .env /tmp/zip", "cp -x .env 7z", "rsync -x .env zip"]) {
+      const findings = evaluateToolCall({ tool: "bash", args: { command } });
+      expect(findings.some((f) => f.ruleId === "SEC-02"), command).toBe(true);
+    }
+  });
+
+  it("does not strip exclusions across independent inputs or embedded commands", () => {
+    expect(check({ content: "zip -r out.zip . -x .env", args: "cp -x .env zip", toolName: "cp" }).verdict).toBe("fail");
+    const command = "zip -r out.zip . -x .env $(cp -x .env zip)";
+    expect(evaluateToolCall({ tool: "bash", args: { command } }).some((f) => f.ruleId === "SEC-02")).toBe(true);
+  });
+
+  it("still honors real archive exclusions (tar/zip/rsync)", () => {
+    for (const [cmd, tool] of [
+      ["tar --exclude=.env -czf a.tar.gz .", "tar"],
+      ["tar --exclude .env -czf a.tar.gz .", "tar"],
+      ["zip -r out.zip . -x .env", "zip"],
+      ["rsync --exclude=.env src/ dst/", "rsync"],
+    ] as Array<[string, string]>) {
+      expect(check({ content: cmd, toolName: tool }).verdict, cmd).toBe("pass");
+    }
+    // ...but an exclusion for one tool never disarms a neighbour command.
+    expect(check({ content: "tar --exclude=.env -czf a.tar.gz . && cp .env /tmp/x", toolName: "tar" }).verdict).toBe("fail");
+    // Path-qualified and sudo-wrapped verbs own their flags too.
+    for (const [cmd, tool] of [
+      ["/usr/bin/tar --exclude=.env -czf a.tar.gz .", "tar"],
+      ["sudo -u root tar --exclude=.env -czf a.tar.gz .", "tar"],
+      ["/usr/bin/zip -r out.zip . -x .env", "zip"],
+    ] as Array<[string, string]>) {
+      expect(check({ content: cmd, toolName: tool }).verdict, cmd).toBe("pass");
+    }
   });
 });
 

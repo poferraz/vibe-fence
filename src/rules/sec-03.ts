@@ -40,14 +40,15 @@ const TOKEN_RES: Array<{ re: RegExp; label: string; entropyOf: "suffix" | "whole
   { re: /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{8,}\b/, label: "GitHub token", entropyOf: "suffix" },
   { re: /\bgithub_pat_[A-Za-z0-9_]{8,}\b/, label: "GitHub PAT", entropyOf: "suffix" },
   { re: /\bAKIA[0-9A-Z]{16}\b/, label: "AWS access key", entropyOf: "fixed" },
-  { re: /\bxox[bpras]-[A-Za-z0-9-]{8,}\b/, label: "Slack token", entropyOf: "suffix" },
+  { re: /\bxox[bpras]-[A-Za-z0-9-]{8,}(?![A-Za-z0-9_-])/, label: "Slack token", entropyOf: "suffix" },
   { re: /\bglpat-[A-Za-z0-9-]{8,}\b/, label: "GitLab PAT", entropyOf: "suffix" },
   { re: /\bnpm_[A-Za-z0-9]{12,}\b/, label: "npm token", entropyOf: "suffix" },
+  { re: /\bAIza[0-9A-Za-z_-]{35,}(?![0-9A-Za-z_-])/, label: "Google API key", entropyOf: "fixed" },
   { re: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/, label: "private key", entropyOf: "fixed" },
 ];
 
 // Test/dummy markers — anywhere in the token or its line downgrades to pass.
-const DUMMY_RE = /(?:sk_test|rk_test|test|dummy|example|fake|sample|changeme|your[-_ ]?(?:key|secret|token)|placeholder|x{3,})/i;
+const DUMMY_RE = /(?:sk_test|rk_test|test|dummy|example|fake|sample|changeme|your[-_ ]?(?:key|secret|token)|placeholder|x{3,}|0{6,})/i;
 
 /** Shannon entropy in bits/char. Random base62 ≥20 chars ≈ 5+; words ≈ 2–3. */
 export function shannon(s: string): number {

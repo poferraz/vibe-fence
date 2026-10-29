@@ -28,12 +28,12 @@ export interface RuleVerdict {
   evidence?: string;
 }
 
-/** curl piped to shell — e.g. curl ... | sh, curl ... | bash, curl ... | zsh (with/without spaces) */
-const CURL_PIPE_RE = /curl\s.*\|\s*(sh|bash|zsh)\b/i;
+/** curl piped to shell — e.g. curl ... | sh, curl ... | bash, curl ... | zsh (with/without spaces; optional sudo) */
+const CURL_PIPE_RE = /curl\s.*\|\s*(?:sudo\s+)?(sh|bash|zsh)\b/i;
 /** wget variant — e.g. wget ... | sh */
-const WGET_PIPE_RE = /wget\s.*\|\s*(sh|bash|zsh)\b/i;
+const WGET_PIPE_RE = /wget\s.*\|\s*(?:sudo\s+)?(sh|bash|zsh)\b/i;
 /** Compact form without args — e.g. curl|sh, wget|bash (no space between command and pipe) */
-const COMPACT_PIPE_RE = /(?:curl|wget)\s*\|\s*(?:sh|bash|zsh)\b/i;
+const COMPACT_PIPE_RE = /(?:curl|wget)\s*\|\s*(?:sudo\s+)?(?:sh|bash|zsh)\b/i;
 
 function findEvidence(src: string): string | undefined {
   for (const line of src.split("\n")) {
@@ -44,9 +44,118 @@ function findEvidence(src: string): string | undefined {
   return undefined;
 }
 
-/** Shared pipe-to-shell detector (also used by SUP-01's scripts scan). */
+/** Execution sinks that re-arm detection inside quoted text:
+ * node -e "exec('curl|sh')" executes the payload despite the quotes. */
+const EXEC_SINK_RE = /\b(?:node\s+-e|python3?\s+-c|sh\s+-c|bash\s+-c|exec\s*\(|eval\s*\(|spawn\s*\()/;
+
+/** Shared pipe-to-shell detector (also used by SUP-01's scripts scan).
+ * Raw-text by contract: package.json scripts ARE quoted strings, so
+ * callers in shell context must strip literals first (see below). */
 export function hasPipeToShell(src: string): boolean {
   return CURL_PIPE_RE.test(src) || WGET_PIPE_RE.test(src) || COMPACT_PIPE_RE.test(src);
+}
+
+/** Command substitutions execute even inside double quotes: the shell runs
+ * `"$(curl u | sh)"` and `` `curl u | sh` `` for real, so their inner text
+ * is live code, not a literal. Single-quoted spans stay inert (no expansion
+ * inside '...'). Substitutions are extracted before quote-stripping and
+ * their inner text is kept (itself literal-stripped).
+ * Emit one $(...) substitution starting at line[start] ("$("). An unclosed
+ * span runs to end of line (same line-bounded contract as the quote
+ * stripping below, so an apostrophe in a comment cannot swallow the next
+ * line's payload). */
+function emitParenSub(line: string, start: number, out: { text: string }): number {
+  let depth = 1;
+  let j = start + 2;
+  let quote: string | null = null;
+  while (j < line.length && depth > 0) {
+    const c = line[j]!;
+    if (quote) {
+      if (c === "\\") {
+        j += 2;
+        continue;
+      }
+      if (c === quote) quote = null;
+    } else if (c === "'" || c === '"') {
+      quote = c;
+    } else if (c === "(") {
+      depth++;
+    } else if (c === ")") {
+      depth--;
+    }
+    j++;
+  }
+  const inner = line.slice(start + 2, depth === 0 ? j - 1 : line.length);
+  out.text += ` ${stripShellLiterals(inner)} `;
+  return depth === 0 ? j : line.length;
+}
+
+/** Emit one `...` substitution starting at line[start]. */
+function emitBacktickSub(line: string, start: number, out: { text: string }): number {
+  const end = line.indexOf("`", start + 1);
+  out.text += ` ${stripShellLiterals(end === -1 ? line.slice(start + 1) : line.slice(start + 1, end))} `;
+  return end === -1 ? line.length : end + 1;
+}
+
+/** One line with command substitutions extracted (see above). Double-quoted
+ * spans keep embedded $(...) and `...` live; single-quoted spans (no shell
+ * expansion inside '...') drop whole. */
+function extractLineSubstitutions(line: string): string {
+  const out = { text: "" };
+  let i = 0;
+  // In shell syntax # starts a comment only at the beginning of a word.
+  // A quote, substitution or escaped character contributes to that word.
+  let wordStart = true;
+  while (i < line.length) {
+    const ch = line[i]!;
+    if (ch === "#" && wordStart) {
+      break;
+    } else if (ch === "\\" && i + 1 < line.length) {
+      // The escaped character is literal: in particular it cannot open a
+      // quote, start a comment or act as a pipe or substitution operator.
+      out.text += " ";
+      i += 2;
+      wordStart = false;
+    } else if (ch === "'") {
+      const end = line.indexOf("'", i + 1);
+      out.text += " ";
+      i = end === -1 ? line.length : end + 1;
+      wordStart = false;
+    } else if (ch === '"') {
+      out.text += " ";
+      i++;
+      while (i < line.length && line[i] !== '"') {
+        if (line[i] === "$" && line[i + 1] === "(") i = emitParenSub(line, i, out);
+        else if (line[i] === "`") i = emitBacktickSub(line, i, out);
+        else if (line[i] === "\\" && i + 1 < line.length) i += 2;
+        else i++;
+      }
+      if (i < line.length) i++;
+      wordStart = false;
+    } else if (ch === "`") {
+      i = emitBacktickSub(line, i, out);
+      wordStart = false;
+    } else if (ch === "$" && line[i + 1] === "(") {
+      i = emitParenSub(line, i, out);
+      wordStart = false;
+    } else {
+      out.text += ch;
+      wordStart = /[\s;|&()<>]/.test(ch);
+      i++;
+    }
+  }
+  return out.text;
+}
+
+/** Drop single/double-quoted spans and #-comments so instructional text
+ * ("do not run curl X | sh") and comments don't read as pipelines.
+ * Token separators survive: curl "https://x/i" | sh still matches.
+ * Executed spans ($(...) and `...`) are preserved — see above. */
+export function stripShellLiterals(src: string): string {
+  return src
+    .split("\n")
+    .map(extractLineSubstitutions)
+    .join("\n");
 }
 
 function hasPipe(src: string): boolean {
@@ -60,14 +169,21 @@ export function check(ctx: CheckCtx): RuleVerdict {
     return { id: NET01_ID, verdict: "unknown", reason: "no content to inspect (unknown≠pass)" };
   }
 
+  // Quoted spans and comments are not pipelines ("do not run curl X |
+  // sh" must pass) — strip before matching, except command substitutions
+  // ("$(curl|sh)" executes for real) and execution sinks that make the
+  // quoted text the payload (exec("curl|sh") still fires).
+  const code = stripShellLiterals(src);
+  const reArmed = EXEC_SINK_RE.test(src);
+
   // Gate mode (live tool call): arg content is action — any match fails.
   if (ctx.toolName) {
-    if (hasPipe(src)) {
+    if (hasPipe(code) || (reArmed && hasPipe(src))) {
       return {
         id: NET01_ID,
         verdict: "fail",
         reason: "curl/wget piped to shell (curl|sh / wget|bash) — piped remote execution is hard-blocked (S-09)",
-        evidence: findEvidence(src),
+        evidence: findEvidence(code),
       };
     }
     return { id: NET01_ID, verdict: "pass", reason: "no curl|sh / wget pipe-to-shell pattern detected" };
@@ -76,7 +192,8 @@ export function check(ctx: CheckCtx): RuleVerdict {
   // Tree mode: docs discussing the attack must pass — fire only where the
   // payload would execute: executable files, or exec-sink lines in code.
   // Prose skips sink analysis entirely (execution is gated live).
-  const scopes: string[] = isExecutablePath(ctx.filePath) ? [src] : [];
+  const scopes: string[] = isExecutablePath(ctx.filePath) ? [code] : [];
+  // Exec-sink lines stay raw: inside exec("...") the quoted text IS the payload.
   if (!isProsePath(ctx.filePath)) scopes.push(...sinkLines(src));
   for (const scope of scopes) {
     if (hasPipe(scope)) {

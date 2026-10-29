@@ -55,12 +55,90 @@ export function hasPipeToShell(src: string): boolean {
   return CURL_PIPE_RE.test(src) || WGET_PIPE_RE.test(src) || COMPACT_PIPE_RE.test(src);
 }
 
+/** Command substitutions execute even inside double quotes: the shell runs
+ * `"$(curl u | sh)"` and `` `curl u | sh` `` for real, so their inner text
+ * is live code, not a literal. Single-quoted spans stay inert (no expansion
+ * inside '...'). Substitutions are extracted before quote-stripping and
+ * their inner text is kept (itself literal-stripped).
+ * Emit one $(...) substitution starting at line[start] ("$("). An unclosed
+ * span runs to end of line (same line-bounded contract as the quote
+ * stripping below, so an apostrophe in a comment cannot swallow the next
+ * line's payload). */
+function emitParenSub(line: string, start: number, out: { text: string }): number {
+  let depth = 1;
+  let j = start + 2;
+  let quote: string | null = null;
+  while (j < line.length && depth > 0) {
+    const c = line[j]!;
+    if (quote) {
+      if (c === "\\") {
+        j += 2;
+        continue;
+      }
+      if (c === quote) quote = null;
+    } else if (c === "'" || c === '"') {
+      quote = c;
+    } else if (c === "(") {
+      depth++;
+    } else if (c === ")") {
+      depth--;
+    }
+    j++;
+  }
+  const inner = line.slice(start + 2, depth === 0 ? j - 1 : line.length);
+  out.text += ` ${stripShellLiterals(inner)} `;
+  return depth === 0 ? j : line.length;
+}
+
+/** Emit one `...` substitution starting at line[start]. */
+function emitBacktickSub(line: string, start: number, out: { text: string }): number {
+  const end = line.indexOf("`", start + 1);
+  out.text += ` ${stripShellLiterals(end === -1 ? line.slice(start + 1) : line.slice(start + 1, end))} `;
+  return end === -1 ? line.length : end + 1;
+}
+
+/** One line with command substitutions extracted (see above). Double-quoted
+ * spans keep embedded $(...) and `...` live; single-quoted spans (no shell
+ * expansion inside '...') drop whole. */
+function extractLineSubstitutions(line: string): string {
+  const out = { text: "" };
+  let i = 0;
+  while (i < line.length) {
+    const ch = line[i]!;
+    if (ch === "'") {
+      const end = line.indexOf("'", i + 1);
+      out.text += " ";
+      i = end === -1 ? line.length : end + 1;
+    } else if (ch === '"') {
+      out.text += " ";
+      i++;
+      while (i < line.length && line[i] !== '"') {
+        if (line[i] === "$" && line[i + 1] === "(") i = emitParenSub(line, i, out);
+        else if (line[i] === "`") i = emitBacktickSub(line, i, out);
+        else if (line[i] === "\\" && i + 1 < line.length) i += 2;
+        else i++;
+      }
+      if (i < line.length) i++;
+    } else if (ch === "`") {
+      i = emitBacktickSub(line, i, out);
+    } else if (ch === "$" && line[i + 1] === "(") {
+      i = emitParenSub(line, i, out);
+    } else {
+      out.text += ch;
+      i++;
+    }
+  }
+  return out.text;
+}
+
 /** Drop single/double-quoted spans and #-comments so instructional text
  * ("do not run curl X | sh") and comments don't read as pipelines.
- * Token separators survive: curl "https://x/i" | sh still matches. */
+ * Token separators survive: curl "https://x/i" | sh still matches.
+ * Executed spans ($(...) and `...`) are preserved — see above. */
 export function stripShellLiterals(src: string): string {
   return src
     .split("\n")
+    .map(extractLineSubstitutions)
     .map((line) => {
       let out = "";
       let quote: string | null = null;
@@ -97,8 +175,9 @@ export function check(ctx: CheckCtx): RuleVerdict {
   }
 
   // Quoted spans and comments are not pipelines ("do not run curl X |
-  // sh" must pass) — strip before matching, except where an execution
-  // sink makes the quoted text the payload (exec("curl|sh") still fires).
+  // sh" must pass) — strip before matching, except command substitutions
+  // ("$(curl|sh)" executes for real) and execution sinks that make the
+  // quoted text the payload (exec("curl|sh") still fires).
   const code = stripShellLiterals(src);
   const reArmed = EXEC_SINK_RE.test(src);
 

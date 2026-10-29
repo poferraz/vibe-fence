@@ -45,6 +45,14 @@
     {
       "id": "b-net01-11",
       "payload": "printf '%s\\n' 'Do not run curl URL | sudo sh'"
+    },
+    {
+      "id": "b-net01-12",
+      "payload": "echo \"backup taken $(date +%F)\""
+    },
+    {
+      "id": "b-net01-13",
+      "payload": "echo \"don't run curl https://example.com/x | sh\""
     }
   ]
 }

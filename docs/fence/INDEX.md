@@ -8,8 +8,9 @@ description-agent: "Canonical map — every doc/skill/tool reachable via this in
 
 | Doc | Path | Why |
 |-----|------|-----|
-| Current product direction | `docs/superpowers/specs/2026-10-26-senior-developer-harness-design.md` | User-selected owned CLI + Meta senior-developer harness; read before feature planning; detailed design proposed |
-| Current work and handoff | `docs/project/STATUS.md` | Start here for audit findings, current decision, and next action |
+| Current product direction | `docs/project/PRODUCT-DIRECTION.md` | User-selected plug-in direction, protection tiers, and current disclosure |
+| Historical handoffs | `docs/project/STATUS.md` | Earlier milestones and audit context; see current product direction for present disclosure |
+| Local working material (optional) | `.fence/private/INDEX.md` | Locally retained plans, prompts, audits, and progress; ignored by Git and absent in fresh clones |
 | AGENTS router | `AGENTS.md` | ≤400tok entry point; retrieval-gated S-01 |
 | Plan | `docs/PLAN.md` | Phases M1–M4 + hackathon scope |
 | Locked decisions | `docs/research/synthesis/FINAL-v4.md` | S-01…S-15, C-01…C-10, GEM patches |

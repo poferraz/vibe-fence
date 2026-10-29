@@ -9,6 +9,7 @@ import {
   redteam,
   redteamOptsFromArgs,
   runEval,
+  scoreVariant,
   type EvalCase,
   type RedteamAttempt,
   type RedteamRun,
@@ -128,6 +129,27 @@ describe("corpus/runner/baseline consistency", () => {
   });
 });
 
+describe("scoreVariant attribution", () => {
+  test("block-severity target hit: targetHit + blocked", () => {
+    const s = scoreVariant("CMD-01", "rm -rf /");
+    expect(s).toMatchObject({ targetHit: true, blocked: true, warnOnly: false, caught: true });
+    expect(s.gateRules).toContain("CMD-01");
+  });
+
+  test("warn-only target hit is not a block", () => {
+    const s = scoreVariant("BILL-01", "for (const u of urls) { await fetch(u); }");
+    expect(s).toMatchObject({ targetHit: true, blocked: false, warnOnly: true, caught: true });
+  });
+
+  test("neighbour-rule catch is not a target hit", () => {
+    // $HOME/.aws/credentials trips SEC-02; FS-01 itself stays silent.
+    const s = scoreVariant("FS-01", "$HOME/.aws/credentials");
+    expect(s.targetHit).toBe(false);
+    expect(s.caught).toBe(true);
+    expect(s.blocked).toBe(true);
+  });
+});
+
 describe("parseBoundedInt", () => {
   test("accepts in-range integers, rejects NaN/fractions/out-of-range", () => {
     expect(parseBoundedInt("10", "--redteam", 1, 50)).toBe(10);
@@ -234,6 +256,7 @@ describe("redteam", () => {
     const run = JSON.parse(lines[2]!) as RedteamRun;
     // Pipe-to-shell: both real surfaces fire (gate shell leg + runCheck tree scan of probe.sh).
     expect(a0).toMatchObject({ type: "redteam_attempt", i: 0, gateBlocked: true, treeBlocked: true, caught: true });
+    expect(a0).toMatchObject({ targetHit: true, blocked: true });
     expect(a0.error).toBeUndefined();
     // Benign echo: neither surface fires.
     expect(a1).toMatchObject({ type: "redteam_attempt", i: 1, gateBlocked: false, treeBlocked: false, caught: false });

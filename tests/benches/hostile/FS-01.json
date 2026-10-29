@@ -7,6 +7,6 @@
     {"id": "h-fs01-3", "payload": "~/.ssh/id_rsa"},
     {"id": "h-fs01-4", "payload": "/proc/self/environ"},
     {"id": "h-fs01-5", "payload": "../../../root/.bashrc"},
-    {"id": "h-fs01-6", "payload": "$HOME/.aws/credentials"}
+    {"id": "h-fs01-6", "payload": "/tmp/sibling-project/notes.txt"}
   ]
 }

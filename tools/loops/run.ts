@@ -229,11 +229,14 @@ interface FoldAttempt {
   type: string;
   payload?: string;
   caught?: boolean;
+  targetHit?: boolean;
 }
 
 /** Unit 7: draft corpus cases from an artefact (print-only, never writes
- * the corpus). Attack misses → fail-expect drafts; benign FPs → pass-expect
- * drafts. Everything needs human triage + re-fragmentation review. */
+ * the corpus). Attack rows the TARGET rule missed → fail-expect drafts
+ * (a system catch by a neighbour rule still means the target has a gap);
+ * benign rows anything fired on → pass-expect drafts. Everything needs
+ * human triage + re-fragmentation review. */
 export function foldDrafts(ndjson: string): Array<Record<string, unknown>> {
   const rows = ndjson.split("\n").filter(Boolean).map((l) => JSON.parse(l) as FoldAttempt & { type: string; rule?: string; mode?: string });
   const run = rows.find((r) => r.type === "redteam_run");
@@ -243,7 +246,9 @@ export function foldDrafts(ndjson: string): Array<Record<string, unknown>> {
   let n = 0;
   for (const r of rows) {
     if (r.type !== "redteam_attempt" || !r.payload) continue;
-    const interesting = mode === "attack" ? r.caught === false : r.caught === true;
+    // Older artefacts predate targetHit: fall back to system-wide caught.
+    const missedTarget = r.targetHit === undefined ? r.caught === false : r.targetHit === false;
+    const interesting = mode === "attack" ? missedTarget : r.caught === true;
     if (!interesting) continue;
     n++;
     drafts.push({

@@ -304,10 +304,22 @@ export interface RedteamAttempt {
   type: "redteam_attempt";
   i: number;
   payload: string;
+  /** Any block-severity finding on the gate legs (would actually block live). */
   gateBlocked: boolean;
+  /** Any block-severity fail in the tree scan (rep.blocks > 0). */
   treeBlocked: boolean;
   treeUnknowns: number;
+  /**
+   * System-wide catch: ANY rule fired on either surface. Per-rule recall is
+   * `targetHit`, actual blocking is `blocked` — `caught` alone overstates
+   * both (a BILL-01 warn or a neighbour rule's block used to read as a
+   * target-rule block).
+   */
   caught: boolean;
+  /** The named rule fired on either surface (per-rule recall). */
+  targetHit: boolean;
+  /** A block-severity finding exists on either surface (would actually block). */
+  blocked: boolean;
   error?: string;
 }
 
@@ -321,6 +333,10 @@ export interface RedteamRun {
   evaluated: number;
   caught: number;
   rate: number;
+  /** Variants the NAMED rule fired on (per-rule recall, any severity). */
+  targetHits: number;
+  /** Variants with a block-severity finding (would actually stop execution). */
+  blocked: number;
   promptTokens: number | null;
   completionTokens: number | null;
   totalTokens: number | null;
@@ -364,22 +380,40 @@ export function redteamOptsFromArgs(argv: string[]): RedteamOpts {
 /** The gate surface, as the CLI really invokes it: a write leg (SEC-01/DB-01),
  * a shell leg (SEC-02/NET-01/CMD-01/GIT-01/SUP-01/FS-01 + local-script audit),
  * and — for path/credential payloads — a read leg with a project root so the
- * FS-01 containment check engages exactly as it does for agent reads. */
-function gateCatches(rule: string, payload: string, filePath: string, projectRoot: string): boolean {
-  if (evaluateToolCall({ tool: "write", args: { filePath, content: payload }, projectRoot }).length > 0) return true;
-  if (evaluateToolCall({ tool: "bash", args: { command: payload }, projectRoot }).length > 0) return true;
+ * FS-01 containment check engages exactly as it does for agent reads.
+ * Returns every finding (with rule + severity) so callers can separate
+ * target-rule hits from neighbour-rule catches and blocks from warns. */
+function gateFindings(rule: string, payload: string, filePath: string, projectRoot: string): Array<{ ruleId: string; severity: string }> {
+  const out: Array<{ ruleId: string; severity: string }> = [];
+  out.push(...evaluateToolCall({ tool: "write", args: { filePath, content: payload }, projectRoot }));
+  out.push(...evaluateToolCall({ tool: "bash", args: { command: payload }, projectRoot }));
   if (rule === "FS-01" || rule === "SEC-02") {
-    if (evaluateToolCall({ tool: "read", args: { filePath: payload }, projectRoot }).length > 0) return true;
+    out.push(...evaluateToolCall({ tool: "read", args: { filePath: payload }, projectRoot }));
   }
-  return false;
+  return out;
 }
 
-/** One payload scored on both real surfaces (gate legs + tree scan). */
+/**
+ * One payload scored on both real surfaces (gate legs + tree scan).
+ * Attribution vocabulary (honest by construction):
+ * - `targetHit`: the NAMED rule fired (per-rule recall).
+ * - `blocked`: a BLOCK-severity finding exists (would actually stop execution).
+ * - `warnOnly`: something fired but every finding is warn-grade (queued, never gates).
+ * - `caught`: legacy system-wide catch (any rule, any severity) — kept for
+ *   artefact continuity, but never a per-rule recall claim on its own.
+ */
 export interface VariantScore {
   gateBlocked: boolean;
   treeBlocked: boolean;
   treeUnknowns: number;
   caught: boolean;
+  targetHit: boolean;
+  blocked: boolean;
+  warnOnly: boolean;
+  gateRules: string[];
+  treeRules: string[];
+  treeBlocks: number;
+  treeWarns: number;
   error?: string;
 }
 
@@ -390,25 +424,49 @@ export interface VariantScore {
 export function scoreVariant(rule: string, payload: string, relOverride?: string): VariantScore {
   const rel = relOverride ?? pathFor(rule);
   const tmpRoot = mkdtempSync(join(tmpdir(), "vf-score-"));
-  let gateBlocked = false;
-  let treeBlocked = false;
+  let gate: Array<{ ruleId: string; severity: string }> = [];
+  let treeRules: string[] = [];
+  let treeBlocks = 0;
+  let treeWarns = 0;
   let treeUnknowns = 0;
   let error: string | undefined;
   try {
     execSync("git init -q .", { cwd: tmpRoot, stdio: "ignore" });
-    gateBlocked = gateCatches(rule, payload, rel, tmpRoot);
+    gate = gateFindings(rule, payload, rel, tmpRoot);
     const target = join(tmpRoot, rel);
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, payload + "\n", "utf-8");
     const rep = runCheck(tmpRoot);
-    treeBlocked = rep.fails > 0;
+    const fails = rep.findings.filter((f) => f.verdict === "fail");
+    treeRules = [...new Set(fails.map((f) => f.ruleId))];
+    treeBlocks = fails.filter((f) => f.severity === "block").length;
+    treeWarns = fails.length - treeBlocks;
     treeUnknowns = rep.unknowns;
   } catch (err) {
     error = (err as Error).message;
   } finally {
     rmSync(tmpRoot, { recursive: true, force: true });
   }
-  return { gateBlocked, treeBlocked, treeUnknowns, caught: gateBlocked || treeBlocked, ...(error ? { error } : {}) };
+  const gateRules = [...new Set(gate.map((f) => f.ruleId))];
+  const gateBlocked = gate.some((f) => f.severity === "block");
+  const treeBlocked = treeBlocks > 0;
+  const targetHit = gateRules.includes(rule) || treeRules.includes(rule);
+  const blocked = gateBlocked || treeBlocked;
+  const caught = gate.length > 0 || treeRules.length > 0;
+  return {
+    gateBlocked,
+    treeBlocked,
+    treeUnknowns,
+    caught,
+    targetHit,
+    blocked,
+    warnOnly: caught && !blocked,
+    gateRules,
+    treeRules,
+    treeBlocks,
+    treeWarns,
+    ...(error ? { error } : {}),
+  };
 }
 
 export async function redteam(opts: RedteamOpts): Promise<number> {
@@ -480,14 +538,29 @@ export async function redteam(opts: RedteamOpts): Promise<number> {
         treeBlocked: s.treeBlocked,
         treeUnknowns: s.treeUnknowns,
         caught: s.caught,
+        targetHit: s.targetHit,
+        blocked: s.blocked,
         ...(s.error ? { error: s.error } : {}),
       });
-      const tag = opts.mode === "attack" ? (s.caught ? "CAUGHT" : "MISS") : s.caught ? "FP" : "CLEAN";
+      const tag =
+        opts.mode === "attack"
+          ? s.targetHit
+            ? s.blocked
+              ? "CAUGHT"
+              : "CAUGHT-WARN"
+            : s.caught
+              ? "CAUGHT-OTHER"
+              : "MISS"
+          : s.caught
+            ? "FP"
+            : "CLEAN";
       console.log(`  [${tag}] ${v.slice(0, 120)}${s.error ? ` (eval error: ${s.error})` : ""}`);
     }
   }
 
   const caught = attempts.filter((a) => a.caught).length;
+  const targetHits = attempts.filter((a) => a.targetHit).length;
+  const blocked = attempts.filter((a) => a.blocked).length;
   const run: RedteamRun = {
     type: "redteam_run",
     rule: opts.rule,
@@ -498,6 +571,8 @@ export async function redteam(opts: RedteamOpts): Promise<number> {
     evaluated: attempts.length,
     caught,
     rate: attempts.length > 0 ? caught / attempts.length : 0,
+    targetHits,
+    blocked,
     promptTokens,
     completionTokens,
     totalTokens,
@@ -510,7 +585,9 @@ export async function redteam(opts: RedteamOpts): Promise<number> {
   }
   const pct = ((caught / Math.max(attempts.length, 1)) * 100).toFixed(1);
   if (opts.mode === "attack") {
-    console.log(`redteam ${opts.rule}: ${caught}/${attempts.length} caught (${pct}%)`);
+    console.log(
+      `redteam ${opts.rule}: ${caught}/${attempts.length} caught (${pct}%) — target-rule ${targetHits}, blocked ${blocked}`,
+    );
   } else {
     console.log(`redteam ${opts.rule} (benign): ${caught}/${attempts.length} false positives — lower is better`);
   }
@@ -581,25 +658,34 @@ export function runBenchHostile(argv: string[]): number {
       console.log(`${set.rule}: only ${set.cases.length} fixtures (<6 required)`);
       problems++;
     }
-    let caught = 0;
+    // Headline is per-rule recall: the NAMED rule must fire. System-wide
+    // catches and warn-grade detections are reported, never counted as
+    // target hits (a neighbour rule's block or a BILL-01 warn is not a
+    // per-rule block).
+    let target = 0;
+    let blocked = 0;
     for (const c of set.cases) {
       const s = scoreVariant(set.rule, c.payload, c.path);
       if (s.error) {
         problems++;
         console.log(`  [ERROR] ${set.rule} ${c.id}: ${s.error}`);
-      } else if (s.caught) caught++;
-      else {
+      } else if (!s.targetHit) {
         misses++;
-        console.log(`  [MISS] ${set.rule} ${c.id}: ${c.payload.slice(0, 100)}`);
+        const via = s.caught ? ` (system catch via ${[...s.gateRules, ...s.treeRules].join(",")})` : "";
+        console.log(`  [MISS] ${set.rule} ${c.id}: ${c.payload.slice(0, 100)}${via}`);
+      } else {
+        target++;
+        if (s.blocked) blocked++;
+        else console.log(`  [WARN-ONLY] ${set.rule} ${c.id}: target fired warn-grade, nothing would block`);
       }
     }
-    console.log(`bench ${set.rule}: ${caught}/${set.cases.length} caught`);
+    console.log(`bench ${set.rule}: ${target}/${set.cases.length} target-hit (${blocked} blocked, ${target - blocked} warn-only)`);
   }
   if (misses > 0 || problems > 0) {
     console.log(`bench hostile: ${misses} miss(es), ${problems} problem(s) — triage before corpus fold-in`);
     return 1;
   }
-  console.log("bench hostile: all fixtures caught");
+  console.log("bench hostile: every fixture hit its target rule (see warn-only notes above)");
   return 0;
 }
 
@@ -629,7 +715,10 @@ export function runBenchBenign(argv: string[]): number {
         console.log(`  [ERROR] ${set.rule} ${c.id}: ${s.error}`);
       } else if (s.caught) {
         fps++;
-        console.log(`  [FP] ${set.rule} ${c.id}: gate=${s.gateBlocked} tree=${s.treeBlocked} — ${c.payload.slice(0, 100)}`);
+        const grade = s.blocked ? "BLOCK-grade" : "warn-grade";
+        console.log(
+          `  [FP] ${set.rule} ${c.id} (${grade}): gate=[${s.gateRules.join(",")}] tree=[${s.treeRules.join(",")}] — ${c.payload.slice(0, 100)}`,
+        );
       } else clean++;
     }
     console.log(`bench ${set.rule} (benign): ${clean}/${set.cases.length} clean`);

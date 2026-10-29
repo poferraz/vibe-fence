@@ -86,6 +86,18 @@ describe("fold (unit 7: draft-only corpus cases)", () => {
   it("returns [] without a run record", () => {
     expect(foldDrafts(JSON.stringify({ type: "redteam_attempt", payload: "x", caught: false }))).toEqual([]);
   });
+
+  it("drafts target misses even when a neighbour rule caught the variant", () => {
+    const attack = [
+      JSON.stringify({ type: "redteam_attempt", payload: "$HOME/.aws/credentials", caught: true, targetHit: false }),
+      JSON.stringify({ type: "redteam_attempt", payload: "rm -rf /", caught: true, targetHit: true }),
+      JSON.stringify({ type: "redteam_run", rule: "FS-01", mode: "attack" }),
+    ].join("\n");
+    const drafts = foldDrafts(attack);
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0]).toMatchObject({ rule: "FS-01", expect: "fail" });
+    expect(JSON.stringify(drafts[0])).toContain("$HOME");
+  });
 });
 
 describe("parseLoopArgs", () => {

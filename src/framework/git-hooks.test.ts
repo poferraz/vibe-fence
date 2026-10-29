@@ -9,7 +9,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync, execSync } from "node:child_process";
-import { installGitHooks, configuredHooksPath, effectiveHooksDir, inspectGitHooks, canonicalPath, HOOK_NAMES, HOOK_MARKER } from "./git-hooks";
+import { installGitHooks, configuredHooksPath, effectiveHooksDir, inspectGitHooks, canonicalPath, hooksRepairCommand, hooksRepairNote, isLinkedWorktree, HOOK_NAMES, HOOK_MARKER } from "./git-hooks";
 
 // Isolate fixtures from the developer's own gitconfig (e.g. a global
 // core.hooksPath would silently redirect hooks away from .git/hooks).
@@ -275,6 +275,78 @@ describe("git-hooks", () => {
     expect(() =>
       execSync("git push origin HEAD", { cwd: root, env: gitEnv({ FENCE_BIN: deny }) }),
     ).toThrow();
+  });
+
+  it("pre-push preserves ref-update stdin for both fence check and chained hook", () => {
+    if (!gitAvailable()) return;
+    const root = makeRepo();
+    const userHook = join(root, ".git", "hooks", "pre-push");
+    mkdirSync(join(root, ".git", "hooks"), { recursive: true });
+    writeFileSync(userHook, `#!/bin/sh\ncat > "${join(root, "chained-stdin.txt")}"\n`, "utf-8");
+    chmodSync(userHook, 0o755);
+    installGitHooks(root, gitEnv());
+    // Fence stub: record stdin only on the --push invocation.
+    const recorder = join(root, "rec.sh");
+    writeFileSync(recorder, `#!/bin/sh\nif [ "$2" = "--push" ]; then cat > "${join(root, "fence-stdin.txt")}"; fi\nexit 0\n`, "utf-8");
+    chmodSync(recorder, 0o755);
+    const refs = "refs/heads/main abc123 refs/heads/main def456\n";
+    execFileSync(join(root, ".git", "hooks", "pre-push"), ["origin", "https://example.invalid/r.git"], {
+      cwd: root,
+      input: refs,
+      env: gitEnv({ FENCE_BIN: recorder }),
+    });
+    expect(readFileSync(join(root, "fence-stdin.txt"), "utf-8")).toBe(refs);
+    expect(readFileSync(join(root, "chained-stdin.txt"), "utf-8")).toBe(refs);
+  });
+
+  it("pre-push propagates the chained hook exit code", () => {
+    if (!gitAvailable()) return;
+    const root = makeRepo();
+    const userHook = join(root, ".git", "hooks", "pre-push");
+    mkdirSync(join(root, ".git", "hooks"), { recursive: true });
+    writeFileSync(userHook, "#!/bin/sh\nexit 3\n", "utf-8");
+    chmodSync(userHook, 0o755);
+    installGitHooks(root, gitEnv());
+    const allow = writeStub(root, "allow.sh", 0);
+    let code = 0;
+    try {
+      execFileSync(join(root, ".git", "hooks", "pre-push"), ["origin", "url"], {
+        cwd: root,
+        input: "refs/heads/main a refs/heads/main b\n",
+        env: gitEnv({ FENCE_BIN: allow }),
+      });
+    } catch (e) {
+      code = (e as { status?: number }).status ?? -1;
+    }
+    expect(code).toBe(3);
+  });
+
+  it("worktree repair points at the shared common hooks dir, not .git/hooks", () => {
+    if (!gitAvailable()) return;
+    const root = makeRepo();
+    writeFileSync(join(root, "a.txt"), "x\n", "utf-8");
+    execSync("git add a.txt", { cwd: root, env: gitEnv() });
+    execSync('git -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -qm base', { cwd: root, env: gitEnv() });
+    const wt = join(root, "wt2");
+    execSync(`git worktree add -q "${wt}"`, { cwd: root, env: gitEnv() });
+    created.push(wt);
+    const outside = mkdtempSync(join(tmpdir(), "vf-wt-outside-"));
+    created.push(outside);
+    execSync(`git config core.hooksPath "${join(outside, "hooks")}"`, { cwd: wt, env: gitEnv() });
+    expect(isLinkedWorktree(wt, gitEnv())).toBe(true);
+    expect(inspectGitHooks(wt, gitEnv()).blockedOutside).toBe(true);
+    const repair = hooksRepairCommand(wt, gitEnv());
+    expect(repair).toContain("--local");
+    expect(repair).not.toContain(".git/hooks \"");
+    expect(repair).toContain(join(realpathSync(root), ".git", "hooks"));
+    expect(hooksRepairNote(wt, gitEnv())).toContain("shared");
+    // Normal checkout keeps the relative form and no shared note.
+    expect(hooksRepairCommand(root, gitEnv())).toBe("git config --local core.hooksPath .git/hooks");
+    expect(hooksRepairNote(root, gitEnv())).toBe("");
+    // Following the repair actually enables installation (into common hooks).
+    execSync(repair, { cwd: wt, env: gitEnv() });
+    const written = installGitHooks(wt, gitEnv());
+    expect(written.sort()).toEqual([".git/hooks/pre-commit", ".git/hooks/pre-push"]);
   });
 
   it("end-to-end: failing check blocks git commit, passing check allows it", () => {

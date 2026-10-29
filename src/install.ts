@@ -30,7 +30,7 @@ import { installOpenCodeAdapter } from "./adapters/opencode.js";
 import { installAntigravityAdapter } from "./adapters/antigravity.js";
 import { installHermesAdapter } from "./adapters/hermes.js";
 import { persistAttestation } from "./framework/integrity.js";
-import { installGitHooks, inspectGitHooks, effectiveHooksDir, canonicalPath } from "./framework/git-hooks.js";
+import { installGitHooks, inspectGitHooks, effectiveHooksDir, canonicalPath, hooksRepairCommand, hooksRepairNote } from "./framework/git-hooks.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -210,14 +210,62 @@ function isSensitiveEnvPath(rel: string): boolean {
  * Note: ignore rules do not untrack files or detect every secret — see
  * {@link trackedEnvFiles} and SEC-03.
  */
+/** Representative path per entry, for evaluating this file's own rules. */
+const GITIGNORE_SAMPLES: Record<string, string> = {
+  ".fence/.integrity.json": ".fence/.integrity.json",
+  ".fence/events.ndjson": ".fence/events.ndjson",
+  ".env": ".env",
+  ".env.local": ".env.local",
+  ".env.*.local": ".env.fence-check.local",
+};
+
+/** Minimal gitignore glob: `*`/`?` within a segment, `**` across segments. */
+function gitignorePatternMatches(pattern: string, sample: string): boolean {
+  const pat = pattern.startsWith("/") ? pattern.slice(1) : pattern;
+  const target = pat.includes("/") ? sample : (sample.split("/").pop() ?? sample);
+  let re = "^";
+  for (let i = 0; i < pat.length; i++) {
+    const c = pat[i]!;
+    if (c === "*") {
+      if (pat[i + 1] === "*") { re += ".*"; i++; } else re += "[^/]*";
+    } else if (c === "?") re += "[^/]";
+    else re += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  }
+  re += "$";
+  try { return new RegExp(re).test(target); } catch { return pat === target; }
+}
+
+/**
+ * Effective coverage from this `.gitignore` file alone (last matching rule
+ * wins, negations included). Global excludes deliberately do not count:
+ * the fence guarantee must travel with the project file itself.
+ * `.env` followed by `!.env` does not cover.
+ */
+function lineEffectivelyCovers(lines: string[], entry: string): boolean {
+  const sample = GITIGNORE_SAMPLES[entry] ?? entry;
+  let ignored = false;
+  for (const raw of lines) {
+    if (!raw || raw.startsWith("#")) continue;
+    const negated = raw.startsWith("!");
+    const pattern = negated ? raw.slice(1) : raw;
+    if (gitignorePatternMatches(pattern, sample)) ignored = !negated;
+  }
+  return ignored;
+}
+
 export function ensureGitignore(projectRoot: string): string[] {
   const p = join(projectRoot, ".gitignore");
+  // Never follow a .gitignore symlink out of the project: reading is safe to
+  // refuse, writing through it would modify a file outside the root.
+  if (!isWithinProjectRoot(projectRoot, p)) {
+    throw new Error(`containment violation — .gitignore resolves outside project root (S-10)`);
+  }
   const existing = existsSync(p) ? readFileSync(p, "utf-8") : "";
   const lines = existing.split("\n").map((l) => l.trim());
-  const missing = GITIGNORE_ENTRIES.filter((e) => !lines.includes(e));
+  const missing = GITIGNORE_ENTRIES.filter((e) => !lineEffectivelyCovers(lines, e));
   if (missing.length === 0 && existing.includes(GITIGNORE_MARKER)) return [];
   if (missing.length === 0) {
-    // Entries already present but marker missing (user pre-covered) — add
+    // Entries already effective but marker missing (user pre-covered) — add
     // the marker alone so future runs stay no-ops without duplicating lines.
     const suffix = existing.endsWith("\n") || existing.length === 0 ? "" : "\n";
     writeFileSync(p, existing + suffix + GITIGNORE_MARKER + "\n", "utf-8");
@@ -456,10 +504,13 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
       if (existsSync(join(projectRoot, ".git"))) {
         const info = inspectGitHooks(projectRoot);
         if (info.blockedOutside && info.effectiveDir) {
+          const repair = hooksRepairCommand(projectRoot);
+          const note = hooksRepairNote(projectRoot);
           console.warn(
             `[vibe-fence] Git hooks NOT installed: core.hooksPath points outside this project (${info.configured ?? info.effectiveDir} → ${info.effectiveDir}). ` +
               `Installing there would affect other repositories, so nothing was written and your global Git config was not changed. ` +
-              `To enable fence hooks for this project, run \`git config core.hooksPath .git/hooks\` from the project root, then re-run \`vibe-fence init\`. ` +
+              `To enable fence hooks for this project, run \`${repair}\` from the project root, then re-run \`vibe-fence init\`. ` +
+              (note ? `${note} ` : "") +
               `Git protection is inactive until then.`,
           );
         }

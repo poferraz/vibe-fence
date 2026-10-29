@@ -23,13 +23,20 @@ export function buildHookScript(hookName: HookName): string {
   // Index-aware: pre-commit gates staged blobs (closes the L1 smuggle), pre-push
   // gates outgoing commits (stdin ranges parsed CLI-side); the worktree scan
   // runs after as defense in depth. Fail fast on the first failing scan.
+  // Pre-push: Git sends ref updates on stdin. Buffer them once so both the
+  // fence check and any chained pre-existing hook receive the same input —
+  // consuming stdin in the fence check must not starve the chained hook.
   const indexScan = hookName === "pre-push" ? "check --push" : "check --staged";
+  const isPush = hookName === "pre-push";
   return [
     "#!/bin/sh",
     `${HOOK_MARKER} (${hookName}) — safe to delete; reinstall via \`vibe-fence init\`.`,
     `# Runs the fence check (staged/outgoing + worktree), then chains the pre-existing user hook if one was present.`,
     `HOOK_NAME="${hookName}"`,
     `HOOKS_DIR="$(git rev-parse --git-path hooks 2>/dev/null || echo .git/hooks)"`,
+    ...(isPush
+      ? [`TMP_STDIN="$(mktemp)"`, `cat > "$TMP_STDIN"`]
+      : []),
     "run_check() {",
     '  if [ -n "$FENCE_BIN" ]; then',
     '    BIN="$FENCE_BIN"',
@@ -41,11 +48,16 @@ export function buildHookScript(hookName: HookName): string {
     "  fi",
     `  "$BIN" ${indexScan} && "$BIN" check`,
     "}",
-    `run_check || { echo "vibe-fence: $HOOK_NAME blocked — fix findings or run 'vibe-fence check'." >&2; exit 1; }`,
+    isPush
+      ? `run_check < "$TMP_STDIN" || { echo "vibe-fence: $HOOK_NAME blocked — fix findings or run 'vibe-fence check'." >&2; rm -f "$TMP_STDIN"; exit 1; }`
+      : `run_check || { echo "vibe-fence: $HOOK_NAME blocked — fix findings or run 'vibe-fence check'." >&2; exit 1; }`,
     'CHAINED="$HOOKS_DIR/$HOOK_NAME.pre-fence"',
     'if [ -x "$CHAINED" ]; then',
-    '  exec "$CHAINED" "$@"',
+    ...(isPush
+      ? ['  "$CHAINED" "$@" < "$TMP_STDIN"', "  CHAIN_EXIT=$?", '  rm -f "$TMP_STDIN"', "  exit $CHAIN_EXIT"]
+      : ['  exec "$CHAINED" "$@"']),
     "fi",
+    ...(isPush ? ['rm -f "$TMP_STDIN"'] : []),
     "exit 0",
     "",
   ].join("\n");
@@ -129,6 +141,54 @@ export interface GitHooksInspection {
  * install there. Never changes global config. A linked worktree shares the
  * common hooks dir — with no redirect that is still repo-internal.
  */
+function gitPath(projectRoot: string, args: string[], env: Record<string, string>): string | null {
+  try {
+    return execFileSync("git", args, { cwd: projectRoot, env, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/** True in a linked worktree (`.git` is a file; git dir differs from common dir). */
+export function isLinkedWorktree(projectRoot: string, env: Record<string, string> = process.env as Record<string, string>): boolean {
+  const gitDir = gitPath(projectRoot, ["rev-parse", "--git-dir"], env);
+  const common = gitPath(projectRoot, ["rev-parse", "--git-common-dir"], env);
+  if (!gitDir || !common) return false;
+  const a = canonicalPath(isAbsolute(gitDir) ? gitDir : resolve(projectRoot, gitDir));
+  const b = canonicalPath(isAbsolute(common) ? common : resolve(projectRoot, common));
+  return a !== b;
+}
+
+/** Hooks directory of the common (shared) repository — where default hooks live. */
+export function commonHooksDir(projectRoot: string, env: Record<string, string> = process.env as Record<string, string>): string | null {
+  const common = gitPath(projectRoot, ["rev-parse", "--git-common-dir"], env);
+  if (!common) return null;
+  const abs = isAbsolute(common) ? common : resolve(projectRoot, common);
+  return join(abs, "hooks");
+}
+
+/**
+ * Project-local repair command for a blocked (outside-project) hooksPath.
+ * In a linked worktree `.git/hooks` cannot exist (`.git` is a file), so the
+ * repair points at the shared common hooks directory by absolute path and
+ * must disclose that repo-local config is shared by all worktrees. In a
+ * normal checkout the relative `.git/hooks` form is correct.
+ */
+export function hooksRepairCommand(projectRoot: string, env: Record<string, string> = process.env as Record<string, string>): string {
+  if (isLinkedWorktree(projectRoot, env)) {
+    const common = commonHooksDir(projectRoot, env);
+    if (common) return `git config --local core.hooksPath "${common}"`;
+  }
+  return "git config --local core.hooksPath .git/hooks";
+}
+
+export function hooksRepairNote(projectRoot: string, env: Record<string, string> = process.env as Record<string, string>): string {
+  if (isLinkedWorktree(projectRoot, env)) {
+    return "This is a linked worktree: repo-local Git config is shared by all worktrees of this repository, so this change affects the whole repository, not only this worktree.";
+  }
+  return "";
+}
+
 export function inspectGitHooks(projectRoot: string, env: Record<string, string> = process.env as Record<string, string>): GitHooksInspection {
   const configured = configuredHooksPath(projectRoot, env);
   const effectiveDir = effectiveHooksDir(projectRoot, env);
@@ -140,7 +200,17 @@ export function inspectGitHooks(projectRoot: string, env: Record<string, string>
     // Default .git/hooks (or worktree common dir) — always repo-internal.
     return { configured, effectiveDir, insideProject: true, blockedOutside: false, exists };
   }
-  const inside = isInside(canonicalPath(projectRoot), canonicalPath(effectiveDir));
+  const insideWorktree = isInside(canonicalPath(projectRoot), canonicalPath(effectiveDir));
+  // A linked worktree's common hooks dir (and anything under the main
+  // checkout that owns it) is repo-internal even though it sits outside
+  // the linked worktree directory itself.
+  let inside = insideWorktree;
+  const common = commonHooksDir(projectRoot, env);
+  if (common) {
+    if (canonicalPath(effectiveDir) === canonicalPath(common)) inside = true;
+    const mainRoot = dirname(dirname(common));
+    if (isInside(canonicalPath(mainRoot), canonicalPath(effectiveDir))) inside = true;
+  }
   return { configured, effectiveDir, insideProject: inside, blockedOutside: !inside, exists };
 }
 

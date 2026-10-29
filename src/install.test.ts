@@ -127,6 +127,51 @@ describe("postinstall guard execution", () => {
     expect(readFileSync(join(root, ".gitignore"), "utf-8")).toBe(after);
   });
 
+  it("re-covers .env when a later negation unignores it (last match wins)", () => {
+    const root = makeProject();
+    const env = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" } as Record<string, string>;
+    execSync("git init -q .", { cwd: root, env });
+    writeFileSync(join(root, ".gitignore"), ".env\n!.env\n", "utf-8");
+    writeFileSync(join(root, ".env"), "SECRET=1\n", "utf-8");
+    // Before: Git itself says not ignored (negation wins).
+    expect(() => execSync("git check-ignore --no-index -q .env", { cwd: root, env })).toThrow();
+    expect(ensureGitignore(root)).toEqual([".gitignore"]);
+    // After: fence entry is last, so Git ignores it again; run stays idempotent.
+    expect(() => execSync("git check-ignore --no-index -q .env", { cwd: root, env })).not.toThrow();
+    expect(ensureGitignore(root)).toEqual([]);
+    const content = readFileSync(join(root, ".gitignore"), "utf-8");
+    expect(content.trim().endsWith(".env.*.local") || content).toBeTruthy();
+    expect(content.lastIndexOf("\n.env\n")).toBeGreaterThan(content.indexOf("!.env"));
+  });
+
+  it("refuses to follow a .gitignore symlink outside the project", async () => {
+    const root = makeProject();
+    const outsideDir = makeProject();
+    const outsideFile = join(outsideDir, "outside-ignore");
+    writeFileSync(outsideFile, "outside-original\n", "utf-8");
+    symlinkSync(outsideFile, join(root, ".gitignore"));
+    expect(() => ensureGitignore(root)).toThrow(/outside|containment/);
+    expect(readFileSync(outsideFile, "utf-8")).toBe("outside-original\n");
+    // Through install(): warned, outside untouched, install still completes.
+    const warns: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (...a: unknown[]) => { warns.push(a.join(" ")); };
+    try {
+      await install(root, { adapters: [] });
+    } finally {
+      console.warn = origWarn;
+    }
+    expect(warns.join("\n")).toContain(".gitignore");
+    expect(readFileSync(outsideFile, "utf-8")).toBe("outside-original\n");
+    // A symlink staying inside the project is legitimate and works.
+    const root2 = makeProject();
+    const realIgnore = join(root2, "real-ignore");
+    writeFileSync(realIgnore, "# mine\n", "utf-8");
+    symlinkSync(realIgnore, join(root2, ".gitignore"));
+    expect(ensureGitignore(root2)).toEqual([".gitignore"]);
+    expect(readFileSync(realIgnore, "utf-8")).toContain(".env");
+  });
+
   it("reports already-tracked env files by name only, never contents", async () => {
     const root = makeProject();
     const env = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" } as Record<string, string>;

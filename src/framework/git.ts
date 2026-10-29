@@ -258,7 +258,11 @@ export function isDestructiveGitCommand(command: string): boolean {
  * TODO: integrate with tool allowlist — deny Write/Edit outside realpath boundary
  */
 export function isWithinProjectRoot(projectRoot: string, targetPath: string): boolean {
-  const realRoot = canonicalPath(projectRoot);
-  const absTarget = canonicalPath(isAbsolute(targetPath) ? targetPath : join(projectRoot, targetPath));
-  return absTarget === realRoot || absTarget.startsWith(realRoot + sep);
+  try {
+    const realRoot = canonicalPath(projectRoot);
+    const absTarget = canonicalPath(isAbsolute(targetPath) ? targetPath : join(projectRoot, targetPath));
+    return absTarget === realRoot || absTarget.startsWith(realRoot + sep);
+  } catch {
+    return false;
+  }
 }

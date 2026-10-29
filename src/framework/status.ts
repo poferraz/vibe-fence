@@ -1,9 +1,9 @@
 import { constants, accessSync, existsSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { buildCodexGateHook, CODEX_GATE_COMMAND, CODEX_GATE_FILE, CODEX_GATE_MATCHER } from "../adapters/codex-gate.js";
 import { GATE_HOOK_MARKER, GATE_HOOK_SCRIPT, GATE_HOOK_SCRIPT_NAME } from "../adapters/gate-hook.js";
-import { HOOK_MARKER, HOOK_NAMES, inspectGitHooks, hooksRepairCommand, hooksRepairNote } from "./git-hooks.js";
+import { HOOK_MARKER, HOOK_NAMES, inspectGitHooks, hooksRepairCommand, hooksRepairNote, commonHooksDir, canonicalPath } from "./git-hooks.js";
 
 const CLAUDE_MATCHER = "Read|Write|Edit|MultiEdit|Bash";
 
@@ -36,6 +36,13 @@ export function getProtectionStatus(root: string, host: string) {
   let hooksInspection: ReturnType<typeof inspectGitHooks> | null = null;
   try { hooksInspection = inspectGitHooks(projectRoot); } catch {}
   const hooksBlockedOutside = Boolean(hooksInspection?.blockedOutside);
+  let safeCommonRepair = false;
+  if (hooksBlockedOutside && hooksInspection?.configured) {
+    try {
+      const common = commonHooksDir(projectRoot);
+      safeCommonRepair = Boolean(common && canonicalPath(common) === join(canonicalPath(dirname(common)), basename(common)));
+    } catch {}
+  }
   let configured = false;
   let configPresent = false;
   if (host === "codex") {
@@ -88,7 +95,10 @@ export function getProtectionStatus(root: string, host: string) {
       state: !hooksPath ? "unavailable" : !present ? "inactive" : gate ? "configured-unverified" : "degraded",
       path: hooksPath,
       next: !hooksPath ? "This directory is not a Git repository." :
-        hooksBlockedOutside ? `core.hooksPath points outside this project (${hooksPath}); fence hooks are not installed there. Run \`${hooksRepairCommand(projectRoot)}\` from the project root, then re-run \`vibe-fence init\`.${hooksRepairNote(projectRoot) ? ` ${hooksRepairNote(projectRoot)}` : ""}` :
+        hooksBlockedOutside ?
+          `${hooksInspection?.configured ? `The configured Git hooks directory (${hooksPath}) is outside this project or cannot be resolved safely` : `The default Git hooks directory (${hooksPath}) contains an unsafe or unresolvable symlink`}; the installer will not write there. ` +
+          (present ? "Fence hooks appear present, but their execution is unverified. " : "Fence hooks were not detected there. ") +
+          (safeCommonRepair ? `To use the common hooks directory, run \`${hooksRepairCommand(projectRoot)}\`, then re-run \`vibe-fence init\`. ${hooksRepairNote(projectRoot)}` : "Inspect the hooks directory and choose a safe location before re-running `vibe-fence init`.") :
         !hooksDirExists ? `The effective Git hook directory does not exist (${hooksPath}); run \`vibe-fence init\` to create the fence hooks, or fix core.hooksPath.` :
         !present ? "The effective Git hook directory does not contain both executable fence hooks." :
         !gate ? "Fence hooks are present, but the fence executable is unavailable." : "Verify hook execution with a safe test in a scratch repository.",

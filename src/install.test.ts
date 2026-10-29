@@ -144,6 +144,29 @@ describe("postinstall guard execution", () => {
     expect(content.lastIndexOf("\n.env\n")).toBeGreaterThan(content.indexOf("!.env"));
   });
 
+  it("covers specific negations of wildcard env files and re-covers later rules", () => {
+    const root = makeProject();
+    const env = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" } as Record<string, string>;
+    execSync("git init -q .", { cwd: root, env });
+    const original = "# user header\r\n.env.*.local\r\n!.env.production.local";
+    writeFileSync(join(root, ".gitignore"), original);
+    expect(ensureGitignore(root)).toEqual([".gitignore"]);
+    const first = readFileSync(join(root, ".gitignore"), "utf8");
+    expect(first.startsWith(original + "\n")).toBe(true);
+    for (const path of [".env", ".env.local", ".env.production.local", ".env.test.local"]) {
+      expect(() => execSync(`git check-ignore --no-index -q ${path}`, { cwd: root, env })).not.toThrow();
+    }
+    expect(() => execSync("git check-ignore --no-index -q .env.example", { cwd: root, env })).toThrow();
+    expect(ensureGitignore(root)).toEqual([]);
+    expect(readFileSync(join(root, ".gitignore"), "utf8")).toBe(first);
+
+    writeFileSync(join(root, ".gitignore"), first + "!.env.production.local\n");
+    expect(() => execSync("git check-ignore --no-index -q .env.production.local", { cwd: root, env })).toThrow();
+    expect(ensureGitignore(root)).toEqual([".gitignore"]);
+    expect(() => execSync("git check-ignore --no-index -q .env.production.local", { cwd: root, env })).not.toThrow();
+    expect(ensureGitignore(root)).toEqual([]);
+  });
+
   it("refuses to follow a .gitignore symlink outside the project", async () => {
     const root = makeProject();
     const outsideDir = makeProject();
@@ -163,13 +186,17 @@ describe("postinstall guard execution", () => {
     }
     expect(warns.join("\n")).toContain(".gitignore");
     expect(readFileSync(outsideFile, "utf-8")).toBe("outside-original\n");
-    // A symlink staying inside the project is legitimate and works.
+    // Git does not read .gitignore symlinks even when their targets are inside
+    // the project. Do not claim coverage or mutate the target in that case.
     const root2 = makeProject();
+    const env = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" } as Record<string, string>;
+    execSync("git init -q .", { cwd: root2, env });
     const realIgnore = join(root2, "real-ignore");
     writeFileSync(realIgnore, "# mine\n", "utf-8");
     symlinkSync(realIgnore, join(root2, ".gitignore"));
-    expect(ensureGitignore(root2)).toEqual([".gitignore"]);
-    expect(readFileSync(realIgnore, "utf-8")).toContain(".env");
+    expect(() => ensureGitignore(root2)).toThrow(/symlink/i);
+    expect(readFileSync(realIgnore, "utf-8")).toBe("# mine\n");
+    expect(() => execSync("git check-ignore --no-index -q .env", { cwd: root2, env, stdio: "ignore" })).toThrow();
   });
 
   it("reports already-tracked env files by name only, never contents", async () => {

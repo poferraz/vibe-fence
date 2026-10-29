@@ -9,9 +9,9 @@
  * never clobbered. Re-run is byte-idempotent.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, chmodSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync, renameSync, chmodSync, realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { execSync, execFileSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 export const HOOK_NAMES = ["pre-commit", "pre-push"] as const;
 export type HookName = (typeof HOOK_NAMES)[number];
@@ -93,16 +93,25 @@ export function canonicalPath(p: string): string {
   const abs = resolve(p);
   let cur = abs;
   const rest: string[] = [];
-  while (!existsSync(cur)) {
-    const parent = dirname(cur);
-    if (parent === cur) break;
-    rest.unshift(basename(cur));
-    cur = parent;
-  }
-  try {
-    return join(realpathSync(cur), ...rest);
-  } catch {
-    return abs;
+  for (;;) {
+    try {
+      // lstat sees dangling symlinks: realpath then rejects them rather than
+      // treating the link as a missing in-project path.
+      lstatSync(cur);
+      return join(realpathSync(cur), ...rest);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      // A dangling symlink itself exists even though realpath returned ENOENT.
+      try { lstatSync(cur); } catch (statErr) {
+        if ((statErr as NodeJS.ErrnoException).code !== "ENOENT") throw statErr;
+        const parent = dirname(cur);
+        if (parent === cur) throw err;
+        rest.unshift(basename(cur));
+        cur = parent;
+        continue;
+      }
+      throw err;
+    }
   }
 }
 
@@ -168,25 +177,18 @@ export function commonHooksDir(projectRoot: string, env: Record<string, string> 
 }
 
 /**
- * Project-local repair command for a blocked (outside-project) hooksPath.
- * In a linked worktree `.git/hooks` cannot exist (`.git` is a file), so the
- * repair points at the shared common hooks directory by absolute path and
- * must disclose that repo-local config is shared by all worktrees. In a
- * normal checkout the relative `.git/hooks` form is correct.
+ * Repair to the common hooks directory by absolute path. Repo-local config
+ * is shared with linked worktrees even when run from the main checkout.
  */
 export function hooksRepairCommand(projectRoot: string, env: Record<string, string> = process.env as Record<string, string>): string {
-  if (isLinkedWorktree(projectRoot, env)) {
-    const common = commonHooksDir(projectRoot, env);
-    if (common) return `git config --local core.hooksPath "${common}"`;
-  }
-  return "git config --local core.hooksPath .git/hooks";
+  const common = commonHooksDir(projectRoot, env);
+  if (!common) throw new Error("cannot determine common Git hooks directory");
+  const absolute = join(canonicalPath(dirname(common)), basename(common));
+  return `git config --local core.hooksPath '${absolute.replace(/'/g, "'\\''")}'`;
 }
 
 export function hooksRepairNote(projectRoot: string, env: Record<string, string> = process.env as Record<string, string>): string {
-  if (isLinkedWorktree(projectRoot, env)) {
-    return "This is a linked worktree: repo-local Git config is shared by all worktrees of this repository, so this change affects the whole repository, not only this worktree.";
-  }
-  return "";
+  return "Repo-local Git config is shared by all worktrees of this repository, so this change affects the whole repository.";
 }
 
 export function inspectGitHooks(projectRoot: string, env: Record<string, string> = process.env as Record<string, string>): GitHooksInspection {
@@ -196,20 +198,15 @@ export function inspectGitHooks(projectRoot: string, env: Record<string, string>
     return { configured, effectiveDir: null, insideProject: false, blockedOutside: false, exists: false };
   }
   const exists = existsSync(effectiveDir);
-  if (configured === null) {
-    // Default .git/hooks (or worktree common dir) — always repo-internal.
-    return { configured, effectiveDir, insideProject: true, blockedOutside: false, exists };
-  }
-  const insideWorktree = isInside(canonicalPath(projectRoot), canonicalPath(effectiveDir));
-  // A linked worktree's common hooks dir (and anything under the main
-  // checkout that owns it) is repo-internal even though it sits outside
-  // the linked worktree directory itself.
-  let inside = insideWorktree;
-  const common = commonHooksDir(projectRoot, env);
-  if (common) {
-    if (canonicalPath(effectiveDir) === canonicalPath(common)) inside = true;
-    const mainRoot = dirname(dirname(common));
-    if (isInside(canonicalPath(mainRoot), canonicalPath(effectiveDir))) inside = true;
+  let inside = false;
+  try {
+    const effective = canonicalPath(effectiveDir);
+    inside = isInside(canonicalPath(projectRoot), effective);
+    const common = commonHooksDir(projectRoot, env);
+    if (common && effective === canonicalPath(common) &&
+        isInside(canonicalPath(dirname(common)), effective)) inside = true;
+  } catch {
+    // An unsafe or unresolvable symlink is never a safe install destination.
   }
   return { configured, effectiveDir, insideProject: inside, blockedOutside: !inside, exists };
 }
@@ -232,6 +229,18 @@ export function installGitHooks(projectRoot: string, env: Record<string, string>
   if (!info.effectiveDir || info.blockedOutside) return [];
   const hooksDir = info.effectiveDir;
   mkdirSync(hooksDir, { recursive: true });
+
+  // A managed hook symlink must not make writeFileSync/chmodSync touch its
+  // destination; dangling backup links must not be clobbered by renameSync.
+  for (const name of HOOK_NAMES) {
+    for (const path of [join(hooksDir, name), join(hooksDir, name) + BACKUP_SUFFIX]) {
+      try {
+        if (lstatSync(path).isSymbolicLink()) throw new Error(`refusing symlinked Git hook: ${path}`);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      }
+    }
+  }
 
   const written: string[] = [];
   for (const name of HOOK_NAMES) {

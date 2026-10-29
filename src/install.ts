@@ -18,7 +18,7 @@
  * - Node-compatible: no bun-only APIs (no import.meta.dir/main) — this file is bundled.
  */
 
-import { chmodSync, existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync, readdirSync, unlinkSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, readFileSync, writeFileSync, mkdirSync, appendFileSync, readdirSync, unlinkSync } from "node:fs";
 import { basename, join, resolve, relative, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
@@ -30,7 +30,7 @@ import { installOpenCodeAdapter } from "./adapters/opencode.js";
 import { installAntigravityAdapter } from "./adapters/antigravity.js";
 import { installHermesAdapter } from "./adapters/hermes.js";
 import { persistAttestation } from "./framework/integrity.js";
-import { installGitHooks, inspectGitHooks, effectiveHooksDir, canonicalPath, hooksRepairCommand, hooksRepairNote } from "./framework/git-hooks.js";
+import { installGitHooks, inspectGitHooks, effectiveHooksDir, canonicalPath, commonHooksDir, hooksRepairCommand, hooksRepairNote } from "./framework/git-hooks.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -114,7 +114,7 @@ export function loadPostinstallGuard(): string {
 
 export type RuntimeKind = "native" | "webcontainer";
 
-export function probeRuntime(projectRoot: string): { runtime: RuntimeKind; reason: string } {
+export function probeRuntime(projectRoot: string, dryRun = false): { runtime: RuntimeKind; reason: string } {
   // 1. process.versions.webcontainer sentinel
   const pv = (process.versions as unknown as Record<string, string>);
   if (pv["webcontainer"]) return { runtime: "webcontainer", reason: "process.versions.webcontainer present" };
@@ -128,6 +128,9 @@ export function probeRuntime(projectRoot: string): { runtime: RuntimeKind; reaso
     return { runtime: "webcontainer", reason: "git not available" };
   }
 
+  // Dry runs must not create a hooks directory or a probe file.
+  if (dryRun) return { runtime: "native", reason: "hook writability not probed in dry run" };
+
   // 4. Hook installability — can we create a probe in the effective hooks dir?
   // Uses `git rev-parse --git-path hooks` so linked worktrees (`.git` is a
   // file) and project-local core.hooksPath resolve correctly. An outside-
@@ -139,8 +142,8 @@ export function probeRuntime(projectRoot: string): { runtime: RuntimeKind; reaso
       const info = hooksDir ? inspectGitHooks(projectRoot) : null;
       if (hooksDir && info && !info.blockedOutside) {
         mkdirSync(hooksDir, { recursive: true });
-        const probe = join(hooksDir, ".fence-probe");
-        writeFileSync(probe, "probe", "utf-8");
+        const probe = join(hooksDir, `.fence-probe-${randomBytes(16).toString("hex")}`);
+        writeFileSync(probe, "probe", { encoding: "utf-8", flag: "wx" });
         try { unlinkSync(probe); } catch {}
       }
     }
@@ -162,14 +165,18 @@ export function probeRuntime(projectRoot: string): { runtime: RuntimeKind; reaso
  * escapes through a symlinked ancestor resolves outside and is denied.
  */
 export function isWithinProjectRoot(projectRoot: string, target: string): boolean {
-  const realRoot = canonicalPath(projectRoot);
-  const realTarget = canonicalPath(target);
-  return realTarget === realRoot || realTarget.startsWith(realRoot + sep);
+  try {
+    const realRoot = canonicalPath(projectRoot);
+    const realTarget = canonicalPath(target);
+    return realTarget === realRoot || realTarget.startsWith(realRoot + sep);
+  } catch {
+    return false;
+  }
 }
 
 function assertWithinProjectRoot(projectRoot: string, target: string): void {
   if (!isWithinProjectRoot(projectRoot, target)) {
-    throw new Error(`containment violation — target outside project root: ${relative(projectRoot, canonicalPath(target))} (S-10)`);
+    throw new Error(`containment violation — target outside project root or unresolvable: ${relative(projectRoot, target)} (S-10)`);
   }
 }
 
@@ -203,78 +210,30 @@ function isSensitiveEnvPath(rel: string): boolean {
 }
 
 /**
- * Ensure fence + env ignore patterns exist, idempotently. Existing lines and
- * comments are preserved verbatim; only missing entries are appended under
- * the fence marker. `.env.example` stays tracked-friendly (never ignored
- * here). Returns [" .gitignore"]-style display entry when the file changed.
- * Note: ignore rules do not untrack files or detect every secret — see
- * {@link trackedEnvFiles} and SEC-03.
+ * Append the complete owned block last so it wins over earlier root-level
+ * negations without attempting to emulate Git's pattern semantics. Existing
+ * bytes are preserved and an unchanged trailing block is byte-idempotent.
+ * Nested .gitignore files can override it; Git ignores do not untrack files.
+ * The block does not ignore `.env.example` (user rules may still do so).
  */
-/** Representative path per entry, for evaluating this file's own rules. */
-const GITIGNORE_SAMPLES: Record<string, string> = {
-  ".fence/.integrity.json": ".fence/.integrity.json",
-  ".fence/events.ndjson": ".fence/events.ndjson",
-  ".env": ".env",
-  ".env.local": ".env.local",
-  ".env.*.local": ".env.fence-check.local",
-};
-
-/** Minimal gitignore glob: `*`/`?` within a segment, `**` across segments. */
-function gitignorePatternMatches(pattern: string, sample: string): boolean {
-  const pat = pattern.startsWith("/") ? pattern.slice(1) : pattern;
-  const target = pat.includes("/") ? sample : (sample.split("/").pop() ?? sample);
-  let re = "^";
-  for (let i = 0; i < pat.length; i++) {
-    const c = pat[i]!;
-    if (c === "*") {
-      if (pat[i + 1] === "*") { re += ".*"; i++; } else re += "[^/]*";
-    } else if (c === "?") re += "[^/]";
-    else re += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-  }
-  re += "$";
-  try { return new RegExp(re).test(target); } catch { return pat === target; }
-}
-
-/**
- * Effective coverage from this `.gitignore` file alone (last matching rule
- * wins, negations included). Global excludes deliberately do not count:
- * the fence guarantee must travel with the project file itself.
- * `.env` followed by `!.env` does not cover.
- */
-function lineEffectivelyCovers(lines: string[], entry: string): boolean {
-  const sample = GITIGNORE_SAMPLES[entry] ?? entry;
-  let ignored = false;
-  for (const raw of lines) {
-    if (!raw || raw.startsWith("#")) continue;
-    const negated = raw.startsWith("!");
-    const pattern = negated ? raw.slice(1) : raw;
-    if (gitignorePatternMatches(pattern, sample)) ignored = !negated;
-  }
-  return ignored;
-}
-
 export function ensureGitignore(projectRoot: string): string[] {
   const p = join(projectRoot, ".gitignore");
+  // Git does not follow .gitignore symlinks, even when their target is inside
+  // the project. Refuse them instead of claiming ineffective protection.
+  try {
+    if (lstatSync(p).isSymbolicLink()) throw new Error("containment violation — .gitignore is a symlink; Git will not read it");
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+  }
   // Never follow a .gitignore symlink out of the project: reading is safe to
   // refuse, writing through it would modify a file outside the root.
   if (!isWithinProjectRoot(projectRoot, p)) {
     throw new Error(`containment violation — .gitignore resolves outside project root (S-10)`);
   }
   const existing = existsSync(p) ? readFileSync(p, "utf-8") : "";
-  const lines = existing.split("\n").map((l) => l.trim());
-  const missing = GITIGNORE_ENTRIES.filter((e) => !lineEffectivelyCovers(lines, e));
-  if (missing.length === 0 && existing.includes(GITIGNORE_MARKER)) return [];
-  if (missing.length === 0) {
-    // Entries already effective but marker missing (user pre-covered) — add
-    // the marker alone so future runs stay no-ops without duplicating lines.
-    const suffix = existing.endsWith("\n") || existing.length === 0 ? "" : "\n";
-    writeFileSync(p, existing + suffix + GITIGNORE_MARKER + "\n", "utf-8");
-    return [".gitignore"];
-  }
+  const block = [GITIGNORE_MARKER, ...GITIGNORE_ENTRIES].join("\n") + "\n";
+  if (existing === block || existing.endsWith("\n" + block)) return [];
   const suffix = existing.endsWith("\n") || existing.length === 0 ? "" : "\n";
-  const block = existing.includes(GITIGNORE_MARKER)
-    ? missing.join("\n") + "\n"
-    : [GITIGNORE_MARKER, ...missing].join("\n") + "\n";
   writeFileSync(p, existing + suffix + block, "utf-8");
   return [".gitignore"];
 }
@@ -311,7 +270,7 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
   }
 
   // 1. WebContainer probe — GEM-02 P1
-  const probe = probeRuntime(projectRoot);
+  const probe = probeRuntime(projectRoot, opts.dryRun);
   if (probe.runtime === "webcontainer" && !opts.full) {
     console.log("WebContainer detected — hooks unavailable. Using file-only mode (AGENTS.md + .fence/ rules).");
     console.log("Run 'npx vibe-fence init --full' on a local clone for hook enforcement.");
@@ -504,14 +463,23 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
       if (existsSync(join(projectRoot, ".git"))) {
         const info = inspectGitHooks(projectRoot);
         if (info.blockedOutside && info.effectiveDir) {
-          const repair = hooksRepairCommand(projectRoot);
-          const note = hooksRepairNote(projectRoot);
+          let repair: string | null = null;
+          if (info.configured) {
+            try {
+              const common = commonHooksDir(projectRoot);
+              if (common && canonicalPath(common) === join(canonicalPath(dirname(common)), basename(common))) {
+                repair = hooksRepairCommand(projectRoot);
+              }
+            } catch { /* no safe common directory to recommend */ }
+          }
+          const note = repair ? hooksRepairNote(projectRoot) : "";
           console.warn(
-            `[vibe-fence] Git hooks NOT installed: core.hooksPath points outside this project (${info.configured ?? info.effectiveDir} → ${info.effectiveDir}). ` +
-              `Installing there would affect other repositories, so nothing was written and your global Git config was not changed. ` +
-              `To enable fence hooks for this project, run \`${repair}\` from the project root, then re-run \`vibe-fence init\`. ` +
+            `[vibe-fence] Git hooks NOT installed: the effective hooks directory is outside an allowed location or cannot be resolved safely (${info.effectiveDir}). ` +
+              `Nothing was written there and Git config was not changed. ` +
+              (repair ? `Review the directory and, if appropriate, run \`${repair}\` from the project root, then re-run \`vibe-fence init\`. ` :
+                `Inspect the hooks directory and choose a safe location before re-running \`vibe-fence init\`. `) +
               (note ? `${note} ` : "") +
-              `Git protection is inactive until then.`,
+              `Verify Git protection before relying on it.`,
           );
         }
       }

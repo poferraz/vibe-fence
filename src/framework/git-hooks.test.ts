@@ -254,6 +254,101 @@ describe("git-hooks", () => {
     expect(canonicalPath(join(base, "link-out", "evil.txt"))).toBe(join(outside, "evil.txt"));
   });
 
+  it("rejects dangling and cyclic symlinks while resolving missing targets", () => {
+    const base = mkdtempSync(join(tmpdir(), "vf-dangling-"));
+    const outside = mkdtempSync(join(tmpdir(), "vf-dangling-out-"));
+    created.push(base, outside);
+    symlinkSync(join(outside, "missing"), join(base, "dangling"));
+    symlinkSync("cycle2", join(base, "cycle1"));
+    symlinkSync("cycle1", join(base, "cycle2"));
+    expect(() => canonicalPath(join(base, "dangling"))).toThrow();
+    expect(() => canonicalPath(join(base, "dangling", "child"))).toThrow();
+    expect(() => canonicalPath(join(base, "cycle1"))).toThrow();
+    expect(canonicalPath(join(base, "missing", "child"))).toBe(join(realpathSync(base), "missing", "child"));
+  });
+
+  it("does not trust a sibling of a separate Git directory", () => {
+    const base = mkdtempSync(join(tmpdir(), "vf-separate-"));
+    created.push(base);
+    const root = join(base, "project");
+    const shared = join(base, "shared");
+    mkdirSync(root); mkdirSync(shared);
+    execFileSync("git", ["init", "-q", "--separate-git-dir", join(shared, "repo.git"), root], { env: gitEnv() });
+    const outside = join(shared, "other-hooks");
+    execFileSync("git", ["config", "core.hooksPath", outside], { cwd: root, env: gitEnv() });
+    expect(inspectGitHooks(root, gitEnv()).blockedOutside).toBe(true);
+    expect(installGitHooks(root, gitEnv())).toEqual([]);
+    expect(existsSync(outside)).toBe(false);
+    execSync(hooksRepairCommand(root, gitEnv()), { cwd: root, env: gitEnv() });
+    expect(installGitHooks(root, gitEnv())).toHaveLength(2);
+    expect(existsSync(join(shared, "repo.git", "hooks", "pre-commit"))).toBe(true);
+  });
+
+  it("allows a bare repository's common hooks but blocks sibling directories", () => {
+    const source = makeRepo();
+    const base = mkdtempSync(join(tmpdir(), "vf-bare-worktree-"));
+    created.push(base);
+    const bare = join(base, "repo.git");
+    const wt = join(base, "worktree");
+    const outside = join(base, "other-hooks");
+    execFileSync("git", ["clone", "-q", "--bare", source, bare], { env: gitEnv() });
+    execFileSync("git", ["--git-dir", bare, "worktree", "add", "-q", wt], { env: gitEnv() });
+    expect(inspectGitHooks(wt, gitEnv()).blockedOutside).toBe(false);
+    expect(installGitHooks(wt, gitEnv())).toHaveLength(2);
+    execFileSync("git", ["config", "core.hooksPath", outside], { cwd: wt, env: gitEnv() });
+    expect(inspectGitHooks(wt, gitEnv()).blockedOutside).toBe(true);
+    expect(installGitHooks(wt, gitEnv())).toEqual([]);
+    expect(existsSync(outside)).toBe(false);
+  });
+
+  it("does not trust a default common hooks symlink that escapes the repository", () => {
+    const root = makeRepo();
+    const outside = mkdtempSync(join(tmpdir(), "vf-default-hooks-out-"));
+    created.push(outside);
+    const hooks = join(root, ".git", "hooks");
+    rmSync(hooks, { recursive: true });
+    symlinkSync(outside, hooks, "dir");
+    expect(inspectGitHooks(root, gitEnv()).blockedOutside).toBe(true);
+    expect(installGitHooks(root, gitEnv())).toEqual([]);
+    expect(existsSync(join(outside, "pre-commit"))).toBe(false);
+  });
+
+  it("does not write through hook file symlinks", () => {
+    const root = makeRepo();
+    const outside = mkdtempSync(join(tmpdir(), "vf-hook-target-"));
+    created.push(outside);
+    const file = join(outside, "target");
+    writeFileSync(file, `${HOOK_MARKER}\noriginal\n`);
+    symlinkSync(file, join(root, ".git", "hooks", "pre-commit"));
+    expect(() => installGitHooks(root, gitEnv())).toThrow();
+    expect(readFileSync(file, "utf8")).toBe(`${HOOK_MARKER}\noriginal\n`);
+  });
+
+  it("does not overwrite a dangling backup symlink", () => {
+    const root = makeRepo();
+    const hooks = join(root, ".git", "hooks");
+    writeFileSync(join(hooks, "pre-commit"), "#!/bin/sh\nexit 0\n");
+    symlinkSync(join(root, "missing"), join(hooks, "pre-commit.pre-fence"));
+    expect(() => installGitHooks(root, gitEnv())).toThrow();
+    expect(readFileSync(join(hooks, "pre-commit"), "utf8")).toBe("#!/bin/sh\nexit 0\n");
+    expect(existsSync(join(root, "missing"))).toBe(false);
+  });
+
+  it("quotes worktree repair paths without shell expansion", () => {
+    const base = mkdtempSync(join(tmpdir(), "vf-quote-"));
+    created.push(base);
+    const root = join(base, "repo 'quote' $HOME `touch marker`");
+    mkdirSync(root);
+    execFileSync("git", ["init", "-q", root], { env: gitEnv() });
+    execFileSync("git", ["config", "core.hooksPath", "/tmp/no-hooks"], { cwd: root, env: gitEnv() });
+    const wt = join(base, "worktree");
+    execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init"], { cwd: root, env: gitEnv() });
+    execFileSync("git", ["worktree", "add", "-q", wt], { cwd: root, env: gitEnv() });
+    execSync(hooksRepairCommand(wt, gitEnv()), { cwd: wt, env: gitEnv() });
+    expect(configuredHooksPath(wt, gitEnv())).toBe(join(realpathSync(root), ".git", "hooks"));
+    expect(existsSync(join(wt, "marker"))).toBe(false);
+  });
+
   it("end-to-end: pre-push blocks a leaky range and allows a clean one", () => {
     if (!gitAvailable()) return;
     const root = makeRepo();
@@ -340,13 +435,28 @@ describe("git-hooks", () => {
     expect(repair).not.toContain(".git/hooks \"");
     expect(repair).toContain(join(realpathSync(root), ".git", "hooks"));
     expect(hooksRepairNote(wt, gitEnv())).toContain("shared");
-    // Normal checkout keeps the relative form and no shared note.
-    expect(hooksRepairCommand(root, gitEnv())).toBe("git config --local core.hooksPath .git/hooks");
-    expect(hooksRepairNote(root, gitEnv())).toBe("");
+    // Repo-local config is shared even when the command is run in the main checkout.
+    expect(hooksRepairCommand(root, gitEnv())).toContain(join(realpathSync(root), ".git", "hooks"));
+    expect(hooksRepairNote(root, gitEnv())).toContain("shared");
     // Following the repair actually enables installation (into common hooks).
     execSync(repair, { cwd: wt, env: gitEnv() });
     const written = installGitHooks(wt, gitEnv());
     expect(written.sort()).toEqual([".git/hooks/pre-commit", ".git/hooks/pre-push"]);
+  });
+
+  it("repair from the main checkout preserves hooks in linked worktrees", () => {
+    const root = makeRepo();
+    const wt = join(root, "wt");
+    execFileSync("git", ["worktree", "add", "-q", wt], { cwd: root, env: gitEnv() });
+    const outside = mkdtempSync(join(tmpdir(), "vf-repair-outside-"));
+    created.push(outside);
+    execFileSync("git", ["config", "core.hooksPath", outside], { cwd: root, env: gitEnv() });
+    execSync(hooksRepairCommand(root, gitEnv()), { cwd: root, env: gitEnv() });
+    installGitHooks(root, gitEnv());
+    const deny = writeStub(root, "deny.sh", 1);
+    writeFileSync(join(wt, "a.txt"), "content\n");
+    execFileSync("git", ["add", "a.txt"], { cwd: wt, env: gitEnv() });
+    expect(() => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "blocked"], { cwd: wt, env: gitEnv({ FENCE_BIN: deny }) })).toThrow();
   });
 
   it("end-to-end: failing check blocks git commit, passing check allows it", () => {

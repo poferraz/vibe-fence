@@ -7,7 +7,7 @@ import { describe, it, expect, afterEach } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { runCheck, runIndexCheck, runPushCheck, exitCodeForReport } from "./check";
 import { persistAttestation, FENCE_SYNC_TOKEN_ENV } from "./framework/integrity";
 
@@ -185,6 +185,153 @@ describe("index-aware scans (L1)", () => {
     const pushed = runPushCheck(root, [`${"0".repeat(40)}..HEAD`]);
     expect(pushed.blocks).toBe(1);
     expect(exitCodeForReport(pushed)).toBe(1);
+  });
+
+  it("blocks an outgoing leak even when a later commit fixes it", () => {
+    const root = makeGitProject();
+    const base = sh(root, "git rev-parse HEAD");
+    writeFileSync(join(root, "app.tsx"), LEAK);
+    commitAll(root, "leak");
+    writeFileSync(join(root, "app.tsx"), "export const ok = 1;\n");
+    commitAll(root, "fix");
+    expect(runCheck(root).blocks).toBe(0);
+    const report = runPushCheck(root, [`${base}..HEAD`]);
+    expect(report.findings.some((f) => f.ruleId === "SEC-01" && f.verdict === "fail")).toBe(true);
+    expect(exitCodeForReport(report)).toBe(1);
+  });
+
+  it("blocks a leak removed from a later outgoing commit", () => {
+    const root = makeGitProject();
+    const base = sh(root, "git rev-parse HEAD");
+    writeFileSync(join(root, "app.tsx"), LEAK);
+    commitAll(root, "leak");
+    rmSync(join(root, "app.tsx"));
+    commitAll(root, "delete");
+    expect(exitCodeForReport(runPushCheck(root, [`${base}..HEAD`]))).toBe(1);
+  });
+
+  it("blocks a historical env file even if removed and ignored later", () => {
+    const root = makeGitProject();
+    const base = sh(root, "git rev-parse HEAD");
+    const marker = "fabricated-private-value";
+    writeFileSync(join(root, ".env"), `PASSWORD=${marker}\n`);
+    sh(root, "git add -f .env");
+    commitAll(root, "env");
+    rmSync(join(root, ".env"));
+    writeFileSync(join(root, ".gitignore"), ".env\n");
+    writeFileSync(join(root, ".env.example"), "PASSWORD=\n");
+    commitAll(root, "remove and ignore");
+    const report = runPushCheck(root, [`${base}..HEAD`]);
+    expect(report.findings.some((f) => f.ruleId === "SEC-03" && f.verdict === "fail" && f.file.startsWith(".env (commit "))).toBe(true);
+    expect(report.findings.some((f) => f.ruleId === "SEC-03" && f.verdict === "fail" && f.file.startsWith(".env.example"))).toBe(false);
+    expect(JSON.stringify(report)).not.toContain(marker);
+    expect(exitCodeForReport(report)).toBe(1);
+  });
+
+  it("blocks an empty env file in outgoing history without exposing contents", () => {
+    const root = makeGitProject();
+    const base = sh(root, "git rev-parse HEAD");
+    writeFileSync(join(root, ".env.local"), "");
+    sh(root, "git add -f .env.local");
+    commitAll(root, "empty env");
+    rmSync(join(root, ".env.local"));
+    writeFileSync(join(root, ".gitignore"), ".env.local\n");
+    commitAll(root, "delete and ignore");
+    const report = runPushCheck(root, [`${base}..HEAD`]);
+    expect(report.findings.some((f) => f.ruleId === "SEC-03" && f.verdict === "fail")).toBe(true);
+    expect(exitCodeForReport(report)).toBe(1);
+  });
+
+  it("scans the same filename independently across multiple pushed refs", () => {
+    const root = makeGitProject();
+    const base = sh(root, "git rev-parse HEAD");
+    writeFileSync(join(root, "app.tsx"), "export const ok = 1;\n");
+    commitAll(root, "clean");
+    const clean = sh(root, "git rev-parse HEAD");
+    sh(root, `git checkout -q --detach ${base}`);
+    writeFileSync(join(root, "app.tsx"), LEAK);
+    commitAll(root, "leak");
+    const leaky = sh(root, "git rev-parse HEAD");
+    expect(exitCodeForReport(runPushCheck(root, [`${base}..${clean}`, `${base}..${leaky}`]))).toBe(1);
+  });
+
+  it("scans history for a new ref, not just its clean tip", () => {
+    const root = makeGitProject();
+    writeFileSync(join(root, "app.tsx"), LEAK);
+    commitAll(root, "leak");
+    writeFileSync(join(root, "app.tsx"), "export const ok = 1;\n");
+    commitAll(root, "fix");
+    expect(exitCodeForReport(runPushCheck(root, [`${"0".repeat(40)}..HEAD`]))).toBe(1);
+  });
+
+  it("blocks when an outgoing range or a scan limit cannot be evaluated", () => {
+    const root = makeGitProject();
+    const base = sh(root, "git rev-parse HEAD");
+    writeFileSync(join(root, "a.ts"), "export const a = 1;\n");
+    writeFileSync(join(root, "b.ts"), "export const b = 2;\n");
+    commitAll(root, "clean");
+    expect(exitCodeForReport(runPushCheck(root, [`${base}..HEAD`], { maxFiles: 1 }))).toBe(1);
+    expect(exitCodeForReport(runPushCheck(root, ["nonexistent..HEAD"]))).toBe(1);
+    expect(exitCodeForReport(runPushCheck(root, [`${base}..HEAD`], { maxBytesPerFile: 1 }))).toBe(1);
+    expect(exitCodeForReport(runPushCheck(root, [`${base}..HEAD`]))).toBe(0);
+  });
+
+  it("reports gitlinks as unsupported instead of claiming submodule history was scanned", () => {
+    const root = makeGitProject();
+    const base = sh(root, "git rev-parse HEAD");
+    sh(root, `git update-index --add --cacheinfo 160000,${base},vendor`);
+    sh(root, "git -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -qm submodule");
+    const report = runPushCheck(root, [`${base}..HEAD`]);
+    expect(report.findings.some((f) => f.ruleId === "PUSH-SCAN" && /submodule/i.test(f.reason))).toBe(true);
+    expect(exitCodeForReport(report)).toBe(1);
+  });
+
+  it("does not resolve historical file paths through the current worktree symlinks", () => {
+    const root = makeGitProject();
+    const base = sh(root, "git rev-parse HEAD");
+    mkdirSync(join(root, "folder"));
+    writeFileSync(join(root, "folder/a.js"), "export const ok = 1;\n");
+    commitAll(root, "add");
+    rmSync(join(root, "folder"), { recursive: true });
+    commitAll(root, "delete");
+    const outside = mkdtempSync(join(tmpdir(), "vf-historical-out-"));
+    created.push(outside);
+    symlinkSync(outside, join(root, "folder"), "dir");
+    const report = runPushCheck(root, [`${base}..HEAD`]);
+    expect(report.findings.some((f) => f.ruleId === "FS-01" && f.verdict === "fail")).toBe(false);
+    expect(exitCodeForReport(report)).toBe(0);
+  });
+
+  it("does not call a shallow new-ref history clean when older commits are missing", () => {
+    const root = makeGitProject();
+    writeFileSync(join(root, "app.tsx"), LEAK);
+    commitAll(root, "leak");
+    writeFileSync(join(root, "app.tsx"), "export const ok = 1;\n");
+    commitAll(root, "fix");
+    const shallow = join(mkdtempSync(join(tmpdir(), "vf-shallow-parent-")), "clone");
+    created.push(join(shallow, ".."));
+    execFileSync("git", ["clone", "-q", "--depth=1", `file://${root}`, shallow], { env: gitEnv() });
+    const report = runPushCheck(shallow, [`${"0".repeat(40)}..HEAD`]);
+    expect(report.findings.some((f) => f.ruleId === "PUSH-SCAN" && f.verdict === "fail")).toBe(true);
+    expect(exitCodeForReport(report)).toBe(1);
+  });
+
+  it("scans a merged branch and does not mistake its deleted paths for unreadable blobs", () => {
+    const root = makeGitProject();
+    const base = sh(root, "git rev-parse HEAD");
+    sh(root, "git checkout -qb side");
+    writeFileSync(join(root, "app.tsx"), LEAK);
+    commitAll(root, "leak");
+    rmSync(join(root, "app.tsx"));
+    commitAll(root, "delete");
+    sh(root, `git checkout -q --detach ${base}`);
+    writeFileSync(join(root, "other.ts"), "export const other = 1;\n");
+    commitAll(root, "other");
+    sh(root, "git -c user.email=t@t -c user.name=t -c commit.gpgsign=false merge --no-ff -qm merge side");
+    const report = runPushCheck(root, [`${base}..HEAD`]);
+    expect(report.findings.some((f) => f.ruleId === "SEC-01" && f.verdict === "fail")).toBe(true);
+    expect(report.findings.some((f) => f.ruleId === "PUSH-SCAN")).toBe(false);
+    expect(exitCodeForReport(report)).toBe(1);
   });
 });
 

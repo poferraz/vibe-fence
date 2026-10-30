@@ -240,6 +240,35 @@ describe("cli check --push/--staged", () => {
     expect(clean.exit).toBe(0);
   });
 
+  it("allows a deletion-only push without falling back to a missing upstream", () => {
+    const { root, tip } = makePushRepo();
+    const zeros = "0".repeat(40);
+    const r = runCli(["check", "--push"], { cwd: root, input: `(delete) ${zeros} refs/heads/old ${tip}\n`, env: gitEnv() });
+    expect(r.exit).toBe(0);
+    expect(r.stdout).toContain("0 files");
+  });
+
+  it("manual --push without hook input falls back to upstream history", () => {
+    const { root, base } = makePushRepo();
+    const env = gitEnv();
+    const branch = execFileSync("git", ["branch", "--show-current"], { cwd: root, env, encoding: "utf8" }).trim();
+    execFileSync("git", ["remote", "add", "origin", "/tmp/fabricated-remote"], { cwd: root, env });
+    execFileSync("git", ["update-ref", "refs/remotes/origin/main", base], { cwd: root, env });
+    execFileSync("git", ["config", `branch.${branch}.remote`, "origin"], { cwd: root, env });
+    execFileSync("git", ["config", `branch.${branch}.merge`, "refs/heads/main"], { cwd: root, env });
+    const r = runCli(["check", "--push"], { cwd: root, input: "", env });
+    expect(r.exit).toBe(1);
+    expect(r.stdout).toContain("SEC-01");
+  });
+
+  it("rejects malformed pre-push lines even if another line is valid", () => {
+    const { root, base, tip } = makePushRepo();
+    const r = runCli(["check", "--push"], { cwd: root, input: `refs/heads/a ${base} refs/heads/a ${base}\nnot a valid git update\n`, env: gitEnv() });
+    expect(r.exit).toBe(1);
+    expect(r.stderr).toContain("malformed pre-push input");
+    void tip;
+  });
+
   it("--push rejects malformed explicit ranges", () => {
     const { root } = makePushRepo();
     const r = runCli(["check", "--push", "a..b..c"], { cwd: root });

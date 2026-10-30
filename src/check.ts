@@ -85,12 +85,15 @@ function listFiles(root: string, maxFiles: number): { files: string[]; skipped: 
 }
 
 /** Run the full REGISTRY over one file's content (shared by worktree, index, and push scans). */
-function scanContent(rel: string, content: string, files: string[], projectRoot: string): CheckFinding[] {
+function scanContent(rel: string, content: string, files: string[], projectRoot: string, isCommittedBlob = false): CheckFinding[] {
   const findings: CheckFinding[] = [];
   for (const id of Object.keys(REGISTRY).sort()) {
+    // Containment is about the live filesystem, not a historical tree path;
+    // resolving it via today's worktree can follow unrelated symlinks.
+    if (isCommittedBlob && id === "FS-01") continue;
     const entry = REGISTRY[id];
     if (!entry) continue;
-    const v = entry.check({ content, filePath: rel, projectRoot, fileList: files });
+    const v = entry.check({ content, filePath: rel, projectRoot, fileList: files, isCommittedBlob });
     if (v.verdict !== "fail" && v.verdict !== "unknown") continue;
     const f: CheckFinding = { file: rel, ruleId: id, severity: entry.severity, verdict: v.verdict, reason: v.reason };
     if (v.evidence) f.evidence = v.evidence;
@@ -216,59 +219,115 @@ export function runIndexCheck(projectRoot: string, opts: CheckOptions = {}): Che
   return summarize(scanned, skipped, findings);
 }
 
-/**
- * Scan outgoing commits' blobs (pre-push gate). Each range is `<old>..<new>`
- * (a bare `<rev>` means that commit vs its parent). New refs (zero old) and
- * unresolvable bases fall back to scanning the tip tree — unknown base, scan
- * everything rather than nothing.
- */
+/** Scan changed blobs in every outgoing commit, including history of a new ref. */
 export function runPushCheck(projectRoot: string, ranges: string[], opts: CheckOptions = {}): CheckReport {
   const maxFiles = opts.maxFiles ?? DEFAULT_MAX_FILES;
   const maxBytes = opts.maxBytesPerFile ?? DEFAULT_MAX_BYTES;
+  const maxCommits = 5000;
   const findings: CheckFinding[] = [];
-  if (!existsSync(projectRoot)) return summarize(0, 0, findings);
-  const jobs: Array<{ base: string; tip: string }> = [];
+  let scanned = 0;
+  let skipped = 0;
+  const incomplete = (reason: string): void => {
+    findings.push({ file: "<push>", ruleId: "PUSH-SCAN", severity: "block", verdict: "fail", reason });
+  };
+  if (!existsSync(projectRoot)) {
+    incomplete("Cannot inspect outgoing commits: project directory is unavailable.");
+    return summarize(0, 0, findings);
+  }
+
+  if (ranges.length > 0 && ranges.some((r) => !/^0+$/.test(r.split("..").at(-1) ?? ""))) {
+    const shallow = gitOut(projectRoot, ["rev-parse", "--is-shallow-repository"], 1024);
+    if (shallow === null || shallow.toString("utf-8").trim() !== "false") {
+      incomplete("Cannot inspect complete outgoing history in a shallow or unavailable repository; fetch full history and retry.");
+      return summarize(0, 0, findings);
+    }
+  }
+
+  // A zero remote SHA denotes a new ref; its entire reachable history may be
+  // new to the remote. A bare revision means exactly that commit (also roots).
+  const commits = new Set<string>();
   for (const r of ranges) {
     const parts = r.split("..");
-    if (parts.length === 2 && parts[0] && parts[1]) jobs.push({ base: parts[0], tip: parts[1] });
-    else if (parts.length === 1 && parts[0]) jobs.push({ base: `${parts[0]}^`, tip: parts[0] });
-  }
-  const paths = new Map<string, string>(); // rel → tip rev for blob reads
-  for (const { base, tip } of jobs) {
-    let names: string[] | null = null;
-    if (/^0+$/.test(base)) {
-      const out = gitOut(projectRoot, ["ls-tree", "-r", "--name-only", "-z", tip], 4 * 1024 * 1024);
-      if (out) names = out.toString("utf-8").split("\0").filter(Boolean);
-    } else {
-      const out = gitOut(projectRoot, ["diff", "--name-only", "-z", base, tip], 4 * 1024 * 1024);
-      if (out) {
-        names = out.toString("utf-8").split("\0").filter(Boolean);
-      } else {
-        // Unresolvable base (no upstream, shallow, root bare rev) → tip tree.
-        const whole = gitOut(projectRoot, ["ls-tree", "-r", "--name-only", "-z", tip], 4 * 1024 * 1024);
-        if (whole) names = whole.toString("utf-8").split("\0").filter(Boolean);
-      }
+    if ((parts.length !== 1 && parts.length !== 2) || parts.some((p) => !p || !/^[A-Za-z0-9_.@{}\/^~:-]+$/.test(p))) {
+      incomplete("Cannot inspect outgoing commits: invalid range.");
+      continue;
     }
-    if (!names) continue;
+    const tip = parts[parts.length - 1]!;
+    if (/^0+$/.test(tip)) continue; // deletion: no local history is sent
+    const revision = parts.length === 1 || /^0+$/.test(parts[0]!) ? tip : r;
+    const count = parts.length === 1 ? 1 : maxCommits + 1;
+    const out = gitOut(projectRoot, ["rev-list", `--max-count=${count}`, "--end-of-options", revision], 1024 * 1024);
+    if (out === null) {
+      incomplete(`Cannot inspect outgoing commits for ${r}; check the Git range and repository history.${r === "@{u}..HEAD" ? " For a Git hook, rerun 'vibe-fence init' to update it; for a manual check, configure an upstream or provide an explicit range." : ""}`);
+      continue;
+    }
+    const ids = out.toString("utf-8").split("\n").filter(Boolean);
+    if (ids.length > maxCommits) {
+      incomplete(`Outgoing history exceeds ${maxCommits} commits; inspection is incomplete.`);
+      continue;
+    }
+    for (const id of ids) commits.add(id);
+    if (commits.size > maxCommits) {
+      incomplete(`Outgoing history exceeds ${maxCommits} commits across refs; inspection is incomplete.`);
+      return summarize(scanned, skipped, findings);
+    }
+  }
+
+  let examined = 0;
+  for (const commit of commits) {
+    // -m compares merge commits with each parent; --root covers root commits.
+    const out = gitOut(projectRoot, ["diff-tree", "--root", "-m", "-r", "--no-commit-id", "--name-only", "--diff-filter=ACMRT", "-z", commit], 4 * 1024 * 1024);
+    if (out === null) {
+      incomplete(`Cannot list changed files for commit ${commit.slice(0, 12)}; inspection is incomplete.`);
+      continue;
+    }
+    const names = [...new Set(out.toString("utf-8").split("\0").filter(Boolean))].sort();
     for (const rel of names) {
-      if (!paths.has(rel)) paths.set(rel, tip);
+      if (++examined > maxFiles) {
+        incomplete(`Outgoing changes exceed the ${maxFiles}-file scan limit; inspection is incomplete.`);
+        return summarize(scanned, skipped + 1, findings);
+      }
+      const entry = gitOut(projectRoot, ["ls-tree", "-z", commit, "--", `:(literal)${rel}`], 4 * 1024 * 1024);
+      const entryText = entry?.toString("utf-8") ?? "";
+      const tab = entryText.indexOf("\t");
+      const metadata = tab < 0 ? "" : entryText.slice(0, tab);
+      const recordedPath = tab < 0 ? "" : entryText.slice(tab + 1).replace(/\0$/, "");
+      if (recordedPath !== rel || !/^\d{6} (?:blob|commit) [0-9a-f]+$/.test(metadata)) {
+        skipped++;
+        incomplete(`Cannot identify ${rel} in commit ${commit.slice(0, 12)}; inspection is incomplete.`);
+        continue;
+      }
+      if (metadata.startsWith("160000 commit ")) {
+        skipped++;
+        incomplete(`Submodule ${rel} in commit ${commit.slice(0, 12)} requires separate history inspection; inspection is incomplete.`);
+        continue;
+      }
+      if (!metadata.includes(" blob ")) {
+        skipped++;
+        incomplete(`Cannot inspect ${rel} in commit ${commit.slice(0, 12)}; unsupported Git object.`);
+        continue;
+      }
+      if (shouldSkipBlob(rel)) { skipped++; continue; }
+      const content = readBlob(projectRoot, `${commit}:${rel}`, maxBytes);
+      if (content === null) {
+        skipped++;
+        incomplete(`Cannot read ${rel} in commit ${commit.slice(0, 12)} (missing or over ${maxBytes} bytes); inspection is incomplete.`);
+        continue;
+      }
+      if (content.length === 0) {
+        // Even an empty .env was tracked in the historical commit. Other
+        // rules' empty-content unknowns are noise, so retain only SEC-03.
+        skipped++;
+        const envFinding = scanContent(rel, content, names, projectRoot, true).filter((f) => f.ruleId === "SEC-03" && f.verdict === "fail");
+        for (const finding of envFinding) finding.file = `${rel} (commit ${commit.slice(0, 12)})`;
+        findings.push(...envFinding);
+        continue;
+      }
+      scanned++;
+      const results = scanContent(rel, content, names, projectRoot, true);
+      for (const finding of results) finding.file = `${rel} (commit ${commit.slice(0, 12)})`;
+      findings.push(...results);
     }
-  }
-  const capped = [...paths.keys()].sort().slice(0, maxFiles);
-  let skipped = paths.size - capped.length;
-  let scanned = 0;
-  for (const rel of capped) {
-    if (shouldSkipBlob(rel)) {
-      skipped++;
-      continue;
-    }
-    const content = readBlob(projectRoot, `${paths.get(rel)}:${rel}`, maxBytes);
-    if (content === null || content.length === 0) {
-      skipped++;
-      continue;
-    }
-    scanned++;
-    findings.push(...scanContent(rel, content, capped, projectRoot));
   }
   return summarize(scanned, skipped, findings);
 }

@@ -14,7 +14,8 @@ description-agent: "Canonical map — every doc/skill/tool reachable via this in
 | AGENTS router | `AGENTS.md` | ≤400tok entry point; retrieval-gated S-01 |
 | Plan | `docs/PLAN.md` | Phases M1–M4 + hackathon scope |
 | Locked decisions | `docs/research/synthesis/FINAL-v4.md` | S-01…S-15, C-01…C-10, GEM patches |
-| Bibliography | `docs/research/SOURCES.md` | 186 entries A–H, paper-grade |
+| Bibliography | `docs/research/SOURCES.md` | 186 entries A–H, paper-grade; not all re-verified |
+| Claim status | `docs/research/CLAIMS.md` | What is supported, a project decision, corrected or still unverified |
 | Research index | `docs/research/INDEX.md` | 6 streams + prompts + contributors |
 | Fence map | `docs/fence/INDEX.md` | This file — canonical inventory |
 | Context budget | `src/framework/context-budget.yml` | S-03 caps: static/dynamic/history/headroom + 4KB pipe |

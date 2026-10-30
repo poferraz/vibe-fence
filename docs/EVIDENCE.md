@@ -26,6 +26,8 @@ counted separately and never treated as a pass.
 
 ## Suites and the claim each supports
 
+The authoritative ladder — claim, audience, failure decision, assumptions and blind spots for every retained suite — is [EVALUATION-LADDER.md](EVALUATION-LADDER.md) with its machine-readable copy in `tests/evals/ladder.json`. Suites are never combined into one number.
+
 | Suite | Claim it supports | What it does not show |
 |---|---|---|
 | A — hostile (`tests/benches/hostile.test.ts`) | 11 rule benches, each with at least 6 labelled attack shapes; every shape is caught on at least one real surface (gate or tree scan), and a cold control stays uncaught | That unlisted attack shapes are caught; that the host enforces the block |

@@ -62,7 +62,7 @@ function help(): string {
 /**
  * Pre-push ranges without hook-script logic: the managed pre-push hook pipes
  * git's `<local ref> <local sha> <remote ref> <remote sha>` lines on stdin,
- * which we parse here. Malformed lines are ignored; empty stdin (manual run,
+ * which we parse here. Malformed lines fail closed; empty stdin (manual run,
  * TTY) falls back to outgoing-vs-upstream. Ref deletions carry no blobs.
  */
 /** Explicit `--push` ranges: `<old>..<new>` or a bare `<rev>` (dots are legal inside rev names, so split first). */
@@ -92,27 +92,29 @@ async function printExplanation(failures: ExplainFinding[], ctx: ExplainContext,
   else console.log(text);
 }
 
-function pushRangesFromStdinOrDefault(): string[] {
+function pushRangesFromStdinOrDefault(hookInput: boolean): string[] {
   let stdin = "";
   if (!process.stdin.isTTY) {
     try {
       stdin = readFileSync(0, "utf-8");
     } catch {
-      stdin = "";
+      throw new Error("cannot read pre-push input; outgoing history was not inspected");
     }
   }
   const ranges: string[] = [];
   for (const line of stdin.split("\n")) {
     const parts = line.trim().split(/\s+/).filter(Boolean);
     if (parts.length === 0) continue;
-    if (parts.length !== 4) continue;
+    if (parts.length !== 4) throw new Error("malformed pre-push input; outgoing history was not inspected");
     const localSha = parts[1] ?? "";
     const remoteSha = parts[3] ?? "";
-    if (!localSha || !remoteSha) continue;
+    if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(localSha) || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(remoteSha) || localSha.length !== remoteSha.length) {
+      throw new Error("malformed pre-push input; outgoing history was not inspected");
+    }
     if (/^0+$/.test(localSha)) continue;
     ranges.push(`${remoteSha}..${localSha}`);
   }
-  return ranges.length > 0 ? ranges : ["@{u}..HEAD"];
+  return stdin.trim() || hookInput ? ranges : ["@{u}..HEAD"];
 }
 
 export async function main(argv: string[]): Promise<number> {
@@ -190,7 +192,7 @@ export async function main(argv: string[]): Promise<number> {
         console.error(`vibe-fence: bad --push range '${range}' (want <old>..<new> or <rev>).`);
         return 2;
       }
-      report = runPushCheck(process.cwd(), range ? [range] : pushRangesFromStdinOrDefault());
+      report = runPushCheck(process.cwd(), range ? [range] : pushRangesFromStdinOrDefault(rest.includes("--hook-input")));
     } else {
       report = runCheck(process.cwd());
     }

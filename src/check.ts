@@ -84,6 +84,25 @@ function listFiles(root: string, maxFiles: number): { files: string[]; skipped: 
   return { files: files.sort(), skipped };
 }
 
+// Historical reports must not print bytes extracted from old files: those may
+// contain secrets even if the current tree is clean. Rule reasons and evidence
+// are written for the live tree and can quote source text, environment-variable
+// names, script names or credential values, and they reach human output, JSON
+// and the --explain prompt. Outgoing-history findings therefore carry a fixed,
+// rule-specific explanation plus the path and commit (identifiers only).
+const HISTORY_REASONS: Record<string, string> = {
+  "BILL-01": "Possible unbounded billable loop in outgoing history — review the indicated commit locally before pushing.",
+  "CMD-01": "Potentially destructive command in outgoing history — review the indicated commit locally before pushing.",
+  "DB-01": "Potentially destructive database operation in outgoing history — review the indicated commit locally before pushing.",
+  "GIT-01": "Potentially destructive Git command in outgoing history — review the indicated commit locally before pushing.",
+  "NET-01": "Remote content may be piped into a shell in outgoing history — remove that step before pushing.",
+  "PRV-09": "Possible personal or sensitive data in a fixture in outgoing history — review the indicated commit locally before pushing.",
+  "SEC-01": "A public-prefix environment variable may expose a secret in outgoing history — move the secret server-side, rotate it, and remove it from the commit before pushing.",
+  "SEC-02": "A credential path may be read in outgoing history — review the indicated commit locally before pushing.",
+  "SEC-03": "A sensitive environment file or secret may exist in outgoing history — ignoring the file now does not remove it from existing commits; rotate the value and plan a history rewrite before publishing.",
+  "SUP-01": "A package script in outgoing history may run a pipe-to-shell install payload — remove or replace it before pushing.",
+};
+
 /** Run the full REGISTRY over one file's content (shared by worktree, index, and push scans). */
 function scanContent(rel: string, content: string, files: string[], projectRoot: string, isCommittedBlob = false): CheckFinding[] {
   const findings: CheckFinding[] = [];
@@ -95,8 +114,13 @@ function scanContent(rel: string, content: string, files: string[], projectRoot:
     if (!entry) continue;
     const v = entry.check({ content, filePath: rel, projectRoot, fileList: files, isCommittedBlob });
     if (v.verdict !== "fail" && v.verdict !== "unknown") continue;
-    const f: CheckFinding = { file: rel, ruleId: id, severity: entry.severity, verdict: v.verdict, reason: v.reason };
-    if (v.evidence) f.evidence = v.evidence;
+    const reason = isCommittedBlob
+      ? v.verdict === "unknown"
+        ? "Historical content could not be evaluated by this rule (unknown is not a pass) — inspect the indicated commit locally."
+        : HISTORY_REASONS[id] ?? "Potential issue in outgoing history — inspect the indicated commit locally."
+      : v.reason;
+    const f: CheckFinding = { file: rel, ruleId: id, severity: entry.severity, verdict: v.verdict, reason };
+    if (!isCommittedBlob && v.evidence) f.evidence = v.evidence;
     findings.push(f);
   }
   return findings;

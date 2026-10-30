@@ -64,6 +64,33 @@ describe("SEC-03", () => {
     expect(check({ content: "K=", filePath: ".env.example", projectRoot: root, env: isolated }).verdict).toBe("pass");
   });
 
+  it("fails on an already-tracked .env even when ignored, with a safe repair", () => {
+    const root = mkdtempSync(join(tmpdir(), "vf-sec03-tracked-"));
+    created.push(root);
+    const home = mkdtempSync(join(tmpdir(), "vf-home-"));
+    created.push(home);
+    const env = { ...gitEnv(), HOME: home };
+    execSync("git init -q .", { cwd: root, env });
+    writeFileSync(join(root, ".env"), "SECRET=tracked-value\n", "utf-8");
+    execSync("git add .env", { cwd: root, env });
+    execSync('git -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -qm seed', { cwd: root, env });
+    writeFileSync(join(root, ".gitignore"), ".env\n", "utf-8");
+    const v = check({ content: "SECRET=tracked-value", filePath: ".env", projectRoot: root, env });
+    expect(v.verdict).toBe("fail");
+    expect(v.reason).toContain("tracked");
+    expect(v.reason).toContain("git rm --cached");
+    // Safe output: filename only, never the secret bytes.
+    expect(v.evidence).toBe(".env");
+    expect(v.reason).not.toContain("tracked-value");
+    // .env.example stays unflagged even when tracked.
+    writeFileSync(join(root, ".env.example"), "EXAMPLE=1\n", "utf-8");
+    execSync("git add .env.example", { cwd: root, env });
+    expect(check({ content: "EXAMPLE=1", filePath: ".env.example", projectRoot: root, env }).verdict).toBe("pass");
+    // Untracking (index-only) clears the tracked verdict; ignored+untracked passes.
+    execSync("git rm --cached -q .env", { cwd: root, env });
+    expect(check({ content: "SECRET=tracked-value", filePath: ".env", projectRoot: root, env }).verdict).toBe("pass");
+  });
+
   it("is unknown on empty content", () => {
     expect(check({}).verdict).toBe("unknown");
   });

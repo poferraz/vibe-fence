@@ -105,7 +105,7 @@ describe("proof beats", () => {
 
   it("beat 4c — staged-blob smuggle blocked (L1: dirty index + clean worktree)", () => {
     const root = makeRepo();
-    installGitHooks(root);
+    installGitHooks(root, gitEnv());
     const fenceBin = writeCliWrapper(root);
     // The synthesis repro shape: stage the leak, THEN clean the worktree.
     writeFileSync(join(root, "app.json"), "key = EXPO_PUBLIC_AUTH_SECRET\n", "utf-8");
@@ -120,7 +120,7 @@ describe("proof beats", () => {
 
   it("beat 4b — unsafe commit stopped, safe commit allowed (real hook→CLI→engine)", () => {
     const root = makeRepo();
-    installGitHooks(root);
+    installGitHooks(root, gitEnv());
     const fenceBin = writeCliWrapper(root);
     writeFileSync(join(root, "leak.tsx"), "const k = process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY;\n", "utf-8");
     sh(root, "git add leak.tsx");

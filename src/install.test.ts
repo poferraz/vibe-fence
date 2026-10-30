@@ -5,11 +5,11 @@
  * Run: bun test src/install.test.ts
  */
 import { describe, it, expect, afterEach } from "bun:test";
-import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { spawnSync, execSync } from "node:child_process";
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { install, loadPostinstallGuard } from "./install";
+import { install, loadPostinstallGuard, ensureGitignore, trackedEnvFiles, isWithinProjectRoot, GITIGNORE_ENTRIES } from "./install";
 
 const created: string[] = [];
 afterEach(() => {
@@ -102,6 +102,140 @@ describe("postinstall guard execution", () => {
     writeFileSync(join(bins, "vibe-fence"), "#!/bin/sh\nexit 1\n", "utf-8");
     chmodSync(join(bins, "vibe-fence"), 0o755);
     expect(runGuard(guard, { PATH: bins }).exit).toBe(1);
+  });
+
+  it("ensures env ignore patterns idempotently, preserves user content and .env.example", async () => {
+    const root = makeProject();
+    execSync("git init -q .", { cwd: root, env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" } as Record<string, string> });
+    writeFileSync(join(root, ".gitignore"), "# user header\nnode_modules/\n", "utf-8");
+    writeFileSync(join(root, ".env"), "SECRET=1\n", "utf-8");
+    writeFileSync(join(root, ".env.example"), "EXAMPLE=1\n", "utf-8");
+    const added = ensureGitignore(root);
+    expect(added).toEqual([".gitignore"]);
+    const after = readFileSync(join(root, ".gitignore"), "utf-8");
+    expect(after).toContain("# user header");
+    for (const e of GITIGNORE_ENTRIES) expect(after).toContain(e);
+    // Idempotent: second call changes nothing.
+    expect(ensureGitignore(root)).toEqual([]);
+    expect(readFileSync(join(root, ".gitignore"), "utf-8")).toBe(after);
+    // Git honors it: .env ignored, .env.example not.
+    const env = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null", HOME: root } as Record<string, string>;
+    expect(() => execSync("git check-ignore -q .env", { cwd: root, env })).not.toThrow();
+    expect(() => execSync("git check-ignore -q .env.example", { cwd: root, env })).toThrow();
+    // Full install stays idempotent for .gitignore.
+    await install(root, { adapters: [] });
+    expect(readFileSync(join(root, ".gitignore"), "utf-8")).toBe(after);
+  });
+
+  it("re-covers .env when a later negation unignores it (last match wins)", () => {
+    const root = makeProject();
+    const env = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" } as Record<string, string>;
+    execSync("git init -q .", { cwd: root, env });
+    writeFileSync(join(root, ".gitignore"), ".env\n!.env\n", "utf-8");
+    writeFileSync(join(root, ".env"), "SECRET=1\n", "utf-8");
+    // Before: Git itself says not ignored (negation wins).
+    expect(() => execSync("git check-ignore --no-index -q .env", { cwd: root, env })).toThrow();
+    expect(ensureGitignore(root)).toEqual([".gitignore"]);
+    // After: fence entry is last, so Git ignores it again; run stays idempotent.
+    expect(() => execSync("git check-ignore --no-index -q .env", { cwd: root, env })).not.toThrow();
+    expect(ensureGitignore(root)).toEqual([]);
+    const content = readFileSync(join(root, ".gitignore"), "utf-8");
+    expect(content.trim().endsWith(".env.*.local") || content).toBeTruthy();
+    expect(content.lastIndexOf("\n.env\n")).toBeGreaterThan(content.indexOf("!.env"));
+  });
+
+  it("covers specific negations of wildcard env files and re-covers later rules", () => {
+    const root = makeProject();
+    const env = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" } as Record<string, string>;
+    execSync("git init -q .", { cwd: root, env });
+    const original = "# user header\r\n.env.*.local\r\n!.env.production.local";
+    writeFileSync(join(root, ".gitignore"), original);
+    expect(ensureGitignore(root)).toEqual([".gitignore"]);
+    const first = readFileSync(join(root, ".gitignore"), "utf8");
+    expect(first.startsWith(original + "\n")).toBe(true);
+    for (const path of [".env", ".env.local", ".env.production.local", ".env.test.local"]) {
+      expect(() => execSync(`git check-ignore --no-index -q ${path}`, { cwd: root, env })).not.toThrow();
+    }
+    expect(() => execSync("git check-ignore --no-index -q .env.example", { cwd: root, env })).toThrow();
+    expect(ensureGitignore(root)).toEqual([]);
+    expect(readFileSync(join(root, ".gitignore"), "utf8")).toBe(first);
+
+    writeFileSync(join(root, ".gitignore"), first + "!.env.production.local\n");
+    expect(() => execSync("git check-ignore --no-index -q .env.production.local", { cwd: root, env })).toThrow();
+    expect(ensureGitignore(root)).toEqual([".gitignore"]);
+    expect(() => execSync("git check-ignore --no-index -q .env.production.local", { cwd: root, env })).not.toThrow();
+    expect(ensureGitignore(root)).toEqual([]);
+  });
+
+  it("refuses to follow a .gitignore symlink outside the project", async () => {
+    const root = makeProject();
+    const outsideDir = makeProject();
+    const outsideFile = join(outsideDir, "outside-ignore");
+    writeFileSync(outsideFile, "outside-original\n", "utf-8");
+    symlinkSync(outsideFile, join(root, ".gitignore"));
+    expect(() => ensureGitignore(root)).toThrow(/outside|containment/);
+    expect(readFileSync(outsideFile, "utf-8")).toBe("outside-original\n");
+    // Through install(): warned, outside untouched, install still completes.
+    const warns: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (...a: unknown[]) => { warns.push(a.join(" ")); };
+    try {
+      await install(root, { adapters: [] });
+    } finally {
+      console.warn = origWarn;
+    }
+    expect(warns.join("\n")).toContain(".gitignore");
+    expect(readFileSync(outsideFile, "utf-8")).toBe("outside-original\n");
+    // Git does not read .gitignore symlinks even when their targets are inside
+    // the project. Do not claim coverage or mutate the target in that case.
+    const root2 = makeProject();
+    const env = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" } as Record<string, string>;
+    execSync("git init -q .", { cwd: root2, env });
+    const realIgnore = join(root2, "real-ignore");
+    writeFileSync(realIgnore, "# mine\n", "utf-8");
+    symlinkSync(realIgnore, join(root2, ".gitignore"));
+    expect(() => ensureGitignore(root2)).toThrow(/symlink/i);
+    expect(readFileSync(realIgnore, "utf-8")).toBe("# mine\n");
+    expect(() => execSync("git check-ignore --no-index -q .env", { cwd: root2, env, stdio: "ignore" })).toThrow();
+  });
+
+  it("reports already-tracked env files by name only, never contents", async () => {
+    const root = makeProject();
+    const env = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" } as Record<string, string>;
+    execSync("git init -q .", { cwd: root, env });
+    writeFileSync(join(root, ".env"), "SUPER_SECRET_VALUE_123\n", "utf-8");
+    writeFileSync(join(root, ".env.example"), "EXAMPLE=1\n", "utf-8");
+    execSync("git add .env .env.example", { cwd: root, env });
+    execSync('git -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -qm seed', { cwd: root, env });
+    expect(trackedEnvFiles(root)).toEqual([".env"]);
+    const warns: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (...a: unknown[]) => { warns.push(a.join(" ")); };
+    try {
+      await install(root, { adapters: [] });
+    } finally {
+      console.warn = origWarn;
+    }
+    const joined = warns.join("\n");
+    expect(joined).toContain(".env");
+    expect(joined).toContain("git rm --cached");
+    expect(joined).not.toContain("SUPER_SECRET_VALUE_123");
+  });
+
+  it("installs through a symlinked project path and rejects escapes", async () => {
+    const real = makeProject();
+    const aliasParent = makeProject();
+    const alias = join(aliasParent, "proj-link");
+    symlinkSync(real, alias, "dir");
+    // Legitimate symlinked root (/var → /private/var style): install succeeds.
+    await install(alias, { adapters: [] });
+    expect(existsSync(join(real, ".fence", "config.json"))).toBe(true);
+    expect(isWithinProjectRoot(alias, join(alias, ".fence", "config.json"))).toBe(true);
+    // Genuine escape through a symlinked child is outside.
+    const outside = makeProject();
+    symlinkSync(outside, join(real, "escape"), "dir");
+    expect(isWithinProjectRoot(real, join(real, "escape", "evil.txt"))).toBe(false);
+    expect(isWithinProjectRoot(real, join(real, "src", "ok.ts"))).toBe(true);
   });
 
   it("fallback: same contract when the template is missing", () => {

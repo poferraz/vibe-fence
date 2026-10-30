@@ -5,11 +5,11 @@
  * Run: bun test src/framework/git.test.ts
  */
 import { describe, it, expect, afterEach } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execSync } from "node:child_process";
-import { checkpoint, fenceUndo, isDestructiveGitCommand, CHECKPOINT_PREFIX } from "./git";
+import { checkpoint, fenceUndo, isDestructiveGitCommand, isWithinProjectRoot, CHECKPOINT_PREFIX } from "./git";
 
 const created: string[] = [];
 afterEach(() => {
@@ -172,6 +172,19 @@ describe("fenceUndo", () => {
     fenceUndo({ projectRoot: root });
     expect(readFileSync(join(root, "keep.txt"), "utf-8")).toBe("precious\n");
     expect(sh(root, "git status --porcelain")).toContain("?? keep.txt");
+  });
+});
+
+describe("isWithinProjectRoot", () => {
+  it("accepts in-root paths and rejects symlink escapes", () => {
+    const root = makeRepo();
+    expect(isWithinProjectRoot(root, "src/ok.ts")).toBe(true);
+    expect(isWithinProjectRoot(root, join(root, "src", "ok.ts"))).toBe(true);
+    const outside = mkdtempSync(join(tmpdir(), "vf-git-out-"));
+    created.push(outside);
+    symlinkSync(outside, join(root, "escape"), "dir");
+    expect(isWithinProjectRoot(root, "escape/evil.txt")).toBe(false);
+    expect(isWithinProjectRoot(root, "../outside.txt")).toBe(false);
   });
 });
 

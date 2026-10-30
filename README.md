@@ -22,9 +22,11 @@ The [rule registry](src/rules/index.ts), [gate](src/framework/gate.ts), and [che
 | OpenCode | Installer creates a plugin that invokes the gate. | It can allow actions if the gate is unavailable. Verify the plugin is loaded in your environment. |
 | Codex | Installer adds guidance and a project-local pre-tool hook for Bash and `apply_patch` when it can safely merge the configuration. | Codex must trust and load the hook; this implementation has not yet been verified in a real session. Other tool paths may not be covered, and hook failures can allow the action. |
 | Hermes and Antigravity | Installer writes guidance and adapter metadata. | Do not assume pre-tool enforcement from adapter metadata alone. |
-| Git | Installer attempts to install pre-commit and pre-push hooks. | Git may use a different `core.hooksPath`, existing hooks may need attention, and Git hooks do not stop arbitrary tool calls before execution. |
+| Git | Installer installs pre-commit and pre-push hooks into an allowed effective Git hooks directory, chaining existing hooks; `status` reports the effective directory. `init` appends a root `.gitignore` block for `.env`, `.env.local`, `.env.*.local`, and fence state, and warns by filename if a sensitive env file is already tracked. | The fence block overrides earlier root-level exceptions; nested `.gitignore` files can override it, and ignore rules do not untrack files. An unsafe outside hooks redirect is left untouched and reported with repair guidance. Common Git hooks and repo-local configuration can be shared across worktrees. Git hooks do not stop arbitrary tool calls before execution. |
 
 The gate passes unknown tools and only examines a bounded portion of a tool call. Some rules are tree-time checks rather than pre-execution gates; `BILL-01` is a warning, not a spend limit. A clean report is not proof that a project is safe. See [known benchmark gaps](tests/benches/KNOWN-GAPS.md).
+
+Installer path checks are not atomic against concurrent filesystem changes. Some existing installer writes outside the Git hook and `.gitignore` paths do not yet have complete symlink containment; review an untrusted project tree before running `init`.
 
 ## Try it from source
 

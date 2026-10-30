@@ -7,9 +7,10 @@
  */
 
 import { execSync, execFileSync } from "node:child_process";
-import { existsSync, appendFileSync } from "node:fs";
-import { join } from "node:path";
+import { appendFileSync } from "node:fs";
+import { isAbsolute, join, sep } from "node:path";
 import { runIndexCheck } from "../check.js";
+import { canonicalPath } from "./git-hooks.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -257,10 +258,11 @@ export function isDestructiveGitCommand(command: string): boolean {
  * TODO: integrate with tool allowlist — deny Write/Edit outside realpath boundary
  */
 export function isWithinProjectRoot(projectRoot: string, targetPath: string): boolean {
-  // TODO: use fs.realpathSync for symlink-aware containment
-  // TODO: handle Windows paths if needed
-  void projectRoot;
-  void targetPath;
-  void existsSync;
-  return true; // stub — TODO: implement realpath containment
+  try {
+    const realRoot = canonicalPath(projectRoot);
+    const absTarget = canonicalPath(isAbsolute(targetPath) ? targetPath : join(projectRoot, targetPath));
+    return absTarget === realRoot || absTarget.startsWith(realRoot + sep);
+  } catch {
+    return false;
+  }
 }

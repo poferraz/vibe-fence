@@ -13,8 +13,9 @@ description: Use when installing vibe-fence into a new or existing repo, running
 
 - **Detects runtime** — probe `process.versions.webcontainer`, `/.webcontainer` sentinel, `git` availability, hook installability before touching disk (GEM-02 S-02 P1). On WebContainer hit: print `WebContainer detected — hooks unavailable. Using file-only mode` and record `runtime: "webcontainer" | "native"` in `.fence/app-profile.json` (FINAL-v2 M1).
 - **Is idempotent** — ×3 invocations → zero file churn, identical `git status` (FINAL-v2 §7 rubric #1). Merges, never clobbers `AGENTS.md` or `docs/fence/INDEX.md`; appends fence block only.
-- **Inspects the repo** — scans for `.env` / `*.env.*` / `NEXT_PUBLIC_*` leaks, lockfile presence, framework detection (Next.js/Vite/etc.), and existing `.gitignore` — before writing.
-- **Locks gitignore** — ensures `.env`, `.env.*.local`, `.fence/.integrity.json` (untracked), and generated-cache entries are covered; fails with `block` if `.env` is tracked (S-06 integrity + 04 A-01).
+- **Inspects the repo** — checks existing `.gitignore`, tracked env files, and hook configuration before writing. Rule checks (SEC-01/SEC-03 and friends) run via `vibe-fence check`, not at init scan time.
+- **Sets up `.gitignore` safely** — preserves user lines and appends an idempotent root block for `.env`, `.env.local`, `.env.*.local`, `.fence/.integrity.json`, and `.fence/events.ndjson`. The block overrides earlier root-level exceptions; nested `.gitignore` files can override it, and existing user rules may ignore `.env.example`. Ignore rules do not untrack files or detect every secret: init warns by filename when an env file is already tracked, and SEC-03 blocks it at check/commit time (04 A-01).
+- **Installs Git hooks where Git will run them** — resolves `git rev-parse --git-path hooks` (handles linked worktrees and project-local `core.hooksPath`), chains existing hooks via `.pre-fence`, and never writes to an outside-project hooks directory or changes global Git config; an outside redirect is reported degraded with the exact project-local repair (`.git/hooks` in a normal checkout; the shared common hooks directory by absolute path in a linked worktree, with the shared-repo effect disclosed) and hooks stay inactive until then.
 - **Deploys `.fence/`** — single-owner state tree (FINAL-v2 M1 S-01): `app-profile.json` (`local`/`shared`/`public`), `.integrity.json` (SHA-256 attestation, GEM-01 P0), `hooks/postinstall-guard.sh`, `config.json` (`model_mode: standard` by default — S-15/GEM-09), `state/dial.json` seed.
 
 ### What is written (and what is not)
@@ -22,11 +23,11 @@ description: Use when installing vibe-fence into a new or existing repo, running
 | Written | Never overwritten |
 |---------|-------------------|
 | `.fence/**` (created if missing; merged if present) | User `src/**`, `package.json` scripts, existing `AGENTS.md` body |
-| `AGENTS.md` fence block (≤400-token router appended) | Any file outside project `realpath` |
+| `AGENTS.md` fence block (≤400-token router appended) | User `AGENTS.md` body |
 | `.gitignore` additions (append-only with `# vibe-fence` marker) | Contributor-mode flag — installer MUST NOT add `--contributor-mode` (GEM-09 P0) |
 | `.fence/hooks/postinstall-guard.sh` + `prepare` hook | — |
 
-Integrity: on init compute SHA-256 of every fence-owned file → `.fence/.integrity.json`; set `FENCE_SYNC_TOKEN` only via `tools/generate.ts` (GEM-01). Containment: all writes confined to `realpath(resolved_target)` inside project root; hard-deny on credential stores (FINAL-v2 S-06/S-10).
+Integrity: on init compute SHA-256 of every fence-owned file → `.fence/.integrity.json`; set `FENCE_SYNC_TOKEN` only via `tools/generate.ts` (GEM-01). Git hook and `.gitignore` paths receive containment checks; other installer writes do not yet have complete symlink protection (FINAL-v2 S-06/S-10).
 
 ## Usage
 

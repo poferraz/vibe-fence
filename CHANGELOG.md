@@ -44,7 +44,7 @@ First public scaffold — M1–M4 land on `main`.
 - `tools/{generate,validate,install}.ts` — deterministic `src→dist` build, `AGENTS.md` ≤400-token gate
 - `src/rules/{bill-01,prv-09,net-01,sec-02}` + `src/framework/{verify-remote,billing-guard}.ts` — S-09 10 zero-FP hard-blocks
 - `src/templates/app-profile.json` (local 14 / shared 29 / public 55 blocks)
-- Adversary bench 8/8 content checks verified (`docs/project/REHEARSAL.md` §A+§B)
+- Adversary bench 8/8 content checks verified (rehearsal log held privately; see `docs/EVIDENCE.md`)
 - `DESIGN.md` + `PRODUCT.md` + `tailwind.theme.json` / `tokens.json` — Meta glass-on-charcoal harness language
 
 ### Research

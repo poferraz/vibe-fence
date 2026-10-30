@@ -31,7 +31,7 @@ function help(): string {
     "  vibe-fence checkpoint --action <label> [--include-untracked]",
     "  vibe-fence undo [--steps N]",
     "  vibe-fence gate --tool <name> (--args '<json>' | --args-stdin) [--root <dir>] [--explain]",
-    "  vibe-fence status [--host=codex] [--json]",
+    "  vibe-fence status [--host=codex|claude] [--json]",
     "  vibe-fence --help | --version",
     "",
     "Commands:",

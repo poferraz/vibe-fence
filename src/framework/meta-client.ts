@@ -157,6 +157,25 @@ export interface ResponsesCallArtefact {
   note: "deterministic fence decides; model explains (S-05)";
 }
 
+/** Message text from a Responses payload: top-level output_text, else output[].content[] text parts. */
+export function extractOutputText(data: { output_text?: unknown; output?: unknown }): string {
+  if (typeof data.output_text === "string" && data.output_text.length > 0) return data.output_text;
+  const parts: string[] = [];
+  if (Array.isArray(data.output)) {
+    for (const item of data.output) {
+      if (!item || typeof item !== "object") continue;
+      const content = (item as { content?: unknown }).content;
+      if (!Array.isArray(content)) continue;
+      for (const part of content) {
+        if (part && typeof part === "object" && (part as { type?: unknown }).type === "output_text" && typeof (part as { text?: unknown }).text === "string") {
+          parts.push((part as { text: string }).text);
+        }
+      }
+    }
+  }
+  return parts.join("\n");
+}
+
 export interface ResponsesResult {
   output: string;
   artefact: ResponsesCallArtefact;
@@ -223,7 +242,7 @@ export async function callResponses(
   }
 
   const data = (await res.json()) as { output_text?: string; id?: string; [k: string]: unknown };
-  const output = data["output_text"] as string ?? JSON.stringify(data);
+  const output = extractOutputText(data);
 
   const modelMode = loadFenceConfig(opts.projectRoot ?? process.cwd()).model_mode;
   const artefact: ResponsesCallArtefact = {

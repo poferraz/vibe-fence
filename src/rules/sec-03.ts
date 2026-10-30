@@ -22,6 +22,8 @@ export interface CheckCtx {
   projectRoot?: string;
   filePath?: string;
   fileList?: string[];
+  /** The file was read from a commit, so it was tracked regardless of today's index/ignore rules. */
+  isCommittedBlob?: boolean;
   /** Env for the git probe (default process.env). Explicit — mutating process.env does not reach children reliably. */
   env?: Record<string, string>;
 }
@@ -108,6 +110,14 @@ function isIndexed(projectRoot: string, filePath: string, env: Record<string, st
 export function check(ctx: CheckCtx): RuleVerdict {
   // Half 2: committable .env — decided by git, not by content.
   if (isEnvFile(ctx.filePath)) {
+    if (ctx.isCommittedBlob) {
+      return {
+        id: SEC03_ID,
+        verdict: "fail",
+        reason: "sensitive env file exists in outgoing history; removing or ignoring it later does not remove it from that history (S-09 block)",
+        evidence: ctx.filePath,
+      };
+    }
     const env = ctx.env ?? (process.env as Record<string, string>);
     if (ctx.projectRoot && isIndexed(ctx.projectRoot, ctx.filePath as string, env)) {
       return {

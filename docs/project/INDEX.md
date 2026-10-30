@@ -2,7 +2,7 @@
 
 This is the canonical map for this project. Read this file first on every new task.
 
-Current direction: [product direction](PRODUCT-DIRECTION.md). The user selected a plug-in harness for existing coding tools, with enforced, Git-guarded, and advisory coverage described honestly. This supersedes the older owned-CLI product choice. Read the [README](../../README.md) for current capability and limitations; [STATUS](STATUS.md) contains historical handoffs.
+Current direction: [product direction](PRODUCT-DIRECTION.md). The user selected a plug-in harness for existing coding tools, with enforced, Git-guarded, and advisory coverage described honestly. This supersedes the older owned-CLI product choice. Read the [README](../../README.md) for current capability and limitations; [EVIDENCE](../EVIDENCE.md) records what was verified and when.
 
 ## Identity
 
@@ -22,10 +22,10 @@ Current direction: [product direction](PRODUCT-DIRECTION.md). The user selected 
 | Task | Go to | Read |
 |------|-------|------|
 | Product direction and protection levels | `docs/project/PRODUCT-DIRECTION.md` | Current direction and scope of each protection level |
-| Historical status | `docs/project/STATUS.md` | Earlier milestones and handoffs; current private work may be indexed locally |
+| Verified evidence | `docs/EVIDENCE.md` | Gates, counts, limitations and the revision they apply to |
 | Requirements & scope | `docs/project/PRD.md` | Approved requirements (streams → milestones) |
 | Research source of truth | `docs/research/synthesis/FINAL-v4.md` (221 lines, 2026-10-21) | S-01..S-15 + S-06a/S-11a, C-01..C-10+3, M1–M4 checklist, GEM patches |
-| M1 — Project skeleton | `src/`, `tools/`, `docs/project/` | `FINAL-v4.md` §4 M1; `docs/project/INDEX.md` + `STATUS.md` wiring |
+| M1 — Project skeleton | `src/`, `tools/`, `docs/project/` | `FINAL-v4.md` §4 M1; `docs/project/INDEX.md` wiring |
 | M2 — Framework primitives | `src/framework/`, `src/config/` | `FINAL-v4.md` §4 M2: context budget, circuit breaker, verifier, dial |
 | M3 — Skill definitions | `src/skills/`, `src/schemas/` | `FINAL-v4.md` §4 M3: `vibe-init`, `vibe-guard`, `vibe-plan`, `vibe-teach` |
 | M4 — Adapters + installer | `src/adapters/`, `tools/` | `FINAL-v4.md` §4 M4: `npx vibe-fence init`, runtime wiring, SAM |
@@ -38,5 +38,5 @@ Current direction: [product direction](PRODUCT-DIRECTION.md). The user selected 
 - One fact, one location: `src/` is the only source of truth; `docs/project/` is the only project map.
 - `FINAL-v4.md` records research decisions and context; the current product direction and verified source behavior take precedence where earlier product plans were superseded.
 - Load only the context the current task needs.
-- Update `docs/project/STATUS.md` at meaningful milestones.
+- Update `docs/EVIDENCE.md` when a gate result changes; private working notes stay local and ignored.
 - `src/` → `dist/` parity enforced by `tools/validate.ts`; never edit `dist/` directly.

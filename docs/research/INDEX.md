@@ -10,7 +10,7 @@ See `prompts/README.md` for the full runner instructions.
 prompts/           → 6 runner prompts (hand these to models)
 contributors/      → one subfolder per model run (<provider>-<model>-<YYYY-MM-DD>)
 synthesis/         → you synthesize here after all runs (per-stream + FINAL.md)
-00-meta/           → log of what happened when
+00-meta/           → process log (kept local; not published)
 ```
 
 ## Streams — Locked 2026-10-21 (synthesis) · Active entry point is `synthesis/FINAL-v4.md` (221 lines; 14 deep-read docs/4 clusters)

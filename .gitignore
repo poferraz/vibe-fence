@@ -34,3 +34,20 @@ dist/
 
 # bun / tooling caches
 tools/out/
+
+# Private working material kept locally (Phase 7, 2026-10-30).
+# These files remain on this machine; only their tracked copies were removed
+# from the public tree. History is unchanged, so older revisions persist.
+/HACKATHON.md
+/docs/clief/
+/docs/plans/
+/docs/project/audits/
+/docs/project/STATUS.md
+/docs/project/REHEARSAL.md
+/docs/project/SUBMIT.md
+/docs/project/CREDITS-PLAN.md
+/docs/project/EXTERNAL-AUDIT.md
+/docs/research/00-meta/LOG.md
+/docs/research/PROMPT-argon4-zip-v2.md
+/docs/research/PROMPT-gemini-argon4-deep-path.md
+/docs/superpowers/

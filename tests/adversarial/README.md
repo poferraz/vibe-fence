@@ -206,4 +206,4 @@ script bodies on `bash` execution (`src/framework/gate.ts` — a committed
 `demo.sh` payload no longer launders through a bare `./demo.sh`), and
 SEC-02's read verbs grew the grep/pager/dumper/copy-out family
 (`src/rules/sec-02.ts`). Self-scan of this repo: 54 fails → 0 (exit 0) under the
-mention-vs-payload doctrine; `bun test` 227 green (run incl. dist/ test dupes — counts are unique-only since the Phase 0 dist-cleanliness fix; see STATUS.md).
+mention-vs-payload doctrine; `bun test` 227 green (run incl. dist/ test dupes — counts are unique-only since the Phase 0 dist-cleanliness fix; see `docs/EVIDENCE.md`).

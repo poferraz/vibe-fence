@@ -33,7 +33,7 @@ Non-technical vibe-coders ship real apps with AI agents but get no safety net: s
 
 ## References
 - `docs/research/synthesis/FINAL-v4.md` — single source of truth (15 settled S-01..S-15 + S-06a/S-11a, 10 contested C-01..C-10+3, M1–M4 + 11 GEM patches, Deep-Read Vault 14 docs/4 clusters).
-- `docs/project/PRD.md` — approved requirements; `docs/project/STATUS.md` — current phase.
+- `docs/project/PRD.md` — approved requirements; `docs/EVIDENCE.md` — verified gates and limits.
 - `docs/PLAN.md` + `docs/research/synthesis/DEMO-SCRIPT.md` — hackathon plan + Visceral Delta script (GEM-10 P0).
 - `docs/research/synthesis/INDEPENDENT-GEMS.md`, `COMPARISON.md`, `_CONSISTENCY.md`, `HTML-REVIEW.md` — audit trail.
 

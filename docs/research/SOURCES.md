@@ -22,7 +22,7 @@
 
 5. Anthropic. *Writing Tools for AI Agents — With AI Agents.* Anthropic Engineering Blog, 2025. https://www.anthropic.com/engineering/writing-tools-for-agents · Self-contained, minimally overlapping tools with explicit schemas/error shapes; `get_customer_context` consolidation pattern and `isError` separation. `Used in: S-01, stream 02 §6 Copy #7 / 02 A-06`.
 
-6. Anthropic. *Trustworthy Agents in Practice.* Anthropic Research, 2025. https://www.anthropic.com/research/trustworthy-agents · Tool governance, least-privilege, and verification guidance that grounds the tiered guardrail model. `Used in: S-01 / stream 02 A-01`.
+6. Anthropic. *Trustworthy Agents in Practice.* Anthropic Research, 2026-04-09 (verified 2026-10-30). https://www.anthropic.com/research/trustworthy-agents · Tool governance, least-privilege, and verification guidance that grounds the tiered guardrail model. `Used in: S-01 / stream 02 A-01`.
 
 7. Anthropic. *How We Contain Claude Across Products.* Anthropic Engineering Blog, 2026-05-25. https://www.anthropic.com/engineering/how-we-contain-claude · Permission-mode containment (read-only `.git/.claude/.agents`), approval vs sandbox layers; precedent for `guarded→assisted→autonomous→open` guarantee bands. `Used in: S-10, S-11 / streams 05 A-06/A-07, 06 A-08`.
 

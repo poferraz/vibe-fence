@@ -1,6 +1,7 @@
 # Research Index — vibe-fence Phase 0
 
 > Phase 0 = Deep Research. Every claim cited. Runs are distributed across models.
+> What is actually supported, decided, or still unverified: `CLAIMS.md`.
 
 ## How to Run
 

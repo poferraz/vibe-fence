@@ -11,6 +11,7 @@ vibe-fence is an experimental safety harness for people who build software with 
 - `check --staged` scans staged Git blobs; `check --push` scans outgoing commits.
 - `gate` evaluates a supported tool call before execution when a host integration invokes it. Some adapters install hooks or plugins; others only add guidance.
 - `checkpoint` and `undo` provide Git-based recovery operations. Inspect their output and the project state before relying on a checkpoint.
+- `vibe-continuity` is an advisory skill for resuming a project or preparing a handoff. It compares the handoff with the current Git state and distinguishes recorded evidence from unknowns when followed by an agent.
 
 The [rule registry](src/rules/index.ts), [gate](src/framework/gate.ts), and [check implementation](src/check.ts) describe the actual boundaries. They cover selected patterns, not every unsafe action or vulnerability.
 
@@ -52,6 +53,8 @@ node /path/to/vibe-fence/dist/cli.js check
 ```
 
 `init` changes files in the project; the dry run previews its intent. For Codex, review and trust the configured hook in the host before testing it. `status` reports configuration, not proof that a host has trusted or executed it. Read any warnings, especially warnings about `core.hooksPath`, and verify the integration in your own environment. If Git uses a redirected hook path, hooks installed in `.git/hooks` may not run.
+
+To resume work, ask an agent that supports the installed skill to use `vibe-continuity`, or ask it to read `.agents/skills/vibe-continuity/SKILL.md` directly. The skill is advisory; host discovery and compliance have not been verified across all tools. No handoff is created automatically: choose where to keep one and check whether that path is tracked or ignored before saving private information. Keep credentials and raw secrets out of it. Your host's configured model may process content the agent reads; the workflow does not initiate an additional provider call. You can provide a brief summary in chat instead of having the agent read a handoff.
 
 ## Evidence and limitations
 

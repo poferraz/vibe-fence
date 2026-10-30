@@ -28,6 +28,7 @@ description-agent: "Canonical map — every doc/skill/tool reachable via this in
 | vibe-init | `src/skills/vibe-init/SKILL.md` | Scaffolding + init |
 | vibe-guard | `src/skills/vibe-guard/SKILL.md` | Guardrail enforcement S-09 |
 | vibe-plan | `src/skills/vibe-plan/SKILL.md` | Contract-pinned planning S-08 |
+| vibe-continuity | `src/skills/vibe-continuity/SKILL.md` | Advisory project resume and handoff |
 | vibe-teach | `src/skills/vibe-teach/SKILL.md` | Teaching dial companion S-11 |
 | Generator | `tools/generate.ts` | src→dist copy + PROVENANCE |
 | Validator | `tools/validate.ts` | AGENTS ≤400tok + SKILL + schema gates |

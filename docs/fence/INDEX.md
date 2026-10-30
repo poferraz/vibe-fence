@@ -10,6 +10,7 @@ description-agent: "Canonical map — every doc/skill/tool reachable via this in
 |-----|------|-----|
 | Current product direction | `docs/project/PRODUCT-DIRECTION.md` | User-selected plug-in direction, protection tiers, and current disclosure |
 | Current evidence | `docs/EVIDENCE.md` | What was verified, on which revision, with commands, counts and known gaps |
+| Evaluation ladder | `docs/EVALUATION-LADDER.md` | Each suite's claim, audience, failure decision, blind spots and what is skipped |
 | Local working material (optional) | `.fence/private/INDEX.md` | Locally retained plans, prompts, audits, and progress; ignored by Git and absent in fresh clones |
 | AGENTS router | `AGENTS.md` | ≤400tok entry point; retrieval-gated S-01 |
 | Plan | `docs/PLAN.md` | Phases M1–M4 + hackathon scope |

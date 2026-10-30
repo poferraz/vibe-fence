@@ -1,0 +1,112 @@
+{
+  "version": 1,
+  "updated": "2026-10-30",
+  "rule": "Every retained run carries a decision and is reported on its own; numbers from different suites are never combined into one figure.",
+  "suites": [
+    {
+      "id": "A-hostile",
+      "suite": "tests/benches/hostile.test.ts",
+      "command": "bun test tests/benches/hostile.test.ts",
+      "claim": "11 rule benches, each with at least 6 labelled attack shapes; every shape is caught on at least one real surface (gate or tree scan), and a cold control stays uncaught.",
+      "audience": "maintainer",
+      "failure": "A miss becomes a KNOWN-GAPS entry or a rule fix; it is never relabelled benign to keep the suite green.",
+      "assumptions": ["fixtures are hand-written, not sampled from real incidents", "each case exercises an intended surface"],
+      "blindSpots": ["shapes not listed in the fixtures are not measured", "does not show that a host enforced any block"],
+      "lastResult": { "status": "pass", "revision": "9d8f1c2", "date": "2026-10-30" }
+    },
+    {
+      "id": "B-benign",
+      "suite": "tests/benches/benign.test.ts",
+      "command": "bun test tests/benches/benign.test.ts",
+      "claim": "11 rule benches, each with at least 10 legitimate shapes, fire zero times and produce no scorer error.",
+      "audience": "user",
+      "failure": "A firing is a false-positive defect: fix the rule or record a deliberate exception; never delete the fixture to pass.",
+      "assumptions": ["fixtures represent ordinary work, not every possible legitimate shape"],
+      "blindSpots": ["fits the fixture set only; a shape outside it can still be blocked", "one adjudicated exception is documented in the scoreboard"],
+      "lastResult": { "status": "pass", "revision": "9d8f1c2", "date": "2026-10-30" }
+    },
+    {
+      "id": "C-scenario",
+      "suite": "tests/benches/scenario.test.ts",
+      "command": "bun test tests/benches/scenario.test.ts",
+      "claim": "install, block, offline explanation, checkpoint and undo run end-to-end through the packed CLI with the intended exit codes, and init stays under the 3 s budget.",
+      "audience": "user",
+      "failure": "A failure means the user-facing path is not ready; fix the integration before shipping.",
+      "assumptions": ["runs on this machine with Bun and Git available"],
+      "blindSpots": ["does not exercise a real host session", "timing is machine-specific"],
+      "lastResult": { "status": "pass", "revision": "9d8f1c2", "date": "2026-10-30" }
+    },
+    {
+      "id": "D-explanation-rubric",
+      "suite": "tools/loops/grade.test.ts",
+      "command": "bun test tools/loops/grade.test.ts",
+      "claim": "A coarse 0-4 structural rubric scores explanation text offline (presence of plain-language reason and fix), with no model call.",
+      "audience": "reviewer",
+      "failure": "A regression means the rubric broke; it does not mean explanation quality improved or degraded in a live call.",
+      "assumptions": ["structure is a weak proxy for usefulness"],
+      "blindSpots": ["cannot judge correctness or tone", "no live provider output is involved"],
+      "lastResult": { "status": "pass", "revision": "9d8f1c2", "date": "2026-10-30" }
+    },
+    {
+      "id": "E-corpus",
+      "suite": "tests/evals/corpus.json",
+      "command": "bun run eval",
+      "claim": "Per-rule precision and recall floors hold against a pinned baseline over a held-out corpus, with an unknown ceiling and no lost true negatives.",
+      "audience": "maintainer",
+      "failure": "A regression or lost TN fails the run; a new TN requires review and an explicit baseline update.",
+      "assumptions": ["corpus is hand-built and small", "floors are project policy, not measured generality"],
+      "blindSpots": ["not a general-world rate", "an unknown case is counted separately and never as a pass"],
+      "lastResult": { "status": "pass", "revision": "9d8f1c2", "date": "2026-10-30" }
+    },
+    {
+      "id": "F-sweep",
+      "suite": "tests/adversarial/sweep.test.ts",
+      "command": "bun test tests/adversarial/sweep.test.ts",
+      "claim": "Labelled adversarial scenarios S1-S8b behave as recorded, including a no-bypass check on the CLI surface.",
+      "audience": "maintainer",
+      "failure": "Any S-label regression blocks the change.",
+      "assumptions": ["one scenario per label, with a fixed payload"],
+      "blindSpots": ["does not cover refusal behaviour, which lives outside deterministic tests"],
+      "lastResult": { "status": "pass", "revision": "9d8f1c2", "date": "2026-10-30" }
+    },
+    {
+      "id": "G-proof-beats",
+      "suite": "tests/proof-beats.test.ts",
+      "command": "bun test tests/proof-beats.test.ts",
+      "claim": "Five user-facing proof beats hold: leak stopped, harmful operations blocked while benign work proceeds, a failing check yields a fail verdict, undo restores, and a real hook blocks an unsafe commit.",
+      "audience": "user",
+      "failure": "A failing beat means a user-facing claim is false; correct the claim or the product before shipping.",
+      "assumptions": ["Git and Bun are available", "hooks run through the installed path"],
+      "blindSpots": ["does not prove host trust or execution", "one platform"],
+      "lastResult": { "status": "pass", "revision": "9d8f1c2", "date": "2026-10-30" }
+    }
+  ],
+  "skipped": [
+    {
+      "id": "S-stateful-transport",
+      "claim": "An actor write, the fence mirror, fetched evidence and a trusted oracle describe the same episode under a fake transport.",
+      "reason": "The code exists only on the local-only eval/live-loops-local branch; it is not published and its isolation boundary is not proven.",
+      "decision": "Stays skipped until the isolation and scoring phase is completed on that private branch; no model-generated code is executed."
+    },
+    {
+      "id": "S-provider-ledger-fakes",
+      "claim": "Provider retries and a durable ledger bound paid dispatch across restarts.",
+      "reason": "Provider and ledger code is private-branch only; no paid authorization exists.",
+      "decision": "Stays skipped; no dispatch is proposed without a durable bound and explicit authorization."
+    }
+  ],
+  "notAdded": [
+    {
+      "id": "N-production-deploy-control",
+      "reason": "No deterministic, independently checkable outcome can be defined without a real host or sandbox; a simulated deploy would measure the simulation."
+    },
+    {
+      "id": "N-prompt-injection-control",
+      "reason": "Model behaviour is not deterministic; a fixture could not decide pass or fail independently of a live model."
+    },
+    {
+      "id": "N-approval-scope-control",
+      "reason": "Depends on host approval UX and user response; no deterministic fixture exists."
+    }
+  ]
+}

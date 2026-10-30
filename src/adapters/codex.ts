@@ -13,11 +13,12 @@
  * Security: .agents/memory/ never stores secrets; trust-gated AGENTS.md is sole authority (GEM-01).
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Adapter } from "./types";
 import { buildAgentsFenceBlock, mergeAgentsMd } from "./claude";
 import { scrubFenceKey, writeAdapterReceipt } from "./receipts";
+import { buildCodexGateHook, CODEX_GATE_COMMAND, CODEX_GATE_FILE, CODEX_GATE_MARKER, CODEX_GATE_MATCHER } from "./codex-gate";
 
 export const codexAdapter: Adapter = {
   name: "codex",
@@ -29,8 +30,8 @@ export const codexAdapter: Adapter = {
     precedence: "AGENTS.md canonical; .agents/memory/MEMORY.md is untrusted memory (S-06)",
   },
   hookSurface: {
-    hooks: ["PreToolUse", "PostToolUse"],
-    fpBudgetNotes: "Minimal — FP budget per S-10/C-01; lifecycle boundary hooks only.",
+    hooks: ["PreToolUse"],
+    fpBudgetNotes: "Bash and apply_patch only; project trust and host execution must be verified.",
   },
   skillsDir: ".agents/skills",
 };
@@ -41,6 +42,12 @@ export const codexAdapter: Adapter = {
 export function installCodexAdapter(projectRoot: string, opts: { modelMode?: string } = {}): string[] {
   const written: string[] = [];
   const modelMode = opts.modelMode ?? "standard";
+  const codexDir = join(projectRoot, ".codex");
+  const isSymlink = (path: string): boolean => {
+    try { return lstatSync(path).isSymbolicLink(); } catch { return false; }
+  };
+  const unsafeCodexPath = [codexDir, join(codexDir, "hooks"), join(codexDir, "hooks.json"), join(codexDir, "hooks", CODEX_GATE_FILE), join(codexDir, "config.json")].some(isSymlink);
+  if (unsafeCodexPath) console.warn("[vibe-fence] Codex configuration contains a symlink; leaving it unchanged.");
 
   // 1. AGENTS.md — canonical router
   {
@@ -75,11 +82,52 @@ export function installCodexAdapter(projectRoot: string, opts: { modelMode?: str
     if (!existsSync(dir)) { mkdirSync(dir, { recursive: true }); }
   }
 
-  // 4. .codex/config.json — NEVER written (host keys only). Scrub legacy
+  // 4. Install a project-local PreToolUse hook without replacing user hooks.
+  {
+    const dir = join(projectRoot, ".codex");
+    const hooksPath = join(dir, "hooks.json");
+    const scriptPath = join(dir, "hooks", CODEX_GATE_FILE);
+    const previousScript = !unsafeCodexPath && existsSync(scriptPath) ? readFileSync(scriptPath, "utf-8") : null;
+    if (unsafeCodexPath) {
+      // Never write through a symlinked host configuration path.
+    } else if (previousScript !== null && !previousScript.includes(CODEX_GATE_MARKER)) {
+      console.warn("[vibe-fence] Codex hook script is user-managed; leaving it unchanged.");
+    } else {
+      try {
+        const raw = existsSync(hooksPath) ? JSON.parse(readFileSync(hooksPath, "utf-8")) : {};
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("invalid hooks config");
+        const hooks = raw.hooks ?? {};
+        if (!hooks || typeof hooks !== "object" || Array.isArray(hooks)) throw new Error("invalid hooks object");
+        const existing = hooks.PreToolUse ?? [];
+        if (!Array.isArray(existing)) throw new Error("invalid PreToolUse hooks");
+        const isOurs = (entry: unknown): boolean => {
+          if (!entry || typeof entry !== "object") return false;
+          const handlers = (entry as { hooks?: unknown }).hooks;
+          return Array.isArray(handlers) && handlers.some((h: unknown) =>
+            !!h && typeof h === "object" && (h as { command?: unknown }).command === CODEX_GATE_COMMAND);
+        };
+        const next = { ...raw, hooks: { ...hooks, PreToolUse: [
+          ...existing.filter((entry: unknown) => !isOurs(entry)),
+          { matcher: CODEX_GATE_MATCHER, hooks: [{ type: "command", command: CODEX_GATE_COMMAND, timeout: 15 }] },
+        ] } };
+        const config = JSON.stringify(next, null, 2) + "\n";
+        const script = buildCodexGateHook();
+        mkdirSync(join(dir, "hooks"), { recursive: true });
+        if (previousScript !== script) { writeFileSync(scriptPath, script, "utf-8"); written.push(`.codex/hooks/${CODEX_GATE_FILE}`); }
+        if (!existsSync(hooksPath) || readFileSync(hooksPath, "utf-8") !== config) {
+          writeFileSync(hooksPath, config, "utf-8"); written.push(".codex/hooks.json");
+        }
+      } catch {
+        console.warn("[vibe-fence] Codex hooks configuration is invalid; leaving it unchanged.");
+      }
+    }
+  }
+
+  // 5. .codex/config.json — NEVER written (host keys only). Scrub legacy
   // fence-managed keys; never create the file, never touch user keys.
   {
     const p = join(projectRoot, ".codex", "config.json");
-    if (existsSync(p)) {
+    if (!unsafeCodexPath && existsSync(p)) {
       try {
         const existing = JSON.parse(readFileSync(p, "utf-8") as string) as Record<string, unknown>;
         if (scrubFenceKey(existing)) {
@@ -94,7 +142,7 @@ export function installCodexAdapter(projectRoot: string, opts: { modelMode?: str
       model_mode: modelMode,
       companion_model: process.env["MUSE_MODEL_COMPANION"] ?? "muse-spark-1.3",
       architect_model: process.env["MUSE_MODEL_ARCHITECT"] ?? "muse-wonder-1.0",
-      receipt: "🛡️ vibe-fence active — Codex adapter",
+      receipt: "vibe-fence Codex adapter installed — hook trust and execution not verified",
     });
     if (receipt.changed) written.push(receipt.path.replace(projectRoot + "/", ""));
   }

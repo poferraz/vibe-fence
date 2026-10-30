@@ -210,6 +210,18 @@ describe("index-aware scans (L1)", () => {
     expect(exitCodeForReport(runPushCheck(root, [`${base}..HEAD`]))).toBe(1);
   });
 
+  it("scans every changed file across batched metadata and content reads", () => {
+    const root = makeGitProject();
+    const base = sh(root, "git rev-parse HEAD");
+    for (let i = 0; i < 140; i++) writeFileSync(join(root, `f${i}.ts`), `export const v${i} = ${i};\n`);
+    writeFileSync(join(root, "f139.ts"), LEAK); // last file, later ls-tree chunk
+    commitAll(root, "many files");
+    const report = runPushCheck(root, [`${base}..HEAD`]);
+    expect(report.filesScanned).toBe(140);
+    expect(report.findings.some((f) => f.ruleId === "SEC-01" && f.file.startsWith("f139.ts"))).toBe(true);
+    expect(exitCodeForReport(report)).toBe(1);
+  });
+
   it("blocks a historical env file even if removed and ignored later", () => {
     const root = makeGitProject();
     const base = sh(root, "git rev-parse HEAD");

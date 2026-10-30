@@ -406,6 +406,7 @@ export function runPushCheck(projectRoot: string, ranges: string[], opts: CheckO
     const entries = readTreeEntries(projectRoot, commit, batch);
     const pending: Array<{ rel: string; entry: TreeEntry }> = [];
     const blocked = new Map<string, string>();
+    const binary = new Set<string>();
     for (const rel of batch) {
       const entry = entries.get(rel);
       if (!entry || !/^\d{6} (?:blob|commit) [0-9a-f]+$/.test(`${entry.mode} ${entry.type} ${entry.sha}`)) {
@@ -423,7 +424,11 @@ export function runPushCheck(projectRoot: string, ranges: string[], opts: CheckO
         blocked.set(rel, `Cannot inspect ${rel} in commit ${shortSha}; unsupported Git object.`);
         continue;
       }
-      if (shouldSkipBlob(rel)) { skipped++; continue; }
+      if (shouldSkipBlob(rel)) {
+        skipped++;
+        binary.add(rel);
+        continue;
+      }
       if (entry.size === null || entry.size > maxBytes) {
         skipped++;
         blocked.set(rel, `Cannot read ${rel} in commit ${shortSha} (missing or over ${maxBytes} bytes); inspection is incomplete.`);
@@ -433,13 +438,19 @@ export function runPushCheck(projectRoot: string, ranges: string[], opts: CheckO
     }
     const contents = readBlobContents(projectRoot, pending.map((p) => ({ sha: p.entry.sha, size: p.entry.size ?? 0 })));
     for (const rel of batch) {
+      if (binary.has(rel)) continue; // skipped by extension, not missing
       const reason = blocked.get(rel);
       if (reason !== undefined) {
         incomplete(reason);
         continue;
       }
       const entry = entries.get(rel);
-      if (!entry) continue;
+      if (!entry) {
+        // Defensive: every missing entry is blocked above. Never drop a path silently.
+        skipped++;
+        incomplete(`Cannot identify ${rel} in commit ${shortSha}; inspection is incomplete.`);
+        continue;
+      }
       const blob = contents.get(entry.sha);
       if (!blob) {
         skipped++;

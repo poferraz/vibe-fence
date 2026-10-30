@@ -210,6 +210,24 @@ describe("index-aware scans (L1)", () => {
     expect(exitCodeForReport(runPushCheck(root, [`${base}..HEAD`]))).toBe(1);
   });
 
+  it("skips binary files in outgoing history without a false missing-blob block", () => {
+    const root = makeGitProject();
+    const base = sh(root, "git rev-parse HEAD");
+    writeFileSync(join(root, "logo.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01, 0x02]));
+    writeFileSync(join(root, "notes.txt"), "export const ok = 1;\n");
+    // Same bytes as a text file: the binary outcome must not depend on an
+    // unrelated file's content hash.
+    writeFileSync(join(root, "same.txt"), "identical\n");
+    writeFileSync(join(root, "copy.png"), "identical\n");
+    commitAll(root, "assets");
+    const report = runPushCheck(root, [`${base}..HEAD`]);
+    expect(report.findings.filter((f) => f.ruleId === "PUSH-SCAN")).toHaveLength(0);
+    expect(report.findings).toHaveLength(0);
+    expect(exitCodeForReport(report)).toBe(0);
+    expect(report.filesSkipped).toBe(2);
+    expect(report.filesScanned).toBe(2);
+  });
+
   it("scans every changed file across batched metadata and content reads", () => {
     const root = makeGitProject();
     const base = sh(root, "git rev-parse HEAD");

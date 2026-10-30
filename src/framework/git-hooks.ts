@@ -26,7 +26,7 @@ export function buildHookScript(hookName: HookName): string {
   // Pre-push: Git sends ref updates on stdin. Buffer them once so both the
   // fence check and any chained pre-existing hook receive the same input —
   // consuming stdin in the fence check must not starve the chained hook.
-  const indexScan = hookName === "pre-push" ? "check --push" : "check --staged";
+  const indexScan = hookName === "pre-push" ? "check --push --hook-input" : "check --staged";
   const isPush = hookName === "pre-push";
   return [
     "#!/bin/sh",

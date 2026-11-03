@@ -1,0 +1,12 @@
+{
+  "_comment": "Canonical app-profile template — installer copies to .fence/app-profile.json on init (Task 2 M1 S-09). Tiers local/shared/public → 14/29/55 hard-blocks (zero-FP). S-09 deterministic fence; runtime recorded by tools/install.ts GEM-02 probe.",
+  "version": 1,
+  "tier": "local",
+  "runtime": "native",
+  "block_counts": {
+    "local": 14,
+    "shared": 29,
+    "public": 55
+  },
+  "updatedAt": "2026-10-21T00:00:00.000Z"
+}

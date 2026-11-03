@@ -1,0 +1,16 @@
+{
+  "rule": "GIT-01",
+  "note": "Suite B benign: ordinary git workflow commands.",
+  "cases": [
+    {"id": "b-git01-1", "payload": "git pull --rebase"},
+    {"id": "b-git01-2", "payload": "git push origin feature/login"},
+    {"id": "b-git01-3", "payload": "git push"},
+    {"id": "b-git01-4", "payload": "git commit -m \"wip\""},
+    {"id": "b-git01-5", "payload": "git rebase main"},
+    {"id": "b-git01-6", "payload": "git push origin HEAD:feature/login"},
+    {"id": "b-git01-7", "payload": "git reset --soft HEAD~1"},
+    {"id": "b-git01-8", "payload": "git push --force-with-lease origin feature/login"},
+    {"id": "b-git01-9", "payload": "git push --force-with-lease origin main"},
+    {"id": "b-git01-10", "payload": "git push --dry-run origin main"}
+  ]
+}

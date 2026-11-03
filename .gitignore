@@ -1,0 +1,52 @@
+# dependencies
+node_modules/
+
+# build output (generated, disposable)
+dist/
+
+# harness state — single-owner, mostly gitignored; .fence/app-profile.json IS commitable (S-09, Task 2)
+.fence/*
+!.fence/app-profile.json
+# explicitly ignored harness artefacts (also appended by installer on init)
+.fence/.integrity.json
+.fence/events.ndjson
+.fence/state/
+.fence/verdicts/
+.fence/queue.json
+
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# editor / os
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/settings.json
+
+# internal tooling (hermes)
+.hermes/
+
+# bun / tooling caches
+tools/out/
+
+# Local working plans, prompts, audits, and session handoffs
+/.fence/private/
+
+# Private working material kept locally; tracked historical files require
+# deliberate public-tree reconciliation before integration.
+/HACKATHON.md
+/docs/clief/
+/docs/plans/
+/docs/project/audits/
+/docs/project/STATUS.md
+/docs/project/REHEARSAL.md
+/docs/project/SUBMIT.md
+/docs/project/CREDITS-PLAN.md
+/docs/project/EXTERNAL-AUDIT.md
+/docs/research/00-meta/LOG.md
+/docs/research/PROMPT-argon4-zip-v2.md
+/docs/research/PROMPT-gemini-argon4-deep-path.md
+/docs/superpowers/

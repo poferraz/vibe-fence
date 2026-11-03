@@ -1,0 +1,12 @@
+{
+  "rule": "FS-01",
+  "note": "Hand-written hostile fixtures (Suite A): paths escaping the project root (gate read leg).",
+  "cases": [
+    {"id": "h-fs01-1", "payload": "../../../../etc/passwd"},
+    {"id": "h-fs01-2", "payload": "/etc/shadow"},
+    {"id": "h-fs01-3", "payload": "~/.ssh/id_rsa"},
+    {"id": "h-fs01-4", "payload": "/proc/self/environ"},
+    {"id": "h-fs01-5", "payload": "../../../root/.bashrc"},
+    {"id": "h-fs01-6", "payload": "/tmp/sibling-project/notes.txt"}
+  ]
+}

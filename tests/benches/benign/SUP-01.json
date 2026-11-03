@@ -1,0 +1,16 @@
+{
+  "rule": "SUP-01",
+  "note": "Suite B benign: local tooling scripts and script-safe installs (package.json path override).",
+  "cases": [
+    {"id": "b-sup01-1", "payload": "{\"name\":\"x\",\"scripts\":{\"build\":\"tsc -p .\"}}", "path": "package.json"},
+    {"id": "b-sup01-2", "payload": "{\"name\":\"x\",\"scripts\":{\"test\":\"vitest run\"}}", "path": "package.json"},
+    {"id": "b-sup01-3", "payload": "{\"name\":\"x\",\"scripts\":{\"prebuild\":\"node ./scripts/gen.js\"}}", "path": "package.json"},
+    {"id": "b-sup01-4", "payload": "{\"name\":\"x\",\"scripts\":{\"postinstall\":\"node -e \\\"console.log(1)\\\"\"}}", "path": "package.json"},
+    {"id": "b-sup01-5", "payload": "npm install --ignore-scripts"},
+    {"id": "b-sup01-6", "payload": "pnpm install --ignore-scripts"},
+    {"id": "b-sup01-7", "payload": "{\"name\":\"x\",\"scripts\":{\"lint\":\"eslint .\"}}", "path": "package.json"},
+    {"id": "b-sup01-8", "payload": "{\"name\":\"x\",\"scripts\":{\"dev\":\"vite\"}}", "path": "package.json"},
+    {"id": "b-sup01-9", "payload": "{\"name\":\"x\",\"scripts\":{\"prepare\":\"tsc --noEmit\"}}", "path": "package.json"},
+    {"id": "b-sup01-10", "payload": "yarn install --ignore-scripts"}
+  ]
+}

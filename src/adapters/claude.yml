@@ -1,0 +1,38 @@
+# src/adapters/claude.yml — Claude Code runtime profile (REFERENCE override)
+# Authority: src/adapters/types.ts (inline ADAPTERS array is canonical per GEM-03).
+# This YML is a data mirror for tooling/inspection; types.ts remains the single source of truth.
+# Spec: FINAL-v4 S-02 (Skills), S-03 (Context budget), S-13 (Muse routing), C-03 (ACI by model tier).
+# Linked budget: src/framework/context-budget.yml — adapters override total_tokens per-runtime.
+
+name: claude-code
+label: Claude Code
+runtime: claude-code
+
+# Context window — Claude Sonnet 4.5 / Opus 4.1 effective window (S-03).
+# Budget buckets in context-budget.yml are scaled against this window.
+window:
+  total_tokens: 200000
+  note: "Claude effective window; S-03 caps (static/dynamic/history/headroom) scale against this"
+
+skillsDir: ~/.claude/skills
+agentsMapping:
+  canonical: AGENTS.md
+  runtimePaths:
+    - AGENTS.md
+    - .agents/AGENTS.md
+    - MEMORY.md
+  precedence: "project-over-user, deeper-over-shallower (Muse native trust chain)"
+
+hookSurface:
+  hooks:
+    - PreToolUse
+    - PostToolUse
+  fpBudgetNotes: "Minimal PreToolUse/PostToolUse only — FP budget defines surface (S-10/C-01)"
+
+# C-03 frontier-conditional surface: frontier models (Claude) get thin bash-only surface
+# (mini-swe-agent 100-line bash >74% on frontier); richer filtered tools reserved for weaker models.
+modelHint:
+  tier: frontier
+  surface: thin
+  description: "Frontier: thin bash-only surface suffices (>74% SWE-bench via mini-swe-agent); minimal hookSurface is intentional per C-03"
+  fallback: "If model degrades below frontier, escalate to richer filtered-tool surface via adapter re-selection"

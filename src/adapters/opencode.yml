@@ -1,0 +1,34 @@
+# src/adapters/opencode.yml — OpenCode runtime profile (REFERENCE override)
+# Authority: src/adapters/types.ts (inline ADAPTERS array is canonical per GEM-03).
+# This YML is a data mirror for tooling/inspection; types.ts remains the single source of truth.
+# Spec: FINAL-v4 S-02 (Skills), S-03 (Context budget), S-13 (Muse routing), C-03 (ACI by model tier).
+# Linked budget: src/framework/context-budget.yml — adapters override total_tokens per-runtime.
+
+name: opencode
+label: OpenCode
+runtime: opencode
+
+window:
+  total_tokens: 128000
+  note: "OpenCode default window; S-03 caps (static/dynamic/history/headroom) scale against this"
+
+skillsDir: ~/.config/opencode/skills
+agentsMapping:
+  canonical: AGENTS.md
+  runtimePaths:
+    - AGENTS.md
+  precedence: "AGENTS.md canonical; opencode.json for runtime config + fence block"
+
+hookSurface:
+  hooks:
+    - PreToolUse
+    - PreToolExecution
+  fpBudgetNotes: "Minimal — PreToolUse/PreToolExecution only; lifecycle boundary per S-10/C-01"
+
+# C-03: OpenCode is model-agnostic and often hosts weaker/open-weight models —
+# richer surface (extra hook + filtered tools) compensates for weaker instruction-following.
+modelHint:
+  tier: weak
+  surface: rich
+  description: "OpenCode model-agnostic: weak/open-weight path — richer ACI with filtered tools (4× SWE-bench lift) per C-03"
+  fallback: "When OpenCode routes to frontier (Claude/GPT-5), thin surface is sufficient; prefer frontier-conditional downgrade"

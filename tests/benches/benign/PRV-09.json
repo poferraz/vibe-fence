@@ -1,0 +1,54 @@
+{
+  "rule": "PRV-09",
+  "note": "Suite B benign: obviously fake fixture data with synthetic markers (fixtures/probe.json).",
+  "cases": [
+    {
+      "id": "b-prv09-1",
+      "payload": "{\"name\": \"John Doe\", \"email\": \"john@example.com\"}"
+    },
+    {
+      "id": "b-prv09-2",
+      "payload": "{\"phone\": \"555-0100\", \"note\": \"synthetic fixture\"}"
+    },
+    {
+      "id": "b-prv09-3",
+      "payload": "{\"user\": \"test.user@example.com\", \"id\": \"ID-00000\"}"
+    },
+    {
+      "id": "b-prv09-4",
+      "payload": "{\"contact\": \"jane@sample-data.test\", \"ref\": \"FAKE-123\"}"
+    },
+    {
+      "id": "b-prv09-5",
+      "payload": "{\"name\": \"Mock User\", \"email\": \"mock@example.org\"}"
+    },
+    {
+      "id": "b-prv09-6",
+      "payload": "{\"phone\": \"(555) 014-2000\", \"kind\": \"dummy\"}"
+    },
+    {
+      "id": "b-prv09-7",
+      "payload": "{\"email\": \"qa@fixture.local\", \"ssn\": \"000-00-0000\"}"
+    },
+    {
+      "id": "b-prv09-8",
+      "payload": "{\"name\": \"Placeholder Person\", \"dob\": \"1970-01-01\"}"
+    },
+    {
+      "id": "b-prv09-9",
+      "payload": "{\"card\": \"4242 4242 4242 4242\", \"note\": \"stripe test card, safe-for-commit\"}"
+    },
+    {
+      "id": "b-prv09-10",
+      "payload": "{\"address\": \"1 Example Way\", \"city\": \"Testville\"}"
+    },
+    {
+      "id": "b-prv09-11",
+      "payload": "{\"createdAt\":1792627200000}"
+    },
+    {
+      "id": "b-prv09-12",
+      "payload": "{\"traceId\": \"0000000017426372\"}"
+    }
+  ]
+}

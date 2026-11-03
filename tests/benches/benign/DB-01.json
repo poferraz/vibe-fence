@@ -1,0 +1,16 @@
+{
+  "rule": "DB-01",
+  "note": "Suite B benign: ordinary queries and additive migrations (probe.sql).",
+  "cases": [
+    {"id": "b-db01-1", "payload": "SELECT id, email FROM users WHERE active = true;"},
+    {"id": "b-db01-2", "payload": "CREATE TABLE sessions (id uuid PRIMARY KEY);"},
+    {"id": "b-db01-3", "payload": "ALTER TABLE users ADD COLUMN last_seen timestamptz;"},
+    {"id": "b-db01-4", "payload": "INSERT INTO audit_log (msg) VALUES ('login');"},
+    {"id": "b-db01-5", "payload": "CREATE INDEX idx_users_email ON users (email);"},
+    {"id": "b-db01-6", "payload": "ALTER TABLE orders ENABLE ROW LEVEL SECURITY;"},
+    {"id": "b-db01-7", "payload": "UPDATE users SET last_seen = now() WHERE id = 42;"},
+    {"id": "b-db01-8", "payload": "BEGIN; SELECT count(*) FROM orders; COMMIT;"},
+    {"id": "b-db01-9", "payload": "SELECT pg_trgm similarity(name, 'ann') FROM people;"},
+    {"id": "b-db01-10", "payload": "-- migration: add orders.total column\nALTER TABLE orders ADD COLUMN total numeric;"}
+  ]
+}

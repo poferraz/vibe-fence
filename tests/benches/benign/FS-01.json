@@ -1,0 +1,16 @@
+{
+  "rule": "FS-01",
+  "note": "Suite B benign: relative paths inside the project root (gate read leg).",
+  "cases": [
+    {"id": "b-fs01-1", "payload": "src/app.ts"},
+    {"id": "b-fs01-2", "payload": "./data/file.json"},
+    {"id": "b-fs01-3", "payload": "docs/guide.md"},
+    {"id": "b-fs01-4", "payload": "package.json"},
+    {"id": "b-fs01-5", "payload": "a/b/c/deep.ts"},
+    {"id": "b-fs01-6", "payload": "./src/components/Button.tsx"},
+    {"id": "b-fs01-7", "payload": "tests/fixtures/sample.json"},
+    {"id": "b-fs01-8", "payload": "README.md"},
+    {"id": "b-fs01-9", "payload": "src/../README.md"},
+    {"id": "b-fs01-10", "payload": "public/favicon.ico"}
+  ]
+}

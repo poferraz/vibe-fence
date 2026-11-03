@@ -12,4 +12,4 @@ The saved event notes report an October 26 noon ET kickoff and an October 27–N
 
 The audit reports that the public branch was restarted as a reviewed snapshot on November 3 to avoid publishing internal working notes. The preserved local Git bundle `complete-history-2026-11-03.bundle` passed `git bundle verify`; its SHA-256 is `d17bf1b636c93b266bfc676472dc6d94b45c22cf20b8c290bfdcab7cabc9b169`. The bundle includes historical refs and should be reviewed before any disclosure. Its checksum and commit history do not establish eligibility, contributor rights, or an accepted submission.
 
-The current working candidate is based on `5189213` and includes uncommitted changes. A final public revision and its test results must be recorded after the candidate is committed and verified. See [evaluation evidence](EVIDENCE.md) for measured results and limits.
+The original working checkout was based on `5189213` and contained uncommitted changes. A separate local public-tree candidate is based on `ce56fa1`; its changes have not been pushed. See [evaluation evidence](EVIDENCE.md) for tested revisions, measured results and limits.

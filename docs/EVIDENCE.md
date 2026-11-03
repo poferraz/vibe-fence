@@ -4,7 +4,7 @@ This page records what has been measured, on which revision, and what remains
 unknown. It is deliberately narrow: a passing suite supports the specific claim
 next to it, not a general claim that the tool is safe.
 
-- **Revision:** working tree based on `5189213` (`release/final`); uncommitted source, tests, and documentation differ from that commit. A final committed candidate has not been tested.
+- **Revision for the original working-tree measurements:** based on `5189213` (`release/final`), with uncommitted source, tests and documentation. These results do not describe a committed public revision; later candidate measurements are identified below.
 - **Environment:** macOS, Bun 1.3.14, Node ≥20. Fabricated fixtures only; no
   paid provider calls and no model-generated code executed in this run.
 - **Reproduce:** `bunx tsc --noEmit`, `bun run build`,
@@ -81,13 +81,15 @@ a report; a fabricated reproducer is enough.
 
 ## November 3 follow-up verification
 
-After the earlier run above, the current dirty working tree passed the requested ordered gate again: typecheck, build (64 generated files), validate, 495 tests passed / 4 PostgreSQL-dependent skips / 0 failed, and eval (35 positive, 35 negative, one unknown; no baseline regression). The gate used offline or mocked model requests. `git diff --check` passed. These results do not establish behavior in an actual coding-agent host.
+After the earlier run above, the dirty working tree passed the requested ordered gate again: typecheck, build (64 generated files), validate, 495 tests passed / 4 PostgreSQL-dependent skips / 0 failed, and eval (35 positive, 35 negative, one unknown; no baseline regression). The gate used offline or mocked model requests. `git diff --check` passed. These results do not establish behavior in an actual coding-agent host.
 
 A later local implementation pass on the same uncommitted branch passed typecheck, build (65 generated files), validation, and the full suite: **509 passed, 4 PostgreSQL-dependent skips, 0 failed** across 52 files. The evaluation reported 35 true positives, 0 false positives, 35 true negatives, 0 false negatives, and one unknown, with no baseline regression. This was a dirty working tree; documentation was subsequently updated, and no final committed candidate was tested by this run. No live host interception or new paid provider call was made.
 
 An offline `0.2.1` tarball from that source build contained the runtime, templates, skills, README and license, with no `.fence`, `.env`, or test files. In a fresh synthetic Git repository without Bun or a global `vibe-fence` on PATH, the packed installer created a working project-local runtime. The runtime reported version `0.2.1`, auto-detected the Codex configuration as unverified, identified a missing upstream, blocked a staged synthetic SEC-01 finding, and allowed a corrected commit. This was local package verification, not an npm publication or a live host session.
 
 An isolated public-tree candidate based on `ce56fa1` was committed locally as `751521b0f5572dc1a3fb9ce88b698d4bdc9cc94f`. On that exact commit, a frozen-lockfile install and the ordered gate passed: **440 tests passed, 4 PostgreSQL-dependent skips, 0 failed**, with the same 35 TP, 35 TN, and one unknown in the synthetic evaluation. The smaller public tree has fewer tests than the working checkout. Subsequent review found and corrected a separate invalid-range error that echoed raw input; the current follow-up includes that correction. Neither candidate commit has been published.
+
+The follow-up candidate `82f815242c0879f0df6e3756d22318854b8456ac`, including that redaction fix, also passed the full ordered gate with 440 passes, four PostgreSQL-dependent skips, no failures, and no evaluation regression. A later documentation-only follow-up clarifies the revision labels. These are local results; no GitHub Actions result is implied.
 
 A separate user-authorized direct Muse Spark request using a synthetic SEC-01 finding returned an explanation. The recorded response is stored locally in the private demo materials; it is not evidence of a host interception or a live response during a future recording. The successful request reported 64 input and 185 output tokens; estimated standard-rate cost was $0.000866 before adjustments. An earlier invalid-response request did not report usage, so total spend is unknown.
 

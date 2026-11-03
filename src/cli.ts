@@ -201,7 +201,7 @@ export async function main(argv: string[]): Promise<number> {
         return 2;
       }
       if (range !== null && !isValidPushRange(range)) {
-        console.error(`vibe-fence: bad --push range '${range}' (want <old>..<new> or <rev>).`);
+        console.error("vibe-fence: bad --push range (want <old>..<new> or <rev>).");
         return 2;
       }
       report = runPushCheck(process.cwd(), all ? ["--all"] : range ? [range] : pushRangesFromStdinOrDefault(rest.includes("--hook-input")));

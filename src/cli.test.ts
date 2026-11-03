@@ -432,9 +432,11 @@ describe("cli check --push/--staged", () => {
 
   it("--push rejects malformed explicit ranges", () => {
     const { root } = makePushRepo();
-    const r = runCli(["check", "--push", "a..b..c"], { cwd: root });
+    const marker = "PRIVATE_RANGE_SENTINEL_99182";
+    const r = runCli(["check", "--push", `${marker}..b..c`], { cwd: root });
     expect(r.exit).toBe(2);
     expect(r.stderr).toContain("bad --push range");
+    expect(r.stdout + r.stderr).not.toContain(marker);
   });
 
   it("--staged and --push are mutually exclusive", () => {

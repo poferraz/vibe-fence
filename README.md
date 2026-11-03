@@ -6,6 +6,8 @@ The [build provenance](docs/BUILD-PROVENANCE.md) separates the existing scaffold
 
 ## Get started
 
+The November 3 audit found that the published `vibe-fence@0.2.0` package lacks the durable project runtime and can skip Git checks after `npx` exits. Avoid `npx vibe-fence@0.2.0`; use the source build below until a newer release is published and verified.
+
 You need Node.js 20 or newer, Git, and Bun to build this source checkout. Claude Code and Cursor hooks also require `jq` on your PATH. Run the installer in the project you want to check, not in the vibe-fence checkout:
 
 ```sh

@@ -143,7 +143,7 @@ it("discloses the model request before sending it", async () => {
   console.error = (...args: unknown[]) => { messages.push(args.join(" ")); };
   try {
     let disclosedBeforeRequest = false;
-    mockFetch(() => { disclosedBeforeRequest = messages.join(" ").includes("rule categories"); return okResponse("Review this.", "req_1"); });
+    mockFetch(() => { const notice = messages.join(" "); disclosedBeforeRequest = notice.includes("rule categories") && notice.includes("charges"); return okResponse("Review this.", "req_1"); });
     await explainBlocking(FAILURES, { kind: "check", target: "private" }, { projectRoot: makeProject() });
     expect(disclosedBeforeRequest).toBe(true);
   } finally { console.error = original; }

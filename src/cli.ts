@@ -11,16 +11,7 @@ import { explainBlocking, type ExplainContext, type ExplainFinding } from "./fra
 import { checkpoint, fenceUndo } from "./framework/git.js";
 import { evaluateToolCall } from "./framework/gate.js";
 import { getProtectionStatus } from "./framework/status.js";
-
-function version(): string {
-  try {
-    const pkg = JSON.parse(readFileSync(join(hereDir(), "..", "package.json"), "utf-8") as string) as {
-      version?: string;
-    };
-    if (pkg.version) return pkg.version;
-  } catch {}
-  return "0.0.0-dev";
-}
+import { packageVersion } from "./version.js";
 
 function help(): string {
   return [
@@ -28,18 +19,18 @@ function help(): string {
     "",
     "Usage:",
     "  vibe-fence init [--dry-run] [--contributor-mode] [--full] [--adapters=a,b]",
-    "  vibe-fence check [--json] [--staged] [--push [<range>]] [--explain]",
+    "  vibe-fence check [--json] [--staged] [--push [<range>|--all]] [--explain]",
     "  vibe-fence checkpoint --action <label> [--include-untracked]",
     "  vibe-fence undo [--steps N]",
     "  vibe-fence gate --tool <name> (--args '<json>' | --args-stdin) [--root <dir>] [--explain]",
-    "  vibe-fence status [--host=codex|claude|cursor|opencode] [--json]",
+    "  vibe-fence status [--host=codex|claude|cursor|opencode|antigravity|hermes] [--json]",
     "  vibe-fence --help | --version",
     "",
     "Commands:",
     "  init    Install the fence into the current project (AGENTS.md + .fence/ + skills + adapters)",
     "  check   Run bounded worktree checks (exit 1 for a block or incomplete scan)",
-    "  checkpoint  Snapshot tracked WIP as a checkpoint commit (safe undo point)",
-    "  undo    Revert the last checkpoint(s) — never detaches, never force-pushes",
+    "  checkpoint  Save tracked WIP in a local Git commit without hooks; it can contain secrets",
+    "  undo    Soft-reset unpushed tip checkpoints (edits stay staged), or revert other checkpoints",
     "  gate    Evaluate one tool call (Enforced tier plugins; exit 1 blocks)",
     "  status  Describe configured protection and its verification limits",
     "",
@@ -53,6 +44,7 @@ function help(): string {
     "Options (check):",
     "  --staged             Scan staged blobs (what the next commit contains)",
     "  --push [<range>]     Scan outgoing commits (<old>..<new>; default: pre-push stdin, else @{u}..HEAD)",
+    "  --all                With --push, scan all local refs and the current HEAD",
     "  --json               Emit the report as JSON",
     "  --explain            Ask Meta Muse Spark to explain blocking findings (needs MUSE_API_KEY; check + gate)",
     "",
@@ -121,13 +113,23 @@ function pushRangesFromStdinOrDefault(hookInput: boolean): string[] {
 export async function main(argv: string[]): Promise<number> {
   const [cmd, ...rest] = argv;
   if (cmd === "status") {
-    const host = rest.find((arg) => arg.startsWith("--host="))?.slice("--host=".length) || "unknown";
+    const host = rest.find((arg) => arg.startsWith("--host="))?.slice("--host=".length) || undefined;
     const report = getProtectionStatus(process.cwd(), host);
     if (rest.includes("--json")) console.log(JSON.stringify(report, null, 2));
     else {
-      console.log(`Host: ${report.host}`);
+      const meanings: Record<string, string> = {
+        "configured-unverified": "The hook is configured, but execution has not been verified.",
+        advisory: "There is no verified tool-call block; any guidance is advisory.",
+        degraded: "Some protection is configured, but a required part is missing or changed.",
+        inactive: "The expected hooks are not active in this Git hooks directory.",
+        unverified: "There is not enough information to verify protection for this host.",
+        unavailable: "Git hook status is unavailable for this directory.",
+      };
+      console.log(`Host: ${report.host}${report.autoDetected ? ` (auto-detected from .fence/adapters/${report.host}.json)` : ""}`);
       console.log(`Pre-action protection: ${report.toolGate.state} — ${report.toolGate.next}`);
+      console.log(`  ${meanings[report.toolGate.state] ?? "Review this protection state."}`);
       console.log(`Git hooks: ${report.gitHooks.state} — ${report.gitHooks.next}`);
+      console.log(`  ${meanings[report.gitHooks.state] ?? "Review this protection state."}`);
       if (report.gitHooks.path) console.log(`Git hook directory: ${report.gitHooks.path}`);
       console.log(`Fence executable: ${report.gateExecutable ?? "not found"}`);
     }
@@ -138,7 +140,7 @@ export async function main(argv: string[]): Promise<number> {
     return 0;
   }
   if (cmd === "--version" || cmd === "-V" || cmd === "-v") {
-    console.log(`vibe-fence ${version()}`);
+    console.log(`vibe-fence ${packageVersion()}`);
     return 0;
   }
   if (cmd === "init") {
@@ -174,6 +176,11 @@ export async function main(argv: string[]): Promise<number> {
     const json = rest.includes("--json");
     const staged = rest.includes("--staged");
     const pushIdx = rest.findIndex((a) => a === "--push" || a.startsWith("--push="));
+    const all = rest.includes("--all");
+    if (all && pushIdx === -1) {
+      console.error("vibe-fence: --all requires --push.");
+      return 2;
+    }
     if (staged && pushIdx !== -1) {
       console.error("vibe-fence: check takes at most one of --staged / --push.");
       return 2;
@@ -189,11 +196,15 @@ export async function main(argv: string[]): Promise<number> {
       } else if (rest[pushIdx + 1] && !rest[pushIdx + 1]!.startsWith("--")) {
         range = rest[pushIdx + 1]!;
       }
+      if (all && (range !== null || rest.includes("--hook-input"))) {
+        console.error("vibe-fence: --all cannot be combined with a push range or hook input.");
+        return 2;
+      }
       if (range !== null && !isValidPushRange(range)) {
         console.error(`vibe-fence: bad --push range '${range}' (want <old>..<new> or <rev>).`);
         return 2;
       }
-      report = runPushCheck(process.cwd(), range ? [range] : pushRangesFromStdinOrDefault(rest.includes("--hook-input")));
+      report = runPushCheck(process.cwd(), all ? ["--all"] : range ? [range] : pushRangesFromStdinOrDefault(rest.includes("--hook-input")));
     } else {
       report = runCheck(process.cwd());
     }

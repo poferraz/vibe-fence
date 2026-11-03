@@ -35,6 +35,7 @@ export interface RuleVerdict {
   verdict: Verdict;
   reason: string;
   evidence?: string;
+  line?: number;
 }
 
 // Public-prefix env names per framework: Next.js / Vite / Astro / Expo.
@@ -86,6 +87,7 @@ export function check(ctx: CheckCtx): RuleVerdict {
         `client-bundle secret hard-block: ${varName} — public-prefix env values ship in browser JS; ` +
         `move the secret server-side (Server Action / route handler) and keep only the public value client-side (S-09 block)`,
       evidence: line.trim().slice(0, 200),
+      ...(m.index < content.length ? { line: content.slice(0, m.index).split("\n").length } : {}),
     };
   }
 

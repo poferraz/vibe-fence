@@ -17,6 +17,7 @@
 import { appendProjectEvent } from "./safe-events.js";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { packageVersion } from "../version.js";
 
 // ---------------------------------------------------------------------------
 // Constants — model ids + pricing + caps
@@ -55,7 +56,7 @@ export function defaultFenceConfig(): FenceConfig {
   return {
     version: 1,
     model_mode: "standard",
-    fence_version: "0.1.0",
+    fence_version: packageVersion(),
     updatedAt: new Date().toISOString(),
   };
 }

@@ -10,6 +10,7 @@ import { chmodSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { install, loadPostinstallGuard, ensureGitignore, trackedEnvFiles, isWithinProjectRoot, GITIGNORE_ENTRIES } from "./install";
+import { defaultFenceConfig } from "./framework/meta-client";
 
 const created: string[] = [];
 afterEach(() => {
@@ -23,6 +24,46 @@ function makeProject(): string {
   created.push(root);
   return root;
 }
+
+describe("install version and timing", () => {
+  it("measures an install from its own start, even after a long process delay", async () => {
+    const root = makeProject();
+    const now = Date.now;
+    try {
+      // Simulate a process that has been running for a minute since import.
+      Date.now = () => now() + 60_000;
+      const receipt = await install(root, { adapters: [] });
+      expect(receipt.elapsedMs).toBeLessThan(3_000);
+    } finally {
+      Date.now = now;
+    }
+  });
+
+  it("uses the installed package version for new and fallback configurations", async () => {
+    const root = makeProject();
+    const packageVersion = (JSON.parse(readFileSync(join(import.meta.dir, "..", "package.json"), "utf8")) as { version: string }).version;
+    await install(root, { adapters: [] });
+    const config = JSON.parse(readFileSync(join(root, ".fence", "config.json"), "utf8"));
+    expect(config.fence_version).toBe(packageVersion);
+    expect(defaultFenceConfig().fence_version).toBe(packageVersion);
+  });
+
+  it("upgrades an old config without losing user settings and remains idempotent", async () => {
+    const root = makeProject();
+    const packageVersion = (JSON.parse(readFileSync(join(import.meta.dir, "..", "package.json"), "utf8")) as { version: string }).version;
+    const configPath = join(root, ".fence", "config.json");
+    mkdirSync(join(root, ".fence"), { recursive: true });
+    writeFileSync(configPath, JSON.stringify({ version: 1, fence_version: "0.1.0", model_mode: "contributor", companion: { enabled: false } }));
+    await install(root, { adapters: [] });
+    const updated = readFileSync(configPath, "utf8");
+    const config = JSON.parse(updated);
+    expect(config.fence_version).toBe(packageVersion);
+    expect(config.model_mode).toBe("contributor");
+    expect(config.companion).toEqual({ enabled: false });
+    await install(root, { adapters: [] });
+    expect(readFileSync(configPath, "utf8")).toBe(updated);
+  });
+});
 
 /** Pre-fix inline shim (tools/validate.ts || true swallows everything). */
 const LEGACY_INLINE_SHIM = [

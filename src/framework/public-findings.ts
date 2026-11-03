@@ -21,6 +21,46 @@ export function publicSummary(id: string): string {
   return Object.hasOwn(SUMMARIES, id) ? SUMMARIES[id]! : "A potential issue needs review.";
 }
 
+export type ScanReasonCode = "max-files" | "max-bytes" | "max-commits" | "unreadable" | "unmerged" | "not-git" | "missing-root" | "shallow" | "submodule" | "missing-upstream" | "invalid-range" | "integrity-corrupt";
+
+const REMEDIATIONS: Record<string, string> = {
+  "SEC-01": "Fix: Move the secret to a server-only variable and rotate it if it was shared or committed.",
+  "SEC-02": "Fix: Remove the credential-file access and use an approved secret provider instead.",
+  "SEC-03": "Fix: Remove the credential from tracked code, store it securely, and rotate it if exposed.",
+  "NET-01": "Fix: Download and inspect remote scripts before running them.",
+  "SUP-01": "Fix: Audit or remove unsafe package scripts before running an install.",
+  "CMD-01": "Fix: Review the destructive command and restrict it to the intended target.",
+  "DB-01": "Fix: Review the database operation and use a tested migration or backup plan.",
+  "GIT-01": "Fix: Review the Git operation and use a non-destructive alternative.",
+  "FS-01": "Fix: Keep file operations within the project directory.",
+  "BILL-01": "Fix: Add a limit to the potentially billable operation.",
+  "PRV-09": "Fix: Replace sensitive fixture data with synthetic examples.",
+  "S-06": "Fix: Review with 'git diff -- AGENTS.md .fence/invariants.md'; restore unintended changes or run 'vibe-fence init' to accept intended changes.",
+};
+
+const SCAN_REASONS: Record<ScanReasonCode, { reason: string; remediation: string }> = {
+  "max-files": { reason: "The scan exceeded its file limit.", remediation: "Fix: Reduce the number of eligible files and retry, or review the remaining files manually." },
+  "max-bytes": { reason: "An eligible file exceeded the scan's size limit.", remediation: "Fix: Review the large file manually and reduce its size before retrying." },
+  "max-commits": { reason: "The history scan exceeded its commit limit.", remediation: "Fix: Scan smaller explicit commit ranges and review each range before pushing." },
+  "unreadable": { reason: "An eligible input could not be read or inspected.", remediation: "Fix: Check file access and repository health, then retry the scan." },
+  "unmerged": { reason: "The staged scan found an unresolved merge.", remediation: "Fix: Resolve and stage the conflicted files, then retry." },
+  "not-git": { reason: "Git could not inspect this repository.", remediation: "Fix: Run the command in an accessible Git repository." },
+  "missing-root": { reason: "The project directory is unavailable.", remediation: "Fix: Run the command from an accessible project directory." },
+  "shallow": { reason: "A shallow repository does not contain the full history needed for this scan.", remediation: "Fix: Fetch the complete history and retry." },
+  "submodule": { reason: "A submodule requires a separate scan.", remediation: "Fix: Inspect the submodule and its history separately before pushing." },
+  "missing-upstream": { reason: "This branch has no upstream tracking reference for the history scan.", remediation: "Fix: Configure an upstream, pass an explicit <base>..<head> range, or run './.fence/bin/vibe-fence check --push --all' to scan all local refs." },
+  "invalid-range": { reason: "Git could not resolve the requested history range.", remediation: "Fix: Check the revisions or provide a valid <base>..<head> range." },
+  "integrity-corrupt": { reason: "The integrity baseline is missing, unreadable, or invalid.", remediation: "Fix: Review the instruction files, then run 'vibe-fence init' to create a new baseline." },
+};
+
+export function publicRemediation(id: string): string | undefined {
+  return Object.hasOwn(REMEDIATIONS, id) ? REMEDIATIONS[id] : undefined;
+}
+
+export function publicScanInfo(code: unknown): { reason: string; remediation: string } | undefined {
+  return typeof code === "string" && Object.hasOwn(SCAN_REASONS, code) ? SCAN_REASONS[code as ScanReasonCode] : undefined;
+}
+
 export function safeLocation(path: string): string {
   return path.replace(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g, "?");
 }

@@ -30,14 +30,13 @@ import { installOpenCodeAdapter } from "./adapters/opencode.js";
 import { installAntigravityAdapter } from "./adapters/antigravity.js";
 import { installHermesAdapter } from "./adapters/hermes.js";
 import { installProjectRuntime } from "./framework/project-runtime.js";
+import { packageVersion } from "./version.js";
 import { persistAttestation } from "./framework/integrity.js";
 import { installGitHooks, inspectGitHooks, effectiveHooksDir, canonicalPath, commonHooksDir, hooksRepairCommand, hooksRepairNote } from "./framework/git-hooks.js";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-const START_MS = Date.now();
 
 export const FENCE_SYNC_TOKEN_ENV = "FENCE_SYNC_TOKEN";
 export const CONTRIBUTOR_DISCLOSURE =
@@ -266,7 +265,8 @@ export function trackedEnvFiles(projectRoot: string): string[] {
 // ---------------------------------------------------------------------------
 
 export async function install(projectRoot: string, opts: InstallOptions = {}): Promise<InstallReceipt> {
-  const elapsed = () => Date.now() - START_MS;
+  const startMs = Date.now();
+  const elapsed = () => Date.now() - startMs;
   const modelMode = opts.contributorMode ? "contributor" as const : "standard" as const;
 
   // Refuse an escaping managed root before probes or writes.
@@ -326,13 +326,15 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
     const existing = existsSync(p) ? (() => { try { return JSON.parse(readFileSync(p, "utf-8") as string) as Record<string, unknown>; } catch { return null; } })() : null;
     // Never downgrade contributor → standard silently; respect explicit existing if no flag
     const nextMode = opts.contributorMode ? "contributor" : (existing?.["model_mode"] as string ?? "standard");
+    const fenceVersion = packageVersion();
     // Skip write when nothing changed — init ×3 must be zero-churn (FINAL-v2 §7).
-    const unchanged = existing?.["model_mode"] === nextMode && existing?.["fence_version"] === "0.1.0" && existing?.["version"] === 1;
+    const unchanged = existing?.["model_mode"] === nextMode && existing?.["fence_version"] === fenceVersion && existing?.["version"] === 1;
     if (!opts.dryRun && !unchanged) {
       const config = {
+        ...existing,
         version: 1,
         model_mode: nextMode,
-        fence_version: "0.1.0",
+        fence_version: fenceVersion,
         updatedAt: new Date().toISOString(),
       };
       assertWithinProjectRoot(projectRoot, p);
@@ -508,7 +510,7 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
           }
           const note = repair ? hooksRepairNote(projectRoot) : "";
           console.warn(
-            `[vibe-fence] Git hooks NOT installed: the effective hooks directory is outside an allowed location or cannot be resolved safely (${info.effectiveDir}). ` +
+            `[vibe-fence] ACTION NEEDED — Git hooks were not installed by this run: the effective hooks directory is outside an allowed location or cannot be resolved safely (${info.effectiveDir}). ` +
               `Nothing was written there and Git config was not changed. ` +
               (repair ? `Review the directory and, if appropriate, run \`${repair}\` from the project root, then re-run \`vibe-fence init\`. ` :
                 `Inspect the hooks directory and choose a safe location before re-running \`vibe-fence init\`. `) +

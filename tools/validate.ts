@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
 const DIST = join(ROOT, "dist");
@@ -11,6 +11,28 @@ export interface Problem {
   file: string;
   message: string;
   category: "spec" | "policy" | "host";
+}
+
+const PUBLIC_DOCS = ["README.md", "AGENTS.md", "docs/EVIDENCE.md", "docs/BUILD-PROVENANCE.md", "docs/MAINTAINER.md", "docs/fence/INDEX.md"];
+
+/** Check relative inline Markdown links on disk; candidate tracking is checked at release time. */
+export function validateDocLinks(root: string, files: string[] = PUBLIC_DOCS): Problem[] {
+  const problems: Problem[] = [];
+  for (const file of files) {
+    const source = join(root, file);
+    let content: string;
+    try { content = readFileSync(source, "utf8").replace(/```[\s\S]*?```/g, ""); }
+    catch { problems.push({ file, message: "documentation file is missing or unreadable", category: "spec" }); continue; }
+    for (const match of content.matchAll(/\[[^\]]+\]\(([^)]+)\)/g)) {
+      const raw = match[1]!.trim();
+      const target = (raw.startsWith("<") ? raw.slice(1, raw.indexOf(">")) : raw.split(/\s+/)[0]!).split(/[?#]/)[0]!;
+      if (!target || /^(?:[a-z][a-z0-9+.-]*:|\/\/|\/)/i.test(target)) continue;
+      let decoded: string;
+      try { decoded = decodeURIComponent(target); } catch { decoded = target; }
+      if (!existsSync(resolve(dirname(source), decoded))) problems.push({ file, message: `broken relative link: ${target}`, category: "spec" });
+    }
+  }
+  return problems;
 }
 
 function estimateTokens(text: string): number {
@@ -154,7 +176,11 @@ export function validateSchemas(): Problem[] {
 }
 
 if (import.meta.main) {
-  const problems = [...validateDist(), ...validateSkills(), ...validateSchemas()];
+  const problems = [...validateDist(), ...validateSkills(), ...validateSchemas(), ...validateDocLinks(ROOT)];
+  try {
+    const rootTokens = estimateTokens(readFileSync(join(ROOT, "AGENTS.md"), "utf8"));
+    if (rootTokens > TOKEN_BUDGET) problems.push({ file: "AGENTS.md", message: `AGENTS.md token budget exceeded: ~${rootTokens} > ${TOKEN_BUDGET}`, category: "spec" });
+  } catch { problems.push({ file: "AGENTS.md", message: "AGENTS.md is missing or unreadable", category: "spec" }); }
   if (problems.length === 0) {
     console.log("validate: ok");
   } else {

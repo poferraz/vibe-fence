@@ -140,8 +140,7 @@ export function verifyAttestation(projectRoot: string): IntegrityVerdict {
   for (const [rel, expectedHash] of Object.entries(record.files)) {
     const actual = current[rel];
     if (actual === undefined) {
-      // TODO: file deleted — treat as mismatch (fail) or unknown? Decide per S-06 severity.
-      mismatched.push(`${rel} (deleted)`);
+      mismatched.push(rel);
     } else if (actual !== expectedHash) {
       mismatched.push(rel);
     }
@@ -153,7 +152,7 @@ export function verifyAttestation(projectRoot: string): IntegrityVerdict {
     status: "fail",
     mismatched,
     message:
-      `fence-owned file overwritten outside fence sync — run 'npx vibe-fence diff' to review.\n` +
+      `Attested instruction file changed — run 'git diff -- AGENTS.md .fence/invariants.md' to review.\n` +
       `Mismatched: ${mismatched.join(", ")}`,
   };
 }

@@ -1,6 +1,6 @@
 {
   "name": "vibe-fence",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Bounded local checks for coding-agent workflows and Git changes",
   "type": "module",
   "license": "MIT",

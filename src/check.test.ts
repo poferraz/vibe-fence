@@ -8,7 +8,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync, execSync } from "node:child_process";
-import { runCheck, runIndexCheck, runPushCheck, exitCodeForReport } from "./check";
+import { runCheck, runIndexCheck, runPushCheck, exitCodeForReport, formatHuman, publicReport } from "./check";
 import { persistAttestation, FENCE_SYNC_TOKEN_ENV } from "./framework/integrity";
 
 const created: string[] = [];
@@ -49,6 +49,58 @@ function commitAll(root: string, message: string): void {
 }
 
 const LEAK = "const k = process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY;\n";
+
+describe("actionable public diagnostics", () => {
+  it("reports a secret finding's line and static fix without exposing its evidence", () => {
+    const marker = "SECRET_SENTINEL_99182";
+    const root = makeProject({ "app.ts": `const ok = true;\nconst k = process.env.NEXT_PUBLIC_SECRET; // ${marker}\n` });
+    const report = publicReport(runCheck(root));
+    const finding = report.findings.find(f => f.ruleId === "SEC-01");
+    expect(finding?.line).toBe(2);
+    expect(finding?.remediation).toContain("server");
+    expect(formatHuman(runCheck(root))).toContain("app.ts:2");
+    expect(JSON.stringify(report) + formatHuman(runCheck(root))).not.toContain(marker);
+  });
+
+  it("shows unknown file and rule locations without revealing parse input", () => {
+    const root = makeProject({ "package.json": "{ SECRET_SENTINEL_99182" });
+    const report = runCheck(root);
+    expect(formatHuman(report)).toContain("UNKNOWN SUP-01 [review] package.json");
+    const finding = publicReport(report).findings.find(f => f.ruleId === "SUP-01");
+    expect(finding?.verdict).toBe("unknown");
+    expect(finding?.severity).toBe("warn");
+    expect(JSON.stringify(publicReport(report)) + formatHuman(report)).not.toContain("SECRET_SENTINEL_99182");
+    expect(exitCodeForReport(report)).toBe(0);
+  });
+
+  it("distinguishes size, file-count, and unavailable scan inputs", () => {
+    const root = makeProject({ "a.ts": "abcdef", "b.ts": "ghijkl" });
+    expect(publicReport(runCheck(root, { maxBytesPerFile: 2 })).findings.some(f => f.reasonCode === "max-bytes")).toBe(true);
+    expect(publicReport(runCheck(root, { maxFiles: 1 })).findings.some(f => f.reasonCode === "max-files")).toBe(true);
+    expect(publicReport(runIndexCheck(root)).findings.some(f => f.reasonCode === "not-git")).toBe(true);
+  });
+
+  it("attributes integrity drift to each attested path and clears after repair", () => {
+    const root = makeProject({ "AGENTS.md": "original\n", ".fence/invariants.md": "original\n" });
+    const prior = process.env[FENCE_SYNC_TOKEN_ENV];
+    try {
+      process.env[FENCE_SYNC_TOKEN_ENV] = "test-token";
+      persistAttestation(root);
+      writeFileSync(join(root, "AGENTS.md"), "SECRET_SENTINEL_99182\n");
+      rmSync(join(root, ".fence/invariants.md"));
+      const report = runCheck(root);
+      expect(publicReport(report).findings.filter(f => f.ruleId === "S-06").map(f => f.file).sort()).toEqual([".fence/invariants.md", "AGENTS.md"]);
+      expect(formatHuman(report)).toContain("git diff");
+      expect(formatHuman(report)).not.toContain("SECRET_SENTINEL_99182");
+      expect(formatHuman(report)).not.toContain("vibe-fence diff");
+      writeFileSync(join(root, "AGENTS.md"), "original\n");
+      writeFileSync(join(root, ".fence/invariants.md"), "original\n");
+      expect(runCheck(root).findings.some(f => f.ruleId === "S-06")).toBe(false);
+    } finally {
+      if (prior === undefined) delete process.env[FENCE_SYNC_TOKEN_ENV]; else process.env[FENCE_SYNC_TOKEN_ENV] = prior;
+    }
+  });
+});
 
 describe("check", () => {
   it("fails (exit 1) on a NEXT_PUBLIC_ secret leak", () => {

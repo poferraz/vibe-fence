@@ -61,7 +61,7 @@ export async function explainBlocking(
   const timeoutMs = Math.max(1, Math.min(opts.timeoutMs ?? 15000, 30000));
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    console.error("vibe-fence: sending fixed rule categories and severity to Meta for an optional explanation; source contents and filenames are not included.");
+    console.error("vibe-fence: sending one capped request with fixed rule categories and severity to Meta for an optional explanation; source contents and filenames are not included. Provider token charges may apply.");
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(() => { controller.abort(); reject(new Error("explanation timed out")); }, timeoutMs);
     });

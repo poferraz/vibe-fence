@@ -232,11 +232,12 @@ describe("codex/hermes/antigravity conformance", () => {
     expect(readJson(legacy, ".hermes/config.json")).toEqual({ retries: 3 });
   });
 
-  it("antigravity: writes no host JSON config at all", () => {
+  it("antigravity: writes an internal receipt but no host JSON or claimed tool hook", () => {
     const root = makeProject();
     installAntigravityAdapter(root);
     expect(existsSync(join(root, ".agents", "rules", "antigravity.md"))).toBe(true);
-    expect(existsSync(join(root, ".fence"))).toBe(false);
+    expect(readJson(root, ".fence/adapters/antigravity.json")).toMatchObject({ adapter: "antigravity" });
+    expect(readFileSync(join(root, ".agents", "rules", "antigravity.md"), "utf8")).toContain("advisory");
     const found: string[] = [];
     const walk = (dir: string): void => {
       for (const entry of readdirSync(dir)) {
@@ -246,7 +247,7 @@ describe("codex/hermes/antigravity conformance", () => {
       }
     };
     walk(root);
-    expect(found).toEqual([]);
+    expect(found).toEqual([join(root, ".fence", "adapters", "antigravity.json")]);
   });
 });
 

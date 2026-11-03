@@ -4,7 +4,10 @@
  * Run: bun test tools/validate.test.ts
  */
 import { describe, it, expect } from "bun:test";
-import { lintSkillText } from "./validate";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { lintSkillText, validateDocLinks } from "./validate";
 
 describe("validateSkills ungrounded-critique", () => {
   it("flags ungrounded self-review phrases (bench task 5)", () => {
@@ -24,4 +27,18 @@ describe("validateSkills ungrounded-critique", () => {
     );
     expect(problems).toEqual([]);
   });
+});
+
+it("reports broken relative documentation links while allowing existing links and external URLs", () => {
+  const root = mkdtempSync(join(tmpdir(), "vf-doc-links-"));
+  try {
+    mkdirSync(join(root, "docs"));
+    writeFileSync(join(root, "README.md"), "[ok](docs/a.md#part) [missing](docs/missing.md) [web](https://example.invalid) [here](#section)\n");
+    writeFileSync(join(root, "docs/a.md"), "# A\n");
+    const problems = validateDocLinks(root, ["README.md"]);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]?.message).toContain("docs/missing.md");
+    writeFileSync(join(root, "docs/missing.md"), "# Found\n");
+    expect(validateDocLinks(root, ["README.md"])).toEqual([]);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

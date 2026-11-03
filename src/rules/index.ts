@@ -48,7 +48,7 @@ export interface RuleEntry {
   id: string;
   severity: string;
   description: string;
-  check: (ctx: CheckCtx) => { id: string; verdict: Verdict; reason: string; evidence?: string };
+  check: (ctx: CheckCtx) => { id: string; verdict: Verdict; reason: string; evidence?: string; line?: number };
 }
 
 /** Canonical registry — add new rules here and they become discoverable by tooling. */

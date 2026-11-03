@@ -5,7 +5,7 @@
  * Run: bun test src/cli.test.ts
  */
 import { describe, it, expect, afterEach } from "bun:test";
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync, execSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -116,6 +116,51 @@ describe("cli --profile", () => {
 });
 
 describe("cli status", () => {
+  it("detects one installed adapter and explains the unverified configuration", () => {
+    const root = mkdtempSync(join(tmpdir(), "vf-status-auto-"));
+    created.push(root);
+    execFileSync("git", ["init", "-q", root], { env: gitEnv() });
+    expect(runCli(["init", "--adapters=codex"], { cwd: root, env: gitEnv() }).exit).toBe(0);
+    const json = runCli(["status", "--json"], { cwd: root, env: gitEnv() });
+    const status = JSON.parse(json.stdout);
+    expect(status.host).toBe("codex");
+    expect(status.toolGate.state).toBe("configured-unverified");
+    const human = runCli(["status"], { cwd: root, env: gitEnv() });
+    expect(human.stdout).toContain("auto-detected");
+    expect(human.stdout).toContain("execution has not been verified");
+  });
+
+  it("lists installed adapters when several hosts are possible and reports advisory hosts honestly", () => {
+    const root = mkdtempSync(join(tmpdir(), "vf-status-multiple-"));
+    created.push(root);
+    expect(runCli(["init"], { cwd: root, env: gitEnv() }).exit).toBe(0);
+    const summary = runCli(["status"], { cwd: root, env: gitEnv() });
+    expect(summary.stdout).toContain("codex");
+    expect(summary.stdout).toContain("antigravity");
+    expect(summary.stdout).toContain("--host=");
+    for (const host of ["antigravity", "hermes"]) {
+      const result = runCli(["status", `--host=${host}`, "--json"], { cwd: root, env: gitEnv() });
+      const status = JSON.parse(result.stdout);
+      expect(status.toolGate.state).toBe("advisory");
+      expect(status.toolGate.next).toContain("does not block");
+    }
+  });
+
+  it("warns clearly when redirected Git hooks cannot be installed", () => {
+    const root = mkdtempSync(join(tmpdir(), "vf-status-redirect-"));
+    const outside = mkdtempSync(join(tmpdir(), "vf-status-external-"));
+    created.push(root, outside);
+    execFileSync("git", ["init", "-q", root], { env: gitEnv() });
+    execFileSync("git", ["config", "--local", "core.hooksPath", outside], { cwd: root, env: gitEnv() });
+    const result = spawnSync(process.execPath, [CLI_PATH, "init", "--adapters=codex"], { cwd: root, env: gitEnv(), encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain("ACTION NEEDED");
+    expect(result.stderr).toContain("git config --local core.hooksPath");
+    expect(result.stderr).toContain("vibe-fence init");
+    const status = runCli(["status", "--host=codex", "--json"], { cwd: root, env: gitEnv() });
+    expect(JSON.parse(status.stdout).gitHooks.state).toBe("inactive");
+  });
+
   it("does not claim installation automatically watches the next write", () => {
     const root = mkdtempSync(join(tmpdir(), "vf-init-status-"));
     created.push(root);
@@ -234,6 +279,26 @@ describe("cli gate stdin", () => {
 });
 
 describe("cli check --push/--staged", () => {
+  it("reports a missing upstream and can scan all refs, including a non-current branch", () => {
+    const { root, base } = makePushRepo();
+    const env = gitEnv();
+    execFileSync("git", ["branch", "leaky-branch"], { cwd: root, env });
+    execFileSync("git", ["checkout", "-q", "--detach", base], { cwd: root, env });
+    const missing = runCli(["check", "--push", "--json"], { cwd: root, input: "", env });
+    expect(missing.exit).toBe(1);
+    expect(JSON.parse(missing.stdout).findings.some((f: { reasonCode?: string }) => f.reasonCode === "missing-upstream")).toBe(true);
+    const human = runCli(["check", "--push"], { cwd: root, input: "", env });
+    expect(human.stdout).toContain("check --push --all");
+    const all = runCli(["check", "--push", "--all"], { cwd: root, env });
+    expect(all.exit).toBe(1);
+    expect(all.stdout).toContain("SEC-01");
+  });
+
+  it("rejects combining --all with an explicit range", () => {
+    const { root } = makePushRepo();
+    expect(runCli(["check", "--push", "HEAD", "--all"], { cwd: root, env: gitEnv() }).exit).toBe(2);
+  });
+
   it("--push reads pre-push stdin (real hook protocol) and blocks leaky ranges", () => {
     const { root, base, tip } = makePushRepo();
     const input = `refs/heads/main ${tip} refs/heads/main ${base}\n`;
@@ -380,6 +445,22 @@ describe("cli check --push/--staged", () => {
 });
 
 describe("cli --explain (no live calls — keys scrubbed)", () => {
+  it("keeps JSON output valid and discloses possible charges before a mocked request", () => {
+    const root = mkdtempSync(join(tmpdir(), "vf-explain-json-"));
+    const mockDir = mkdtempSync(join(tmpdir(), "vf-explain-mock-"));
+    created.push(root, mockDir);
+    writeFileSync(join(root, "app.ts"), leakLine("synthetic"));
+    const preload = join(mockDir, "fetch.ts");
+    writeFileSync(preload, 'globalThis.fetch = async () => { console.error("MOCK_REQUEST_STARTED"); return new Response(JSON.stringify({id:"req_safe",output_text:"Move it server-side."}), {status:200}); };');
+    const result = spawnSync(process.execPath, ["--preload", preload, CLI_PATH, "check", "--json", "--explain"], {
+      cwd: root, env: { ...gitEnv(), MUSE_API_KEY: "synthetic-key", META_API_KEY: "" }, encoding: "utf8",
+    });
+    expect(result.status).toBe(1);
+    expect(JSON.parse(result.stdout).blocks).toBeGreaterThan(0);
+    expect(result.stderr).toContain("charges");
+    expect(result.stderr.indexOf("charges")).toBeLessThan(result.stderr.indexOf("MOCK_REQUEST_STARTED"));
+  });
+
   function makeProject(files: Record<string, string>): string {
     const root = mkdtempSync(join(tmpdir(), "vf-exp-"));
     created.push(root);

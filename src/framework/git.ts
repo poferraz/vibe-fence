@@ -152,7 +152,7 @@ export function checkpoint(opts: CheckpointOptions): CheckpointResult {
   } else if (scanResult.status === "blocked") {
     console.warn(
       `vibe-fence: checkpoint ${hash.slice(0, 7)} holds ${scanResult.blockingFindings} blocking finding(s) — ` +
-        `committed as an undo point, NOT as clean. Fix before your real commit.`,
+        `committed as an undo point, NOT as clean. This is local Git history: do not push exposed credentials; rotate them.`,
     );
   }
 
@@ -217,7 +217,7 @@ export function fenceUndo(opts: UndoOptions = {}): CheckpointResult {
     gitArgs(cwd, ["reset", "--soft", parent]);
     const head = git(cwd, "rev-parse HEAD");
     logEvent(cwd, { type: "undo", mode: "reset--soft", steps, hashes: targets });
-    return { committed: false, commitHash: head, message: `undone ${steps} checkpoint(s) via reset --soft — work preserved as staged changes` };
+    return { committed: false, commitHash: head, message: `undone ${steps} checkpoint(s) via reset --soft — work preserved as staged changes. Review with git status; rotate any credential that was exposed.` };
   }
 
   // Revert path — needs a clean tree so a conflict can't strand half-applied state.

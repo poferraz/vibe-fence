@@ -17,10 +17,11 @@ function findExecutable(value: string): string | null {
   return paths.find(executable) ?? null;
 }
 
-export function getProtectionStatus(root: string, host: string) {
+const ADAPTER_IDS = ["antigravity", "claude", "codex", "cursor", "hermes", "opencode"] as const;
+
+export function getProtectionStatus(root: string, host?: string) {
   const node = findExecutable("node");
   const jq = findExecutable("jq");
-  const isClaude = host === "claude" || host === "claude-code";
   let hooksPath: string | null = null;
   let projectRoot = root;
   try {
@@ -28,6 +29,15 @@ export function getProtectionStatus(root: string, host: string) {
     const path = execFileSync("git", ["rev-parse", "--git-path", "hooks"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
     hooksPath = isAbsolute(path) ? path : resolve(root, path);
   } catch {}
+  const installedHosts = ADAPTER_IDS.filter(id => {
+    try {
+      const receipt = JSON.parse(readFileSync(join(projectRoot, ".fence", "adapters", `${id}.json`), "utf8"));
+      return receipt?.version === 1 && receipt.adapter === id && typeof receipt.receipt === "string" && receipt.receipt.includes("vibe-fence");
+    } catch { return false; }
+  });
+  const autoDetected = !host && installedHosts.length === 1;
+  host = host || (autoDetected ? installedHosts[0]! : "unknown");
+  const isClaude = host === "claude" || host === "claude-code";
   const gate = (process.env["FENCE_BIN"] ? findExecutable(process.env["FENCE_BIN"]!) : null) || findExecutable(join(projectRoot, ".fence/bin/vibe-fence")) || findExecutable("vibe-fence");
   const present = hooksPath !== null && HOOK_NAMES.every((name) => {
     const path = join(hooksPath!, name);
@@ -91,17 +101,23 @@ export function getProtectionStatus(root: string, host: string) {
     try { configured = readFileSync(script, "utf8") === buildFenceGuardPlugin(); } catch {}
   }
   const supported = host === "codex" || isClaude || host === "cursor" || host === "opencode";
+  const advisoryHost = host === "antigravity" || host === "hermes";
+  const advisoryReady = advisoryHost && installedHosts.some(id => id === host) && existsSync(join(projectRoot, "AGENTS.md")) &&
+    existsSync(join(projectRoot, ".agents", "skills")) && (host !== "antigravity" || existsSync(join(projectRoot, ".agents", "rules", "antigravity.md")));
   const broken = supported && !configured && configPresent;
   const shellHook = isClaude || host === "cursor";
   const ready = Boolean(gate && node && (!shellHook || jq));
   const gitReady = Boolean(gate && (gate !== join(projectRoot, ".fence/bin/vibe-fence") || node));
-  const toolState = !supported ? "unverified" : broken ? "degraded" : !configured ? "advisory" : ready ? "configured-unverified" : "degraded";
+  const toolState = advisoryHost ? advisoryReady ? "advisory" : "unverified" : !supported ? "unverified" : broken ? "degraded" : !configured ? "advisory" : ready ? "configured-unverified" : "degraded";
   const hostLabel = isClaude ? "Claude Code" : host === "cursor" ? "Cursor" : host === "opencode" ? "OpenCode" : "Codex";
   return {
     host,
+    installedHosts,
+    autoDetected,
     toolGate: {
       state: toolState,
-      next: !supported ? "Select a supported host with --host=codex, --host=claude, --host=cursor, or --host=opencode to inspect its local configuration." :
+      next: advisoryHost ? advisoryReady ? "This adapter provides guidance only and does not block tool calls. Use Git hooks and run './.fence/bin/vibe-fence check'." : "Advisory guidance or its install receipt is missing; run 'vibe-fence init' for this host." :
+        !supported ? installedHosts.length > 1 && host === "unknown" ? `Installed adapters: ${installedHosts.join(", ")}. Select one with --host=<name> to inspect its local configuration.` : "Select a supported host with --host=codex, --host=claude, --host=cursor, --host=opencode, --host=antigravity, or --host=hermes to inspect its local configuration." :
         broken ? `${hostLabel} hook files are present but do not match the managed hook; repair or reinstall them, then verify in a real session.` :
         !configured ? `${hostLabel} guidance alone does not block tool calls; install the supported hook.` :
         !ready ? (shellHook ? "The hook is configured but its fence or jq executable is unavailable." : "The hook is configured but its fence or Node executable is unavailable.") :

@@ -95,6 +95,8 @@ The reviewed source candidate `7b26efdaf3a024d1e9d307ad6c70cbd08992d9c4` passed 
 
 The published `vibe-fence@0.2.1` tarball has registry SHA-1 `b928c1502064efc30672201387e8f0cf1e2f0d3a`, matching the reviewed local tarball. In a fresh disposable Git project without Bun or a global fence executable on PATH, `npx --yes vibe-fence@0.2.1 init --adapters=codex` created the local runtime, which reported version 0.2.1 and an unverified Codex configuration. A synthetic SEC-01 commit was blocked, and the corrected commit succeeded. The registry deprecation notice for `0.2.0` was also verified. This does not establish live host interception.
 
+The npm package page still displays the source-install advice included in the 0.2.1 tarball before publication. The repository README has the verified npm command; [npm updates the package page README when a new version is published](https://docs.npmjs.com/about-package-readme-files/).
+
 A separate user-authorized direct Muse Spark request using a synthetic SEC-01 finding returned an explanation. The recorded response is stored locally in the private demo materials; it is not evidence of a host interception or a live response during a future recording. The successful request reported 64 input and 185 output tokens; estimated standard-rate cost was $0.000866 before adjustments. An earlier invalid-response request did not report usage, so total spend is unknown.
 
 ## Meta model integration and recorded synthetic example

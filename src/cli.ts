@@ -33,7 +33,7 @@ function help(): string {
     "  vibe-fence checkpoint --action <label> [--include-untracked] [--allow-secrets-in-checkpoint]",
     "  vibe-fence undo [--steps N]",
     "  vibe-fence gate --tool <name> (--args '<json>' | --args-stdin) [--root <dir>] [--explain]",
-    "  vibe-fence status [--host=codex|claude|cursor|opencode|antigravity|hermes] [--json]",
+    "  vibe-fence status [--host=muse|codex|claude|cursor|opencode|antigravity|hermes] [--json]",
     "  vibe-fence doctor [--host=<name>] [--json]",
     "  vibe-fence uninstall [--dry-run]",
     "  vibe-fence reset",
@@ -59,7 +59,7 @@ function help(): string {
     `  --adapters=<list>    Subset of: ${DEFAULT_ADAPTER_IDS.join(", ")} (default: detected hosts)`,
     "  --host=<list>        Alias for --adapters",
     "  --no-package-scripts Do not add convenience npm scripts",
-    "  --profile=muse        Preset: Claude adapter (demo-hero path; overridden by --adapters)",
+    "  --profile=muse        Preset: Muse Code adapter (overridden by --adapters)",
     "",
     "Options (check):",
     "  --staged             Scan staged blobs (what the next commit contains)",
@@ -230,7 +230,7 @@ export async function main(argv: string[]): Promise<number> {
     const adapters = adaptersArg || hostFlag >= 0
       ? hosts
       : profile === "muse"
-        ? ["claude"]
+        ? ["muse"]
         : undefined;
     await install(process.cwd(), {
       dryRun: rest.includes("--dry-run"),
@@ -402,7 +402,7 @@ export async function main(argv: string[]): Promise<number> {
       console.error("vibe-fence: gate --args must be a JSON object.");
       return 2;
     }
-    const findings = evaluateToolCall({ tool, args: args as Record<string, unknown>, projectRoot });
+    const findings = evaluateToolCall({ tool, args: args as Record<string, unknown>, projectRoot, workingDirectory: process.cwd() });
     if (findings.length === 0) return 0;
     for (const f of findings) {
       const summary = f.ruleId === "BILL-01" && f.reason.startsWith("Network command limit reached")

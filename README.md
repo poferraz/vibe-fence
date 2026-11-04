@@ -14,6 +14,10 @@
 
 vibe-fence checks selected risky patterns in coding-agent actions and Git changes, then explains findings in plain language. It runs locally, and its deterministic checks don't require an AI model.
 
+**Hackathon scope.** I started with a personal scaffold containing research, adapter scaffolds, Git helpers and preliminary rules. After the reported kickoff I expanded the checks and Git scanning, added the opt-in Muse Spark explanation, and built later hardening, evaluation and the Muse Code integration. The [provenance matrix](docs/BUILD-PROVENANCE.md) separates the dates and their limits.
+
+**How Meta fits.** The local rules make the block decision; Muse Code can use its own Muse model to help the builder understand and repair a blocked action. Separately, opt-in `--explain` uses Muse Spark to explain fixed finding categories without sending source code, filenames or tool arguments. Your coding agent handles its own context separately. A failed explanation does not change the local decision.
+
 <img src="docs/assets/terminal-demo.svg" alt="Illustrative terminal showing initialization, a local diagnostic and an SEC-01 finding with a copyable fix prompt" width="1200">
 
 ## Get started
@@ -24,6 +28,18 @@ You need **Node.js 20 or newer** and Git. In your project folder, run:
 npx --yes vibe-fence init
 npx vibe-fence doctor
 ```
+
+For Muse Code, install its project hook explicitly, then start a new Muse session and trust the project when prompted:
+
+```sh
+npx --yes vibe-fence init --profile=muse
+npx vibe-fence doctor --host=muse
+muse
+```
+
+Muse Code loads project hooks at session startup. Installing while a session is open does not activate the hook in that existing session. Use a disposable project to confirm the hook runs on the actions you care about.
+
+The [Muse Code demo guide](https://github.com/poferraz/vibe-fence/blob/main/demo/MUSE-RECORDING-GUIDE.md) walks through a synthetic before-and-after rehearsal.
 
 The installer looks for coding tools in the project and then your home directory. When none are detected, it selects Codex, Claude Code, Cursor and OpenCode. Choose explicitly if you prefer:
 
@@ -67,6 +83,7 @@ The pre-tool gate evaluates a subset of rules for supported tool calls; worktree
 
 | Host | Integration | What to verify |
 |---|---|---|
+| Muse Code | Project `PreToolUse` hook | Trust the project, restart Muse, and exercise the hook in a real session |
 | Claude Code | Project `PreToolUse` hook | Trust and exercise the hook in a real session |
 | Cursor | Project `preToolUse` hook | Exercise the hook in a real session |
 | Codex | Project pre-tool hook for supported actions | Enable and exercise the hook in a real session |
@@ -74,7 +91,9 @@ The pre-tool gate evaluates a subset of rules for supported tool calls; worktree
 | Antigravity | Project guidance and skills | Advisory only; no tool-call block is claimed |
 | Hermes | Project guidance and skills | Advisory only; no tool-call block is claimed |
 
-Claude Code, Cursor and Codex hook scripts use Node.js; `jq` is not required. The hooks do not cover every action or tool. Git checks depend on the effective hooks directory and the availability of the local runtime.
+Muse Code, Claude Code, Cursor and Codex hook scripts use Node.js; `jq` is not required. The hooks do not cover every action or tool. Git checks depend on the effective hooks directory and the availability of the local runtime.
+
+For Muse's `edit_file` find/replace calls, the gate inspects the affected lines in the existing file. If the file cannot be safely read, is larger than 64 KiB, or the match is missing or ambiguous, it blocks that edit as incomplete. Other tool shapes retain their documented limits. Re-run `init --profile=muse` after moving the project so its hook points to the new location.
 
 <img src="docs/assets/architecture.svg" alt="Supported agent actions pass through a pre-tool gate; Git commits and pushes pass through hooks and local checks" width="1200">
 

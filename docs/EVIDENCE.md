@@ -1,5 +1,15 @@
 # Evaluation evidence
 
+## November 4: Muse Code synthetic host rehearsal
+
+On a working candidate based on public `v0.3.0`, disposable Muse Code 1.4.14 sessions using `muse-spark-1.3` attempted to introduce a synthetic public-secret-shaped environment reference. Before installing the Muse adapter, Muse's `write_file` created the file. After `init --profile=muse` and a fresh trusted session, the `PreToolUse` hook returned a SEC-01 block; Muse reported the denial and the file was not created. A separate before-and-after rehearsal used the same prompt to edit an existing page: Muse's `edit_file` changed the page before installation, and the hook blocked the edit after installation. No real credential was placed in either fixture. The earlier `v0.3.0` local `--explain` path also returned a separate live Spark response to a synthetic finding.
+
+This is one observed host, tool and input, not proof that every Muse action is intercepted. Project hooks require workspace trust and a session restart after installation; unsupported tools, oversized inputs, hook failures, and bypasses remain limitations. The release candidate's commit and full verification results must be checked separately.
+
+The same synthetic edit was also blocked after installing a locally packed `0.4.0` candidate into a fresh project. On macOS with Bun 1.3.14 and Node 26.12.0, that working candidate passed typecheck, build, validation, **499 tests with 4 PostgreSQL-dependent skips**, evaluation (36 positive, 35 negative, one unknown), and package dry run. These are local candidate results; they do not by themselves establish a published package or a tested final commit.
+
+A later hardened `0.4.0` candidate passed the same local checks with **505 tests passed, 4 PostgreSQL-dependent skips, and 0 failures**; evaluation remained 36 positive, 35 negative, and one unknown. A fresh local tarball install was exercised with the actual Muse API and Muse Code using the exact synthetic recording prompt: the unsafe edit landed before installation, the Muse hook reported SEC-01 after installation, and the original page remained unchanged. The doctor probe also ran successfully. A separate real-Muse rehearsal removed an existing unsafe line successfully. These are bounded observations of the local candidate, not proof of registry publication or coverage of every action.
+
 This page records what has been measured, on which revision, and what remains
 unknown. It is deliberately narrow: a passing suite supports the specific claim
 next to it, not a general claim that the tool is safe.

@@ -39,6 +39,35 @@ describe("gate", () => {
     }
   });
 
+  it("blocks Muse Code read_file from reading credential paths", () => {
+    for (const path of [".env", "./.env", "src/.env.local", "/tmp/project/.env"]) {
+      const findings = evaluateToolCall({ tool: "read_file", args: { path } });
+      expect(findings.map(f => f.ruleId)).toContain("SEC-02");
+    }
+    expect(evaluateToolCall({ tool: "read_file", args: { path: "src/.env.example" } })).toEqual([]);
+    expect(evaluateToolCall({ tool: "read_file", args: { path: "README.md" } })).toEqual([]);
+  });
+
+  it("checks the result of a Muse edit while allowing removal of a risky reference", () => {
+    const root = mkdtempSync(join(tmpdir(), "vf-muse-edit-"));
+    created.push(root);
+    const file = join(root, "billing.ts");
+    const risky = "const k = process.env.NEXT_PUBLIC_STRIPE_SECRET_KEY;";
+    writeFileSync(file, `${risky}\n`);
+    const repair = evaluateToolCall({ tool: "edit_file", args: { path: "billing.ts", find: risky, replace: "const k = serverKey;" }, projectRoot: root });
+    expect(repair.map(f => f.ruleId)).not.toContain("SEC-01");
+    writeFileSync(file, "const k = process.env.NEXT_PUBLIC_API_URL;\n");
+    const introduced = evaluateToolCall({ tool: "edit_file", args: { path: "billing.ts", find: "API_URL", replace: "STRIPE_SECRET_KEY" }, projectRoot: root });
+    expect(introduced.map(f => f.ruleId)).toContain("SEC-01");
+  });
+
+  it("does not silently pass a Muse edit when its existing file cannot be inspected", () => {
+    const root = mkdtempSync(join(tmpdir(), "vf-muse-missing-"));
+    created.push(root);
+    const findings = evaluateToolCall({ tool: "edit_file", args: { path: "missing.ts", find: "API_URL", replace: "STRIPE_SECRET_KEY" }, projectRoot: root });
+    expect(findings.map(f => f.ruleId)).toContain("EDIT-SCAN");
+  });
+
   it("blocks shell reads of credential paths (SEC-02 via command verb)", () => {
     const findings = evaluateToolCall({ tool: "bash", args: { command: "cat ~/.ssh/id_rsa" } });
     expect(findings.map((f) => f.ruleId)).toContain("SEC-02");

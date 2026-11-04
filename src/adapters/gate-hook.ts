@@ -11,9 +11,19 @@ exec node "$(dirname "$0")/fence-gate.cjs" "$@"
 `;
 
 /** Host hooks must not put tool arguments in process arguments or output. */
-export function buildGateHook(codex = false): string {
+export function buildGateHook(codex = false, pinnedProjectRoot?: string): string {
   const marker = codex ? "vibe-fence managed Codex hook" : GATE_HOOK_CONTENT_MARKER;
   const remediations = Object.fromEntries(["SEC-01", "SEC-02", "SEC-03", "NET-01", "SUP-01", "CMD-01", "DB-01", "GIT-01", "FS-01", "BILL-01", "PRV-09"].map(id => [id, publicRemediation(id)]));
+  const rootSetup = pinnedProjectRoot !== undefined
+    ? `const root = resolve(${JSON.stringify(pinnedProjectRoot)});`
+    : `let root = resolve(start), probe = root;
+  // Stop at a nested worktree's Git marker before selecting its runtime.
+  while (true) {
+    if (existsSync(join(probe, ".fence", "config.json")) || existsSync(join(probe, ".git"))) { root = probe; break; }
+    const parent = dirname(probe);
+    if (parent === probe) break;
+    probe = parent;
+  }`;
   return `// ${marker} — reinstall with vibe-fence init.
 const { readFileSync, accessSync, constants, statSync, writeSync, existsSync } = require("node:fs");
 const { join, delimiter, isAbsolute, extname, basename, dirname, resolve } = require("node:path");
@@ -34,15 +44,7 @@ try {
     process.exit(0);
   }
   const start = (typeof event.cwd === "string" && event.cwd) || process.env.CLAUDE_PROJECT_DIR || process.env.CURSOR_PROJECT_DIR || process.cwd();
-  let root = resolve(start), probe = root;
-  // Claude can keep the original hook path after entering another worktree.
-  // Stop at that worktree's Git marker even if it has no local fence config.
-  while (true) {
-    if (existsSync(join(probe, ".fence", "config.json")) || existsSync(join(probe, ".git"))) { root = probe; break; }
-    const parent = dirname(probe);
-    if (parent === probe) break;
-    probe = parent;
-  }
+  ${rootSetup}
   const executable = (name) => {
     if (!name) return null;
     const paths = isAbsolute(name) || name.includes("/") || name.includes("\\\\") ? [name] : (process.env.PATH || "").split(delimiter).map(p => join(p || ".", name));
@@ -58,7 +60,8 @@ try {
   const result = spawnSync(nodeScript ? process.execPath : bin, nodeScript ? [bin, ...gateArgs] : gateArgs, { input: JSON.stringify(args), encoding: "utf8", timeout: 10000 });
   if (result.status === 1) {
     const ids = [...new Set((result.stdout || "").match(/\\b[A-Z]+-\\d{2}\\b/g) || [])];
-    if (/\\bCIRCUIT-OPEN\\b/.test(result.stdout || "")) process.stderr.write("vibe-fence circuit breaker is open. Stop retrying and ask the user; run vibe-fence reset after review.\\n");
+    if (/\\bEDIT-SCAN\\b/.test(result.stdout || "")) process.stderr.write("vibe-fence could not inspect the existing file for this edit. Check its path and size, then retry.\\n");
+    else if (/\\bCIRCUIT-OPEN\\b/.test(result.stdout || "")) process.stderr.write("vibe-fence circuit breaker is open. Stop retrying and ask the user; run vibe-fence reset after review.\\n");
     else if ((result.stdout || "").includes("Network command limit reached")) process.stderr.write("vibe-fence network command limit reached. Review the loop and run vibe-fence reset after review; this count does not measure cloud spend.\\n");
     else process.stderr.write("vibe-fence blocked this action" + (ids.length ? " (" + ids.join(", ") + ")" : "") + ".\\n");
     let level = "max";

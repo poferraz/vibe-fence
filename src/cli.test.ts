@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, afterEach } from "bun:test";
 import { execFileSync, execSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { installCodexAdapter } from "./adapters/codex";
@@ -99,16 +99,57 @@ describe("cli --profile", () => {
     expect(JSON.parse(readFileSync(join(root, ".fence/config.json"), "utf8")).adapters).toEqual([]);
   });
 
-  it("--profile muse selects the Claude adapter preset", () => {
+  it("--profile muse selects the Muse Code adapter preset", () => {
     const r = runCli(["init", "--profile", "muse", "--dry-run"]);
     expect(r.exit).toBe(0);
-    expect(r.stdout).toContain("would install adapters: claude");
+    expect(r.stdout).toContain("would install adapters: muse");
   });
 
   it("--profile=muse equals form works", () => {
     const r = runCli(["init", "--profile=muse", "--dry-run"]);
     expect(r.exit).toBe(0);
-    expect(r.stdout).toContain("would install adapters: claude");
+    expect(r.stdout).toContain("would install adapters: muse");
+  });
+
+  it("installs and removes Muse Code hooks without discarding other user hooks", () => {
+    const root = mkdtempSync(join(tmpdir(), "vf-muse-cli-"));
+    created.push(root);
+    execFileSync("git", ["init", "-q"], { cwd: root, env: gitEnv() });
+    mkdirSync(join(root, ".muse"));
+    const configPath = join(root, ".muse/hooks.json");
+    writeFileSync(configPath, JSON.stringify({ hooks: { PreToolUse: [{ matcher: "Read", hooks: [{ type: "command", command: "node .custom/fence-gate.cjs" }] }, { matcher: "Write", hooks: [] }] } }));
+    expect(runCli(["init", "--profile=muse"], { cwd: root, env: gitEnv() }).exit).toBe(0);
+    const status = runCli(["status", "--host=muse", "--json"], { cwd: root, env: gitEnv() });
+    expect(status.exit).toBe(0);
+    expect(JSON.parse(status.stdout).toolGate.state).toBe("configured-unverified");
+    const config = JSON.parse(readFileSync(configPath, "utf8"));
+    config.hooks.Stop = [{ hooks: [{ type: "command", command: "my-stop" }] }];
+    writeFileSync(configPath, JSON.stringify(config));
+    expect(runCli(["uninstall"], { cwd: root, env: gitEnv() }).exit).toBe(0);
+    const remaining = JSON.parse(readFileSync(configPath, "utf8"));
+    expect(remaining.hooks.PreToolUse).toHaveLength(2);
+    expect(remaining.hooks.PreToolUse[0].hooks[0].command).toBe("node .custom/fence-gate.cjs");
+    expect(remaining.hooks.PreToolUse[1]).toEqual({ matcher: "Write", hooks: [] });
+    expect(remaining.hooks.Stop[0].hooks[0].command).toBe("my-stop");
+    expect(existsSync(join(root, ".muse/hooks/fence-gate.cjs"))).toBe(false);
+  });
+
+  it("blocks a staged public secret reference even with an unrelated example comment", () => {
+    const root = mkdtempSync(join(tmpdir(), "vf-sec01-comment-"));
+    created.push(root);
+    execFileSync("git", ["init", "-q"], { cwd: root, env: gitEnv() });
+    expect(runCli(["init", "--adapters=none"], { cwd: root, env: gitEnv() }).exit).toBe(0);
+    const file = join(root, "billing.ts");
+    writeFileSync(file, "const key = process.env.NEXT_PUBLIC_STRIPE_SECRET_KEY; // example payment route\n");
+    execFileSync("git", ["add", "billing.ts"], { cwd: root, env: gitEnv() });
+    const scan = runCli(["check", "--staged"], { cwd: root, env: gitEnv() });
+    expect(scan.exit).toBe(1);
+    expect(scan.stdout).toContain("SEC-01");
+    const commitArgs = ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qm", "fixture"];
+    expect(spawnSync("git", commitArgs, { cwd: root, env: gitEnv() }).status).toBe(1);
+    writeFileSync(file, "export const message = 'ready';\n");
+    execFileSync("git", ["add", "billing.ts"], { cwd: root, env: gitEnv() });
+    expect(spawnSync("git", commitArgs, { cwd: root, env: gitEnv() }).status).toBe(0);
   });
 
   it("explicit --adapters overrides --profile", () => {

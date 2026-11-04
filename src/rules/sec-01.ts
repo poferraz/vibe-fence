@@ -44,9 +44,18 @@ const PUBLIC_PREFIX_RE = /\b(?:NEXT_PUBLIC_|VITE_|EXPO_PUBLIC_|PUBLIC_)([A-Z0-9_
 // Secret-shaped keywords that must never sit under a public prefix.
 const SECRET_KEYWORD_RE = /(?:SECRET|SERVICE_ROLE|PRIVATE|TOKEN)/;
 
-// Placeholder values are docs/templates, not leaks.
-const PLACEHOLDER_RE =
-  /\b(?:your[-_ ]?(?:key|secret|token|value)|changeme|example|sample|dummy|placeholder|xxx+|test123|insert[-_ ]?here)\b/i;
+// Only an entire assignment value can establish that a variable is a placeholder.
+const PLACEHOLDER_VALUE_RE =
+  /^(?:your[-_ ]?(?:key|secret|token|value)(?:[-_ ]?here)?|changeme|example|sample|dummy|placeholder|xxx+|test123|insert[-_ ]?here)$/i;
+
+function isPlaceholderAssignment(line: string, index: number, varName: string): boolean {
+  // Restrict this exemption to an env-style assignment, not a reference in code.
+  if (!/^\s*(?:export\s+)?$/.test(line.slice(0, index))) return false;
+  const rest = line.slice(index + varName.length);
+  const match = rest.match(/^\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s#;]+))\s*(?:#.*)?$/);
+  const value = match?.[1] ?? match?.[2] ?? match?.[3];
+  return value !== undefined && PLACEHOLDER_VALUE_RE.test(value);
+}
 
 // Files where a match is documentation, not a leak.
 function isDocLike(filePath: string | undefined): boolean {
@@ -73,11 +82,11 @@ export function check(ctx: CheckCtx): RuleVerdict {
     const suffix = m[1] ?? "";
     if (!SECRET_KEYWORD_RE.test(suffix)) continue;
     const varName = m[0];
-    // Placeholder on the same line → template, not a leak.
+    // An unrelated comment or string must not suppress a live reference.
     const lineStart = haystack.lastIndexOf("\n", m.index) + 1;
     const lineEnd = haystack.indexOf("\n", m.index + varName.length);
     const line = haystack.slice(lineStart, lineEnd === -1 ? undefined : lineEnd);
-    if (PLACEHOLDER_RE.test(line)) continue;
+    if (isPlaceholderAssignment(line, m.index - lineStart, varName)) continue;
     // Quoted or commented on its line → mention (fixture/docs), not a reference.
     if (isQuotedOrCommented(line, m.index - lineStart)) continue;
     return {

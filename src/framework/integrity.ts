@@ -48,6 +48,8 @@ export const FENCE_OWNED_FILES: readonly string[] = [
   ".cursor/hooks/fence-gate.cjs",
   ".codex/hooks.json",
   ".codex/hooks/fence-gate.cjs",
+  ".muse/hooks.json",
+  ".muse/hooks/fence-gate.cjs",
   ".opencode/plugins/fence-guard.js",
 ] as const;
 

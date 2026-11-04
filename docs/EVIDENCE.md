@@ -10,6 +10,8 @@ The same synthetic edit was also blocked after installing a locally packed `0.4.
 
 A later hardened `0.4.0` candidate passed the same local checks with **505 tests passed, 4 PostgreSQL-dependent skips, and 0 failures**; evaluation remained 36 positive, 35 negative, and one unknown. A fresh local tarball install was exercised with the actual Muse API and Muse Code using the exact synthetic recording prompt: the unsafe edit landed before installation, the Muse hook reported SEC-01 after installation, and the original page remained unchanged. The doctor probe also ran successfully. A separate real-Muse rehearsal removed an existing unsafe line successfully. These are bounded observations of the local candidate, not proof of registry publication or coverage of every action.
 
+A further user-authorized `check --explain` rehearsal on the synthetic page returned a live `muse-spark-1.3` explanation of SEC-01; the deterministic check remained blocked. This tests the optional explanation path separately from the Muse Code host session.
+
 This page records what has been measured, on which revision, and what remains
 unknown. It is deliberately narrow: a passing suite supports the specific claim
 next to it, not a general claim that the tool is safe.

@@ -30,7 +30,7 @@ Before the event, I had a personal scaffold with research, adapter scaffolds, Gi
 
 ## Evidence and judge test
 
-The public repository includes the rule implementation, adapter and tests. Local verification and its limits are recorded in [EVIDENCE.md](../docs/EVIDENCE.md). To reproduce, use a disposable Git project, install with `npx --yes vibe-fence@0.4.0 init --profile=muse` once that version is published, start a new trusted Muse session, and exercise a synthetic action. The [recording guide](MUSE-RECORDING-GUIDE.md) contains the exact prompt and expected before-and-after results.
+The submission candidate includes the rule implementation, adapter and tests. Local verification and its limits are recorded in [EVIDENCE.md](../docs/EVIDENCE.md). To reproduce, use a disposable Git project, install the verified package, start a new trusted Muse session, and exercise a synthetic action. The [recording guide](MUSE-RECORDING-GUIDE.md) contains the exact prompt, package options and expected before-and-after results.
 
 - Repository: https://github.com/poferraz/vibe-fence
 - Verified revision: **[fill in after publication]**

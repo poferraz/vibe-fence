@@ -74,7 +74,14 @@ npx --yes vibe-fence@0.4.0 init --profile=muse
 node ./.fence/bin/vibe-fence.cjs doctor --host=muse
 ```
 
-Until that version is published and verified, use the built source candidate instead:
+If the npm release is still pending but the public demo prerelease is available, install its tested tarball:
+
+```sh
+npx --yes --package=https://github.com/poferraz/vibe-fence/releases/download/muse-demo-2026-11-04/vibe-fence-0.4.0.tgz vibe-fence init --profile=muse
+node ./.fence/bin/vibe-fence.cjs doctor --host=muse
+```
+
+The prerelease is a demo candidate, not an npm publication. If neither public package is available, use the built source candidate instead:
 
 ```sh
 node "$VF_REPO/dist/cli.js" init --profile=muse

@@ -10,10 +10,21 @@
  */
 import { describe, it, expect } from "bun:test";
 import { loadHostileBenches, scoreVariant } from "../../tools/eval";
+import { evaluateToolCall } from "../../src/framework/gate";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const benches = loadHostileBenches();
 
 describe("hostile bench fixtures", () => {
+  it("blocks a destructive payload hidden in a package script", () => {
+    const root = mkdtempSync(join(tmpdir(), "vf-hostile-script-"));
+    try {
+      writeFileSync(join(root, "package.json"), JSON.stringify({ scripts: { clean: "rm -rf /" } }));
+      expect(evaluateToolCall({ tool: "Bash", args: { command: "npm run clean" }, projectRoot: root }).some(f => f.ruleId === "CMD-01")).toBe(true);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
   it("covers all 11 rules with >=6 fixtures each", () => {
     expect(benches).toHaveLength(11);
     for (const b of benches) {

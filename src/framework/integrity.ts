@@ -9,8 +9,9 @@
  */
 
 import { createHash } from "node:crypto";
-import { readFileSync, existsSync, writeFileSync, lstatSync, constants, openSync, closeSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync, writeFileSync, lstatSync, constants, openSync, closeSync } from "node:fs";
 import { join } from "node:path";
+import { adapterPathsSafe } from "../adapters/safe-paths.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -38,9 +39,22 @@ export type IntegrityVerdict =
 export const FENCE_OWNED_FILES: readonly string[] = [
   "AGENTS.md",
   ".fence/invariants.md",
-  // TODO: add .fence/queue.json schema hash when queue stabilizes (M2)
-  // TODO: add .agents/skills/**/SKILL.md hashes if skills become fence-owned (M3)
+  ".fence/config.json",
+  ".fence/bin/vibe-fence",
+  ".fence/bin/vibe-fence.cjs",
+  ".claude/settings.json",
+  ".claude/hooks/fence-gate.cjs",
+  ".cursor/hooks.json",
+  ".cursor/hooks/fence-gate.cjs",
+  ".codex/hooks.json",
+  ".codex/hooks/fence-gate.cjs",
+  ".opencode/plugins/fence-guard.js",
 ] as const;
+
+export function isAttestedPath(path: string): boolean {
+  if (FENCE_OWNED_FILES.includes(path)) return true;
+  return /^\.fence\/runtime\/versions\/[A-Za-z0-9._+-]+-[a-f0-9]{64}\/(?:dist\/(?:[^/.][^/]*\/)*[^/.][^/]*|package\.json)$/.test(path);
+}
 
 /** A workflow marker, not authentication or a security boundary. */
 export const FENCE_SYNC_TOKEN_ENV = "FENCE_SYNC_TOKEN";
@@ -68,6 +82,7 @@ export function sha256Hex(content: string | Buffer): string {
 export function computeAttestation(projectRoot: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const rel of FENCE_OWNED_FILES) {
+    if (!adapterPathsSafe(projectRoot, [rel])) throw new Error("unsafe attested path");
     const abs = join(projectRoot, rel);
     if (!existsSync(abs)) {
       // TODO: emit nudge — missing fence-owned file is not a block, but log it
@@ -75,6 +90,23 @@ export function computeAttestation(projectRoot: string): Record<string, string> 
     }
     const content = readFileSync(abs);
     out[rel] = sha256Hex(content);
+  }
+  // Include the active content-addressed runtime, but not mutable state or logs.
+  const launcher = join(projectRoot, ".fence/bin/vibe-fence.cjs");
+  if (existsSync(launcher)) {
+    const match = /"versions",\s*"([A-Za-z0-9._+-]+-[a-f0-9]{64})"/.exec(readFileSync(launcher, "utf8"));
+    if (match) {
+      const base = `.fence/runtime/versions/${match[1]}`;
+      const visit = (rel: string): void => {
+        if (!adapterPathsSafe(projectRoot, [rel])) throw new Error("unsafe runtime path");
+        const stat = lstatSync(join(projectRoot, rel));
+        if (stat.isDirectory()) for (const name of readdirSync(join(projectRoot, rel)).sort()) visit(`${rel}/${name}`);
+        else if (stat.isFile() && isAttestedPath(rel)) out[rel] = sha256Hex(readFileSync(join(projectRoot, rel)));
+        else throw new Error("unsupported runtime entry");
+      };
+      visit(`${base}/dist`);
+      visit(`${base}/package.json`);
+    }
   }
   return out;
 }
@@ -130,7 +162,7 @@ export function verifyAttestation(projectRoot: string): IntegrityVerdict {
   try {
     record = JSON.parse(readFileSync(storePath, "utf-8"));
     if (!record || record.version !== 1 || !record.files || typeof record.files !== "object" || Array.isArray(record.files) || Object.keys(record.files).length === 0 ||
-      Object.entries(record.files).some(([path, hash]) => !FENCE_OWNED_FILES.includes(path) || typeof hash !== "string" || !/^[a-f0-9]{64}$/.test(hash))) {
+      Object.entries(record.files).some(([path, hash]) => !isAttestedPath(path) || typeof hash !== "string" || !/^[a-f0-9]{64}$/.test(hash))) {
       return { status: "unknown", reason: "invalid attestation record" };
     }
     current = computeAttestation(projectRoot);
@@ -144,6 +176,9 @@ export function verifyAttestation(projectRoot: string): IntegrityVerdict {
     } else if (actual !== expectedHash) {
       mismatched.push(rel);
     }
+  }
+  if (Object.keys(record.files).some(path => path.startsWith(".fence/runtime/versions/"))) {
+    for (const rel of Object.keys(current)) if (rel.startsWith(".fence/runtime/versions/") && !(rel in record.files)) mismatched.push(rel);
   }
 
   if (mismatched.length === 0) return { status: "pass" };

@@ -117,11 +117,11 @@ describe("claude conformance (L14)", () => {
       PreToolUse: [
         {
           matcher: "Read|Write|Edit|MultiEdit|Bash",
-          hooks: [{ type: "command", command: "${CLAUDE_PROJECT_DIR}/.claude/hooks/fence-gate.sh" }],
+          hooks: [{ type: "command", command: "node", args: ["${CLAUDE_PROJECT_DIR}/.claude/hooks/fence-gate.cjs"] }],
         },
       ],
     });
-    const script = join(root, ".claude", "hooks", "fence-gate.sh");
+    const script = join(root, ".claude", "hooks", "fence-gate.cjs");
     expect(readFileSync(script, "utf-8")).toBe(GATE_HOOK_SCRIPT);
     expect(isExecutable(script)).toBe(true);
     expect(readJson(root, ".fence/adapters/claude.json")).toMatchObject({ adapter: "claude", model_mode: "standard" });
@@ -171,9 +171,9 @@ describe("cursor conformance (L14)", () => {
     }
     expect(hooksJson).toEqual({
       version: 1,
-      hooks: { preToolUse: [{ command: ".cursor/hooks/fence-gate.sh", failClosed: false }] },
+      hooks: { preToolUse: [{ command: "node .cursor/hooks/fence-gate.cjs", failClosed: false }] },
     });
-    const script = join(root, ".cursor", "hooks", "fence-gate.sh");
+    const script = join(root, ".cursor", "hooks", "fence-gate.cjs");
     expect(readFileSync(script, "utf-8")).toBe(GATE_HOOK_SCRIPT);
     expect(isExecutable(script)).toBe(true);
     expect(readJson(root, ".fence/adapters/cursor.json")).toMatchObject({ adapter: "cursor" });
@@ -288,5 +288,40 @@ it("adapter entry points refuse outside-project AGENTS symlinks", () => {
     symlinkSync(sentinel, join(root, "AGENTS.md"));
     install(root);
     expect(readFileSync(sentinel, "utf8")).toBe("KEEP");
+  }
+});
+
+it("migrates managed legacy hooks once and preserves unrelated host entries", () => {
+  for (const [host, install] of [["claude", installClaudeAdapter], ["cursor", installCursorAdapter]] as const) {
+    const root = makeProject();
+    const dir = join(root, `.${host}/hooks`);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "fence-gate.sh"), "#!/bin/sh\n# vibe-fence managed gate hook\necho old\n");
+    const config = host === "claude" ? ".claude/settings.json" : ".cursor/hooks.json";
+    const old = host === "claude"
+      ? { hooks: { PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "my-hook" }] }, { matcher: "Bash", hooks: [{ type: "command", command: "${CLAUDE_PROJECT_DIR}/.claude/hooks/fence-gate.sh" }, { type: "command", command: "my-shared-hook" }] }] } }
+      : { version: 1, hooks: { preToolUse: [{ command: "my-hook" }, { command: ".cursor/hooks/fence-gate.sh" }] } };
+    writeJson(root, config, old);
+    install(root);
+    const once = readFileSync(join(root, config), "utf8");
+    install(root);
+    expect(readFileSync(join(root, config), "utf8")).toBe(once);
+    expect(once).toContain("my-hook");
+    if (host === "claude") expect(once).toContain("my-shared-hook");
+    expect(once).toContain("fence-gate.cjs");
+    expect(once).not.toContain("fence-gate.sh");
+    expect(readFileSync(join(dir, "fence-gate.sh"), "utf8")).toContain('exec node "$(dirname "$0")/fence-gate.cjs"');
+  }
+});
+
+it("does not register an existing user-owned Node hook as a fence gate", () => {
+  for (const [host, install] of [["claude", installClaudeAdapter], ["cursor", installCursorAdapter]] as const) {
+    const root = makeProject();
+    const dir = join(root, `.${host}/hooks`);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "fence-gate.cjs"), "user-owned script");
+    install(root);
+    expect(readFileSync(join(dir, "fence-gate.cjs"), "utf8")).toBe("user-owned script");
+    expect(existsSync(join(root, host === "claude" ? ".claude/settings.json" : ".cursor/hooks.json"))).toBe(false);
   }
 });

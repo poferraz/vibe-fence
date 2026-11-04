@@ -23,7 +23,7 @@ it("does not let an arbitrary token conceal drift and reports corrupt records", 
   expect(verifyAttestation(root).status).toBe("unknown");
   writeFileSync(join(root, ".fence/.integrity.json"), "invalid");
   const report = runCheck(root);
-  expect(exitCodeForReport(report)).toBe(1);
+  expect(exitCodeForReport(report)).toBe(2);
   expect(formatHuman(report)).toContain("outside the managed block");
 });
 

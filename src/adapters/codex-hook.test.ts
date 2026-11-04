@@ -53,6 +53,37 @@ describe("Codex pre-tool integration", () => {
     expect(config.hooks.Stop).toEqual([{ hooks: [] }]);
   });
 
+  it("runs the configured command from a nested directory without Git", () => {
+    const root = project();
+    const nested = join(root, "folder with spaces", "nested");
+    mkdirSync(nested, { recursive: true });
+    installCodexAdapter(root);
+    const config = JSON.parse(readFileSync(join(root, ".codex/hooks.json"), "utf8"));
+    const command = config.hooks.PreToolUse[0].hooks[0].command as string;
+    expect(command).not.toContain("git ");
+    const result = spawnSync(command, {
+      shell: true, cwd: nested, encoding: "utf8",
+      env: { ...process.env, FENCE_BIN: resolve(import.meta.dir, "../../dist/cli.js") },
+      input: JSON.stringify({ cwd: nested, tool_name: "Bash", tool_input: { command: "rm -rf /" } }),
+    });
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain("CMD-01");
+  });
+
+  it("migrates the legacy command without removing sibling handlers", () => {
+    const root = project();
+    installCodexAdapter(root);
+    const configPath = join(root, ".codex/hooks.json");
+    const legacy = 'node "$(git rev-parse --show-toplevel)/.codex/hooks/fence-gate.cjs"';
+    writeFileSync(configPath, JSON.stringify({ hooks: { PreToolUse: [{ matcher: "Bash", hooks: [
+      { type: "command", command: legacy }, { type: "command", command: "my-other-hook" },
+    ] }] } }));
+    installCodexAdapter(root);
+    const entries = JSON.parse(readFileSync(configPath, "utf8")).hooks.PreToolUse;
+    expect(entries.flatMap((entry: any) => entry.hooks.map((hook: any) => hook.command))).toContain("my-other-hook");
+    expect(entries.flatMap((entry: any) => entry.hooks.map((hook: any) => hook.command))).not.toContain(legacy);
+  });
+
   it("warns that a missing gate leaves an action unchecked", () => {
     const root = project();
     installCodexAdapter(root);

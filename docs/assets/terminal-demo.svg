@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="550" viewBox="0 0 1200 550" role="img" aria-labelledby="title desc">
+  <title id="title">A local vibe-fence check</title>
+  <desc id="desc">An example terminal shows initialization, a local diagnostic, and a blocked client-secret pattern with a suggested fix.</desc>
+  <rect width="1200" height="550" rx="20" fill="#102027"/>
+  <rect x="1" y="1" width="1198" height="548" rx="19" fill="none" stroke="#355149" stroke-width="2"/>
+  <path d="M1 60h1198" stroke="#355149"/>
+  <circle cx="33" cy="30" r="6" fill="#ed877c"/><circle cx="55" cy="30" r="6" fill="#efbd66"/><circle cx="77" cy="30" r="6" fill="#83d6a4"/>
+  <text x="600" y="36" text-anchor="middle" fill="#a8bdb4" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="15">your-project / terminal</text>
+  <g font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="18">
+    <text x="45" y="105" fill="#94e5b4">$</text><text x="72" y="105" fill="#f2f7f4">npx --yes vibe-fence init</text>
+    <text x="45" y="136" fill="#afc4b9">  Project runtime ready · host execution unverified</text>
+    <text x="45" y="183" fill="#94e5b4">$</text><text x="72" y="183" fill="#f2f7f4">npx vibe-fence doctor</text>
+    <text x="45" y="214" fill="#afc4b9">  Local allow/block probe passed · verify in your editor</text>
+    <text x="45" y="261" fill="#94e5b4">$</text><text x="72" y="261" fill="#f2f7f4">npm run fence:check</text>
+    <rect x="44" y="286" width="1110" height="209" rx="12" fill="#1c3031" stroke="#c9825a"/>
+    <text x="66" y="321" fill="#ffc76a" font-weight="700">BLOCKED  /  SEC-01  /  example.ts:1</text>
+    <text x="66" y="357" fill="#f2f7f4">A secret-shaped variable may be exposed to browser code.</text>
+    <text x="66" y="390" fill="#b6c9bf">Fix: Move it to a server-only variable; rotate if exposed.</text>
+    <text x="66" y="432" fill="#94e5b4" font-weight="700">COPY TO YOUR AI</text>
+    <text x="66" y="462" fill="#f2f7f4">Review SEC-01 in example.ts:1, move the key server-side,</text>
+    <text x="66" y="488" fill="#f2f7f4">then run the check again.</text>
+  </g>
+  <text x="45" y="527" fill="#91a99e" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="13">Illustrative output · no real credential shown</text>
+</svg>

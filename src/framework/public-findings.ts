@@ -11,6 +11,7 @@ export const SUMMARIES: Record<string, string> = {
   "BILL-01": "An operation may incur unbounded cost.",
   "PRV-09": "Sensitive data may be exposed.",
   "S-06": "An attested instruction file has changed.",
+  "CIRCUIT-OPEN": "The circuit breaker is open. Stop retrying and ask the user; reset it after review.",
   "WORKTREE-SCAN": "A worktree scan was incomplete.",
   "INDEX-SCAN": "A staged scan was incomplete.",
   "PUSH-SCAN": "A history scan was incomplete.",
@@ -19,6 +20,25 @@ export const SUMMARIES: Record<string, string> = {
 
 export function publicSummary(id: string): string {
   return Object.hasOwn(SUMMARIES, id) ? SUMMARIES[id]! : "A potential issue needs review.";
+}
+
+const IMPACTS: Record<string, string> = {
+  "SEC-01": "Browser visitors may be able to see the value if the framework bundles it.",
+  "SEC-02": "Credential files can grant access to accounts and services.",
+  "SEC-03": "Anyone with the committed secret may be able to use it.",
+  "NET-01": "Downloaded code can run with your account's permissions.",
+  "SUP-01": "Package scripts can execute code during installation.",
+  "CMD-01": "The command could delete data or weaken file permissions.",
+  "DB-01": "The change could destroy data or expose rows to unintended users.",
+  "GIT-01": "The Git operation could discard work or overwrite shared history.",
+  "FS-01": "A path outside the project may affect unrelated files.",
+  "BILL-01": "Repeated service requests can increase usage and cost.",
+  "PRV-09": "Real personal data in fixtures can be copied or shared unintentionally.",
+  "S-06": "A local instruction or runtime file differs from its recorded baseline.",
+};
+
+export function publicImpact(id: string): string {
+  return Object.hasOwn(IMPACTS, id) ? IMPACTS[id]! : "Some input could not be checked; review it before continuing.";
 }
 
 export type ScanReasonCode = "max-files" | "max-bytes" | "max-commits" | "unreadable" | "unmerged" | "not-git" | "missing-root" | "shallow" | "submodule" | "missing-upstream" | "invalid-range" | "integrity-corrupt";
@@ -42,14 +62,14 @@ const REMEDIATIONS: Record<string, string> = {
 
 const PUSH_REMEDIATIONS: Partial<Record<ScanReasonCode, string>> = {
   "max-files": "Fix: Review smaller explicit ranges and, where practical, split the push into smaller updates. The automatic pre-push hook will still block an oversized push.",
-  "max-bytes": "Fix: Review the historical file and plan any necessary history changes. The automatic pre-push hook will still block while that oversized blob is in the pushed history.",
+  "max-bytes": "Fix: Review the historical file and any needed history changes. Raising --max-bytes or excluding a path changes the scan; excluded files are not inspected or removed from history.",
   "max-commits": "Fix: Review smaller explicit ranges and, where practical, split the push into smaller updates. The automatic pre-push hook will still block an oversized push.",
   "submodule": "Fix: Inspect the submodule separately. The automatic pre-push hook will still block a push containing this unsupported submodule change; review your workflow before proceeding.",
 };
 
 const SCAN_REASONS: Record<ScanReasonCode, { reason: string; remediation: string }> = {
   "max-files": { reason: "The scan exceeded its file limit.", remediation: "Fix: Reduce the number of eligible files and retry, or review the remaining files manually." },
-  "max-bytes": { reason: "An eligible file exceeded the scan's size limit.", remediation: "Fix: Review the large file manually and reduce its size before retrying." },
+  "max-bytes": { reason: "An eligible file exceeded the scan's size limit.", remediation: "Fix: Review the file, increase --max-bytes, or explicitly exclude it in .fenceignore. Excluded files are not inspected." },
   "max-commits": { reason: "The history scan exceeded its commit limit.", remediation: "Fix: Scan smaller explicit commit ranges and review each range before pushing." },
   "unreadable": { reason: "An eligible input could not be read or inspected.", remediation: "Fix: Check file access and repository health, then retry the scan." },
   "unmerged": { reason: "The staged scan found an unresolved merge.", remediation: "Fix: Resolve and stage the conflicted files, then retry." },

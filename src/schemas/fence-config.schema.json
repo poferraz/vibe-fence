@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vibe-fence project configuration",
+  "type": "object",
+  "required": ["version", "fence_version", "model_mode"],
+  "properties": {
+    "version": { "const": 1 },
+    "fence_version": { "type": "string", "minLength": 1 },
+    "model_mode": { "enum": ["standard", "contributor"] },
+    "adapters": {
+      "type": "array",
+      "items": { "enum": ["claude", "cursor", "codex", "opencode", "antigravity", "hermes"] },
+      "uniqueItems": true
+    },
+    "billing_guard": {
+      "type": "object",
+      "properties": {
+        "max_calls": { "type": "integer", "minimum": 0 },
+        "window_ms": { "type": "integer", "minimum": 1000 }
+      },
+      "additionalProperties": true
+    },
+    "fence_look": {
+      "type": "object",
+      "properties": { "enabled": { "type": "boolean" } },
+      "additionalProperties": true
+    },
+    "updatedAt": { "type": "string" }
+  },
+  "additionalProperties": true
+}

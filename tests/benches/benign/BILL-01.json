@@ -45,6 +45,10 @@
     {
       "id": "b-bill01-11",
       "payload": "fetch(\"/api/users\");\nusers.map(u => u.name);"
+    },
+    {
+      "id": "b-bill01-12",
+      "payload": "async function poll() { if (++attempts >= 3) return; await fetch(url); setTimeout(poll, 1000); }"
     }
   ]
 }

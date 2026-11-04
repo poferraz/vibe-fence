@@ -10,6 +10,7 @@ import { chmodSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { install, loadPostinstallGuard, ensureGitignore, trackedEnvFiles, isWithinProjectRoot, GITIGNORE_ENTRIES } from "./install";
+import { runUninstall } from "./uninstall";
 import { defaultFenceConfig } from "./framework/meta-client";
 
 const created: string[] = [];
@@ -26,6 +27,20 @@ function makeProject(): string {
 }
 
 describe("install version and timing", () => {
+  it("detects project hosts and adds non-destructive cross-platform npm scripts", async () => {
+    const root = makeProject();
+    mkdirSync(join(root, ".cursor"));
+    writeFileSync(join(root, "package.json"), JSON.stringify({ name: "example", scripts: { "fence:undo": "my-undo" } }));
+    const receipt = await install(root);
+    expect(receipt.adaptersInstalled).toEqual(["cursor"]);
+    const config = JSON.parse(readFileSync(join(root, ".fence/config.json"), "utf8"));
+    expect(config.adapters).toEqual(["cursor"]);
+    const scripts = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).scripts;
+    expect(scripts["fence:check"]).toBe("node ./.fence/bin/vibe-fence.cjs check");
+    expect(scripts["fence:status"]).toBe("node ./.fence/bin/vibe-fence.cjs status");
+    expect(scripts["fence:undo"]).toBe("my-undo");
+  });
+
   it("does not promise provider training behavior in contributor-mode guidance", async () => {
     const root = makeProject();
     await install(root, { contributorMode: true, adapters: ["codex", "cursor"] });
@@ -76,6 +91,62 @@ describe("install version and timing", () => {
     expect(config.companion).toEqual({ enabled: false });
     await install(root, { adapters: [] });
     expect(readFileSync(configPath, "utf8")).toBe(updated);
+  });
+});
+
+describe("uninstall", () => {
+  it("restores original project files and Git hooks after an init round trip", async () => {
+    const root = makeProject();
+    execSync("git init -q .", { cwd: root, env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" } });
+    execSync("git config --local core.hooksPath .git/hooks", { cwd: root });
+    const originals: Record<string, string> = {
+      "AGENTS.md": "My own instructions.\n",
+      ".gitignore": "node_modules/\n",
+      "package.json": '{ "name": "project", "scripts": { "start": "node app.js" } }\n',
+      ".claude/settings.json": '{ "model": "mine" }\n',
+      ".git/hooks/pre-commit": "#!/bin/sh\necho mine\n",
+    };
+    mkdirSync(join(root, ".claude"));
+    for (const [path, content] of Object.entries(originals)) writeFileSync(join(root, path), content);
+    await install(root, { adapters: ["claude"] });
+    runUninstall(root, { dryRun: true });
+    expect(existsSync(join(root, ".fence/config.json"))).toBe(true);
+    runUninstall(root);
+    for (const [path, content] of Object.entries(originals)) expect(readFileSync(join(root, path), "utf8")).toBe(content);
+    expect(existsSync(join(root, ".fence"))).toBe(false);
+    expect(existsSync(join(root, ".claude/hooks/fence-gate.cjs"))).toBe(false);
+    expect(existsSync(join(root, ".agents"))).toBe(false);
+  });
+
+  it("preserves edits made after installation and unknown files inside .fence", async () => {
+    const root = makeProject();
+    writeFileSync(join(root, "AGENTS.md"), "Original.\n");
+    await install(root, { adapters: ["claude"] });
+    writeFileSync(join(root, "AGENTS.md"), readFileSync(join(root, "AGENTS.md"), "utf8") + "My later edit.\n");
+    const configPath = join(root, ".claude/settings.json");
+    const config = JSON.parse(readFileSync(configPath, "utf8"));
+    config.model = "my-new-model";
+    writeFileSync(configPath, JSON.stringify(config));
+    writeFileSync(join(root, ".fence/user-note.txt"), "keep this");
+    const removal = runUninstall(root);
+    expect(readFileSync(join(root, "AGENTS.md"), "utf8")).toContain("My later edit.");
+    expect(readFileSync(join(root, "AGENTS.md"), "utf8")).not.toContain("vibe-fence:start");
+    expect(JSON.parse(readFileSync(configPath, "utf8")).model).toBe("my-new-model");
+    expect(JSON.stringify(JSON.parse(readFileSync(configPath, "utf8"))).includes("fence-gate")).toBe(false);
+    expect(readFileSync(join(root, ".fence/user-note.txt"), "utf8")).toBe("keep this");
+    expect(removal.preserved).toContain(".fence/user-note.txt");
+  });
+
+  it("does not duplicate credential-bearing host settings into the uninstall journal", async () => {
+    const root = makeProject();
+    mkdirSync(join(root, ".claude"));
+    writeFileSync(join(root, ".claude/settings.json"), JSON.stringify({ env: { API_TOKEN: "PRIVATE_CREDENTIAL_SENTINEL" } }));
+    await install(root, { adapters: ["claude"] });
+    const journal = JSON.parse(readFileSync(join(root, ".fence/uninstall.json"), "utf8"));
+    const prior = journal.files[".claude/settings.json"]?.before;
+    expect(prior === null || !Buffer.from(prior, "base64").toString("utf8").includes("PRIVATE_CREDENTIAL_SENTINEL")).toBe(true);
+    runUninstall(root);
+    expect(JSON.parse(readFileSync(join(root, ".claude/settings.json"), "utf8")).env.API_TOKEN).toBe("PRIVATE_CREDENTIAL_SENTINEL");
   });
 });
 

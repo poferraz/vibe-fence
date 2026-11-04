@@ -20,7 +20,7 @@ import { join } from "node:path";
 import type { Adapter } from "./types";
 import { AGENTS_FENCE_BLOCK_START, AGENTS_FENCE_BLOCK_END, buildAgentsFenceBlock, mergeAgentsMd } from "./claude";
 import { scrubFenceKey, writeAdapterReceipt } from "./receipts";
-import { GATE_HOOK_MARKER, GATE_HOOK_SCRIPT, GATE_HOOK_SCRIPT_NAME } from "./gate-hook";
+import { GATE_HOOK_CONTENT_MARKER, GATE_HOOK_MARKER, GATE_HOOK_SCRIPT, GATE_HOOK_SCRIPT_NAME, LEGACY_GATE_HOOK_NAME, LEGACY_GATE_WRAPPER } from "./gate-hook";
 
 export const cursorAdapter: Adapter = {
   name: "cursor",
@@ -99,7 +99,7 @@ export interface CursorPreToolUseEntry {
 }
 
 export function buildCursorPreToolUseEntry(): CursorPreToolUseEntry {
-  return { command: `.cursor/hooks/${GATE_HOOK_SCRIPT_NAME}`, failClosed: false };
+  return { command: `node .cursor/hooks/${GATE_HOOK_SCRIPT_NAME}`, failClosed: false };
 }
 
 function isOurCursorEntry(entry: unknown): boolean {
@@ -136,7 +136,9 @@ export function mergeCursorHooks(existing: Record<string, unknown> | null): Reco
 // ---------------------------------------------------------------------------
 
 export function installCursorAdapter(projectRoot: string, opts: { modelMode?: string } = {}): string[] {
-  if (!adapterPathsSafe(projectRoot, ["AGENTS.md", ".fence/adapters/cursor.json", ".cursor/rules/vibe-fence-router.mdc", ".cursor/hooks.json", ".cursor/hooks/fence-gate.sh", ".cursor/skills"])) { console.warn("[vibe-fence] Adapter contains a managed symlink; leaving it unchanged."); return []; }
+  if (!adapterPathsSafe(projectRoot, ["AGENTS.md", ".fence/adapters/cursor.json", ".cursor/rules/vibe-fence-router.mdc", ".cursor/hooks.json", ".cursor/hooks/fence-gate.sh", ".cursor/hooks/fence-gate.cjs", ".cursor/skills"])) { console.warn("[vibe-fence] Adapter contains a managed symlink; leaving it unchanged."); return []; }
+  const nodeHook = join(projectRoot, ".cursor", "hooks", GATE_HOOK_SCRIPT_NAME);
+  if (existsSync(nodeHook) && !readFileSync(nodeHook, "utf8").includes(GATE_HOOK_CONTENT_MARKER)) { console.warn("[vibe-fence] Cursor gate hook is user-managed; leaving the adapter unchanged."); return []; }
   const written: string[] = [];
   const modelMode = opts.modelMode ?? "standard";
 
@@ -191,12 +193,12 @@ export function installCursorAdapter(projectRoot: string, opts: { modelMode?: st
     if (!existsSync(dir)) { mkdirSync(dir, { recursive: true }); }
   }
 
-  // 5. .cursor/hooks/fence-gate.sh — managed hook script (executable)
+  // 5. Install the Node hook; migrate an existing managed shell hook in place.
   {
     const dir = join(projectRoot, ".cursor", "hooks");
     const p = join(dir, GATE_HOOK_SCRIPT_NAME);
     const prev = existsSync(p) ? readFileSync(p, "utf-8") : null;
-    if (prev !== null && !prev.includes(GATE_HOOK_MARKER)) {
+    if (prev !== null && !prev.includes(GATE_HOOK_CONTENT_MARKER)) {
       console.warn(`[vibe-fence] .cursor/hooks/${GATE_HOOK_SCRIPT_NAME} exists and is not fence-managed — leaving it alone.`);
     } else {
       if (prev !== GATE_HOOK_SCRIPT) {
@@ -205,6 +207,11 @@ export function installCursorAdapter(projectRoot: string, opts: { modelMode?: st
         written.push(`.cursor/hooks/${GATE_HOOK_SCRIPT_NAME}`);
       }
       chmodSync(p, 0o755);
+    }
+    const legacy = join(dir, LEGACY_GATE_HOOK_NAME);
+    if (existsSync(legacy) && readFileSync(legacy, "utf8").includes(GATE_HOOK_CONTENT_MARKER) && readFileSync(legacy, "utf8") !== LEGACY_GATE_WRAPPER) {
+      writeFileSync(legacy, LEGACY_GATE_WRAPPER, "utf8");
+      written.push(`.cursor/hooks/${LEGACY_GATE_HOOK_NAME}`);
     }
   }
 

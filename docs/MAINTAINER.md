@@ -8,7 +8,7 @@ agent instruction file.
 - [ ] `src/` changed, `dist/` regenerated (`bun run build`); never edit `dist/`.
 - [ ] A behaviour change starts with a failing test; note the red result.
 - [ ] Run the gate in order: `bunx --no-install tsc --noEmit`, `bun run build`,
-      `bun run validate`, `bun test`, `bun run eval`.
+      `bun run validate`, `bun test`, `bun run eval`, `bun pm pack --dry-run`.
 - [ ] Report skips and unknowns; an unknown is never a pass.
 - [ ] If a rule changes, update its test, the hostile/benign fixture, and the
       corpus (new TN or TP needs review + baseline regeneration).
@@ -36,7 +36,10 @@ publish without explicit authorization.
 - [ ] `bun pm pack --dry-run`: expected files only, no `.fence/private/`, no
       tests in `dist/`.
 - [ ] Before any authorized publication, run and record the full gate and
-      review the package. This public candidate has no automated release workflow.
+      review the package. `.github/workflows/release.yml` publishes on a matching
+      version tag; configure it as an [npm trusted publisher](https://docs.npmjs.com/trusted-publishers/)
+      with direct publishing enabled before using it. Test the workflow and
+      review its result; merely adding the workflow does not publish a release.
 - [ ] After publishing, verify `npx vibe-fence init` in a scratch repo and
       update the README install section.
 

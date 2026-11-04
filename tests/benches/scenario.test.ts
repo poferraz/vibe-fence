@@ -80,8 +80,12 @@ describe("scenario replay (demo beats, packed CLI)", () => {
     expect(explained.stdout).toContain("FAIL SEC-01");
     expect(explained.stderr).toMatch(/explain/i);
 
-    // Beat 5: leaky checkpoint warns but still lands (D7).
-    const cpLeaky = fence(root, ["checkpoint", "--action", "leaky WIP"]);
+    // Beat 5: leaky checkpoints require an explicit override.
+    const beforeCheckpoint = sh(root, "git rev-parse HEAD");
+    const refused = fence(root, ["checkpoint", "--action", "leaky WIP"]);
+    expect(refused.exit).toBe(2);
+    expect(sh(root, "git rev-parse HEAD")).toBe(beforeCheckpoint);
+    const cpLeaky = fence(root, ["checkpoint", "--action", "leaky WIP", "--allow-secrets-in-checkpoint"]);
     expect(cpLeaky.exit).toBe(0);
     const leakyHead = sh(root, "git rev-parse HEAD");
     expect(sh(root, "git log --oneline -1")).toContain("checkpoint");

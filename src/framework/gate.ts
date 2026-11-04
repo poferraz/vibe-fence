@@ -10,8 +10,12 @@
  * single call; full-file `check` covers the rest).
  */
 
-import { readFileSync, statSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { join, resolve } from "node:path";
+import { CIRCUIT_STATE_PATH, loadCircuitState, recordFailure, recordSuccess } from "./circuit-breaker.js";
+import { recordNetworkCommand } from "./billing-guard.js";
+import { packageScriptBodies } from "./package-scripts.js";
 import { check as checkSec01, SEC01_ID, SEC01_SEVERITY } from "../rules/sec-01.js";
 import { check as checkSec02, SEC02_ID, SEC02_SEVERITY } from "../rules/sec-02.js";
 import { check as checkNet01, NET01_ID, NET01_SEVERITY } from "../rules/net-01.js";
@@ -125,7 +129,7 @@ function localScriptBody(command: string, projectRoot: string | undefined): { bo
   }
 }
 
-export function evaluateToolCall(call: ToolCall): GateFinding[] {
+function evaluateRules(call: ToolCall): GateFinding[] {
   const tool = (call.tool ?? "").trim();
   const args = call.args ?? {};
   const projectRoot = call.projectRoot;
@@ -181,8 +185,52 @@ export function evaluateToolCall(call: ToolCall): GateFinding[] {
       f(GIT01_ID, GIT01_SEVERITY, checkGit01({ content: body, toolName: "bash", projectRoot }));
       f(SUP01_ID, SUP01_SEVERITY, checkSup01({ content: body, toolName: "bash", projectRoot }));
     }
+    if (projectRoot) for (const script of packageScriptBodies(projectRoot, command)) {
+      const f = (ruleId: string, severity: string, verdict: { verdict: string; reason: string; evidence?: string }): void => {
+        push(ruleId, severity, { ...verdict, reason: `${verdict.reason} [in package script]` });
+      };
+      f(SEC02_ID, SEC02_SEVERITY, checkSec02({ content: script.body, toolName: "bash", projectRoot }));
+      f(NET01_ID, NET01_SEVERITY, checkNet01({ content: script.body, toolName: "bash", projectRoot }));
+      f(CMD01_ID, CMD01_SEVERITY, checkCmd01({ content: script.body, toolName: "bash", projectRoot }));
+      f(FS01_ID, FS01_SEVERITY, checkFs01({ content: script.body, toolName: "bash", projectRoot }));
+      f(GIT01_ID, GIT01_SEVERITY, checkGit01({ content: script.body, toolName: "bash", projectRoot }));
+      f(SUP01_ID, SUP01_SEVERITY, checkSup01({ content: script.body, toolName: "bash", projectRoot }));
+    }
     return findings;
   }
 
+  return findings;
+}
+
+/** Track only initialized projects; probes and uninitialized checks remain side-effect free. */
+export function evaluateToolCall(call: ToolCall): GateFinding[] {
+  const root = call.projectRoot;
+  const tool = (call.tool ?? "").trim();
+  const mutating = isWriteLikeTool(tool) || SHELL_LIKE.test(tool);
+  const enabled = !!root && existsSync(join(root, ".fence/config.json")) && process.env["FENCE_DRY_RUN"] !== "1";
+  if (enabled && mutating) {
+    try {
+      if (loadCircuitState(root).state === "open") return [{ ruleId: "CIRCUIT-OPEN", severity: "block", reason: "Circuit breaker open. Stop retrying and ask the user; reset it after review." }];
+    } catch { console.warn("[vibe-fence] Circuit state unavailable; this protection was not checked."); }
+  }
+  const findings = evaluateRules(call);
+  if (enabled && SHELL_LIKE.test(tool) && findings.length === 0) {
+    const command = firstString(call.args, ["command", "cmd", "script", "input"]) ?? "";
+    if (/(?:^|[\s;&|])(?:curl|wget|http|https)(?:\s|$)|\bfetch\s*\(/i.test(command)) {
+      try {
+        const budget = recordNetworkCommand(root);
+        if (!budget.allowed) findings.push({ ruleId: "BILL-01", severity: "block", reason: "Network command limit reached; review the loop and reset after review. This does not measure cloud spend." });
+      } catch { console.warn("[vibe-fence] Network command budget unavailable; this protection was not checked."); }
+    }
+  }
+  if (enabled && mutating) {
+    try {
+      if (findings.length) {
+        const target = firstString(call.args, ["filePath", "file_path", "path", "file", "command", "cmd", "script", "input"]) ?? "";
+        const taskId = createHash("sha256").update(`${findings[0]!.ruleId}\0${tool}\0${target.slice(0, MAX_CONTENT)}`).digest("hex");
+        recordFailure(root, { taskId, reason: findings[0]!.ruleId });
+      } else if (existsSync(join(root, CIRCUIT_STATE_PATH))) recordSuccess(root, "");
+    } catch { console.warn("[vibe-fence] Circuit state unavailable; this protection was not checked."); }
+  }
   return findings;
 }

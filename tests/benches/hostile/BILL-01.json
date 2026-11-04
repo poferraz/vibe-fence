@@ -7,6 +7,8 @@
     {"id": "h-bill01-3", "payload": "users.map(async (u) => { await twilio.messages.create(u); });"},
     {"id": "h-bill01-4", "payload": "setInterval(() => { resend.emails.send(batch); }, 1000);"},
     {"id": "h-bill01-5", "payload": "await Promise.all(items.map((i) => anthropic.messages.create(i)));"},
-    {"id": "h-bill01-6", "payload": "for (;;) {\n  await resend.emails.send(batch);\n}"}
+    {"id": "h-bill01-6", "payload": "for (;;) {\n  await resend.emails.send(batch);\n}"},
+    {"id": "h-bill01-7", "payload": "async function poll() { await fetch(url); setTimeout(poll, 1000); }"},
+    {"id": "h-bill01-8", "payload": "const poll = async () => { await api(); setTimeout(() => poll(), 1000); };"}
   ]
 }

@@ -20,7 +20,7 @@ import { chmodSync, existsSync, readFileSync, writeFileSync, mkdirSync } from "n
 import { join } from "node:path";
 import type { Adapter } from "./types";
 import { scrubFenceKey, writeAdapterReceipt } from "./receipts";
-import { GATE_HOOK_MARKER, GATE_HOOK_SCRIPT, GATE_HOOK_SCRIPT_NAME } from "./gate-hook";
+import { GATE_HOOK_CONTENT_MARKER, GATE_HOOK_MARKER, GATE_HOOK_SCRIPT, GATE_HOOK_SCRIPT_NAME, LEGACY_GATE_HOOK_NAME, LEGACY_GATE_WRAPPER } from "./gate-hook";
 
 // ---------------------------------------------------------------------------
 // Adapter descriptor (re-export for registry)
@@ -56,24 +56,18 @@ export interface ClaudeSettings {
  * PreToolUse entry per https://code.claude.com/docs/en/hooks — matcher runs
  * against `tool_name`, the command gets hook JSON on stdin, exit 2 blocks.
  */
-export function buildClaudePreToolUseEntry(): { matcher: string; hooks: Array<{ type: string; command: string }> } {
+export function buildClaudePreToolUseEntry(): { matcher: string; hooks: Array<{ type: string; command: string; args: string[] }> } {
   return {
     matcher: "Read|Write|Edit|MultiEdit|Bash",
-    hooks: [{ type: "command", command: `\${CLAUDE_PROJECT_DIR}/.claude/hooks/${GATE_HOOK_SCRIPT_NAME}` }],
+    hooks: [{ type: "command", command: "node", args: [`\${CLAUDE_PROJECT_DIR}/.claude/hooks/${GATE_HOOK_SCRIPT_NAME}`] }],
   };
 }
 
-function isOurClaudeEntry(entry: unknown): boolean {
-  if (typeof entry !== "object" || entry === null) return false;
-  const hooks = (entry as Record<string, unknown>).hooks;
-  if (!Array.isArray(hooks)) return false;
-  return hooks.some(
-    (h) =>
-      typeof h === "object" &&
-      h !== null &&
-      typeof (h as Record<string, unknown>).command === "string" &&
-      ((h as Record<string, unknown>).command as string).includes(GATE_HOOK_MARKER),
-  );
+function isOurClaudeHook(hook: unknown): boolean {
+  if (!hook || typeof hook !== "object") return false;
+  const value = hook as Record<string, unknown>;
+  return (typeof value.command === "string" && value.command.includes(GATE_HOOK_MARKER)) ||
+    (value.command === "node" && Array.isArray(value.args) && value.args.some(arg => typeof arg === "string" && arg.includes(`.claude/hooks/${GATE_HOOK_MARKER}`)));
 }
 
 /**
@@ -90,7 +84,13 @@ export function mergeClaudeSettings(existing: Record<string, unknown> | null): R
       ? { ...(hooksRaw as Record<string, unknown>) }
       : {};
   const prev = hooks["PreToolUse"];
-  const list = Array.isArray(prev) ? prev.filter((e) => !isOurClaudeEntry(e)) : [];
+  const list = Array.isArray(prev) ? prev.flatMap((entry: unknown) => {
+    if (!entry || typeof entry !== "object" || !Array.isArray((entry as Record<string, unknown>).hooks)) return [entry];
+    const original = (entry as { hooks: unknown[] }).hooks;
+    const remaining = original.filter(hook => !isOurClaudeHook(hook));
+    if (remaining.length === original.length) return [entry];
+    return remaining.length ? [{ ...entry, hooks: remaining }] : [];
+  }) : [];
   list.push(buildClaudePreToolUseEntry());
   hooks["PreToolUse"] = list;
   base["hooks"] = hooks;
@@ -167,7 +167,9 @@ export function buildSkillsManifest(skillNames: string[]): string {
 // ---------------------------------------------------------------------------
 
 export function installClaudeAdapter(projectRoot: string, opts: { modelMode?: string } = {}): string[] {
-  if (!adapterPathsSafe(projectRoot, ["AGENTS.md", ".fence/adapters/claude.json", "CLAUDE.md", ".agents/skills", ".claude/settings.json", ".claude/hooks/fence-gate.sh"])) { console.warn("[vibe-fence] Adapter contains a managed symlink; leaving it unchanged."); return []; }
+  if (!adapterPathsSafe(projectRoot, ["AGENTS.md", ".fence/adapters/claude.json", "CLAUDE.md", ".agents/skills", ".claude/settings.json", ".claude/hooks/fence-gate.sh", ".claude/hooks/fence-gate.cjs"])) { console.warn("[vibe-fence] Adapter contains a managed symlink; leaving it unchanged."); return []; }
+  const nodeHook = join(projectRoot, ".claude", "hooks", GATE_HOOK_SCRIPT_NAME);
+  if (existsSync(nodeHook) && !readFileSync(nodeHook, "utf8").includes(GATE_HOOK_CONTENT_MARKER)) { console.warn("[vibe-fence] Claude gate hook is user-managed; leaving the adapter unchanged."); return []; }
   const written: string[] = [];
   const modelMode = opts.modelMode ?? "standard";
 
@@ -217,12 +219,12 @@ export function installClaudeAdapter(projectRoot: string, opts: { modelMode?: st
     }
   }
 
-  // 5. .claude/hooks/fence-gate.sh — managed hook script (executable)
+  // 5. Install the Node hook; migrate an existing managed shell hook in place.
   {
     const dir = join(projectRoot, ".claude", "hooks");
     const p = join(dir, GATE_HOOK_SCRIPT_NAME);
     const prev = existsSync(p) ? readFileSync(p, "utf-8") : null;
-    if (prev !== null && !prev.includes(GATE_HOOK_MARKER)) {
+    if (prev !== null && !prev.includes(GATE_HOOK_CONTENT_MARKER)) {
       console.warn(`[vibe-fence] .claude/hooks/${GATE_HOOK_SCRIPT_NAME} exists and is not fence-managed — leaving it alone.`);
     } else {
       if (prev !== GATE_HOOK_SCRIPT) {
@@ -231,6 +233,11 @@ export function installClaudeAdapter(projectRoot: string, opts: { modelMode?: st
         written.push(`.claude/hooks/${GATE_HOOK_SCRIPT_NAME}`);
       }
       chmodSync(p, 0o755);
+    }
+    const legacy = join(dir, LEGACY_GATE_HOOK_NAME);
+    if (existsSync(legacy) && readFileSync(legacy, "utf8").includes(GATE_HOOK_CONTENT_MARKER) && readFileSync(legacy, "utf8") !== LEGACY_GATE_WRAPPER) {
+      writeFileSync(legacy, LEGACY_GATE_WRAPPER, "utf8");
+      written.push(`.claude/hooks/${LEGACY_GATE_HOOK_NAME}`);
     }
   }
 

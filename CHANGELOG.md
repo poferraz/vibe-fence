@@ -7,9 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Compare views: https://github.com/poferraz/vibe-fence/compare/
 
-## [Unreleased] (registry status unverified)
+## [0.3.0] — 2026-11-03
 
-### Added (integration branch `release/final`, Nov 2)
+### Added
+- Node-based Claude Code, Cursor and Codex gate hooks, including a project-local launcher and nested-directory support without `jq`.
+- `doctor`, `verify`, `dial`, `reset` and `uninstall` commands; local circuit-breaker and network-command budget reporting; optional local learning-card telemetry.
+- `.fenceignore` patterns and explicit incomplete-scan exit codes. Checkpoints inspect for secrets before staging and again before committing.
+- Rule checks for direct recursive timer polling and dangerous package-script bodies, plus regression and portable hook smoke tests.
+- Cross-platform CI jobs, npm trusted-publishing release workflow, contributor templates, and source-tree visual documentation.
 - Eval bench suites A–D + loop driver (`tools/loops/`): hostile (66 shapes) / benign (110, 0 FP) / scenario replay / offline explain rubric, with caps, dry-run, and provider profiles (fixture default; Baseten/Modal/Fireworks live paths refuse uncapped spend).
 - Live-eval program Tasks 1–4a: per-surface attribution in `scoreVariant`, offline scenario runner (20 snapshots, 10 oracles), spend ledger + Baseten proposer + Modal sandbox backend, live episode loop + pilot runner.
 - Codex stack: pre-tool hook/gate for Codex, `vibe-fence status` (+ `--host=codex|claude`), clean Spark explanations, git protection hardening (pre-push input, negation, worktree repair, containment), advisory `vibe-continuity` skill.
@@ -19,7 +24,7 @@ Compare views: https://github.com/poferraz/vibe-fence/compare/
 
 ### Changed in the local candidate
 - Project-local runtime snapshots and managed hooks are exercised by an offline package and Git fixture; host execution remains unverified.
-- Worktree and staged scan limits or unreadable eligible inputs produce a blocking incomplete result. Exit 1 now includes incomplete scans as well as blocking findings.
+- Worktree and staged scan limits or unreadable eligible inputs produce an incomplete result. A check exits 1 for blocking findings and 2 for an incomplete scan without blocking findings.
 - Local check output omits raw rule evidence, and optional explanations send fixed rule categories and severity. Same-user integrity records detect drift but are not a tamper-resistant trust boundary.
 - NET-01 detects tested sudo flag and absolute-shell variants; it is not a complete shell parser.
 
@@ -28,7 +33,7 @@ Compare views: https://github.com/poferraz/vibe-fence/compare/
 - `tools/eval.ts` scorer union: review-round-3 vocabulary (targetHit/targetBlocked/targetWarnOnly/blocked/warnOnly) + Task-1 finding arrays (gateFindings/treeFindings) — both have live consumers.
 - README/SUBMIT zero-FP claims qualified to their fixture scope (110-case benign bench + held-out corpus); `severity-policy.json` call-out labeled aspirational in README.
 
-## 0.2.1 — candidate (unreleased)
+## [0.2.1] — 2026-11-03
 
 ### Added
 - Project-local runtime snapshots and a `status` command for inspecting configured protection and its verification limits.
@@ -79,6 +84,7 @@ First public scaffold — M1–M4 land on `main`.
 ### Research
 - Phase 0 locked: `docs/research/synthesis/FINAL-v4.md` (221 lines, 15 settled S-01…S-15+ S-06a/S-11a, 10 contested C-01…C-10+3) + `SOURCES.md` (186 entries) + deep-read vault (14 docs, 4 clusters)
 
-[Unreleased]: https://github.com/poferraz/vibe-fence/compare/v0.2.0...HEAD
+[0.3.0]: https://github.com/poferraz/vibe-fence/compare/ce56fa1...HEAD
+[0.2.1]: https://www.npmjs.com/package/vibe-fence/v/0.2.1
 [0.2.0]: https://github.com/poferraz/vibe-fence/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/poferraz/vibe-fence/releases/tag/v0.1.0

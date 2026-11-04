@@ -40,10 +40,37 @@ const CALLBACK_LOOP_RE = /\.(?:map)\s*\(|setInterval\s*\(/;
 
 /** Service/billable call hints — vendor names + generic API-call shapes */
 const SERVICE_CALL_RE =
-  /\b(fetch|axios|stripe|openai|supabase|twilio|resend|anthropic|bedrock|http\.request|request\(|sendEmail|sendSms|createCharge|api\.|\.messages\.create|\.charges\.create|\.emails\.send)/i;
+  /\b(fetch|axios|stripe|openai|supabase|twilio|resend|anthropic|bedrock|http\.request|request\(|sendEmail|sendSms|createCharge|api\s*\(|api\.|\.messages\.create|\.charges\.create|\.emails\.send)/i;
 
 /** Cap/limit guard hints — cap, limit, max, throttle, budget, batchSize, slice(, take( */
 const CAP_RE = /\b(cap|limit|max\b|maxCalls|maxCost|throttle|budget|batchSize|MAX_|LIMIT|capped|slice\s*\(|take\s*\()/i;
+const RETRY_BOUND_RE = /\bif\s*\([^)]*(?:attempt|retr(?:y|ies)|count|calls)\w*[^)]*(?:[<>]=?|===?)\s*\d+[^)]*\)|\b(?:signal|controller)\.aborted\b/i;
+
+function closingDelimiter(code: string, start: number, open: string, close: string): number {
+  let depth = 0;
+  for (let i = start; i < code.length; i++) {
+    if (code[i] === open) depth++;
+    else if (code[i] === close && --depth === 0) return i;
+  }
+  return -1;
+}
+
+/** Same-function timers only: a single delayed request is not polling. */
+function recursivePoll(code: string): string | null {
+  const declarations = /\b(?:async\s+)?function\s+([\w$]+)\s*\([^)]*\)\s*\{|\b(?:const|let|var)\s+([\w$]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[\w$]+)\s*=>\s*\{/g;
+  for (const match of code.matchAll(declarations)) {
+    const name = match[1] ?? match[2];
+    if (!name || match.index === undefined) continue;
+    const start = match.index + match[0].length - 1;
+    const end = closingDelimiter(code, start, "{", "}");
+    if (end < 0) continue;
+    const body = code.slice(start, end + 1);
+    const escaped = name.replace(/[$]/g, "\\$");
+    const reschedules = new RegExp(`\\bsetTimeout\\s*\\(\\s*(?:${escaped}\\b|(?:async\\s*)?\\(\\s*\\)\\s*=>\\s*\\{?\\s*${escaped}\\s*\\()`);
+    if (reschedules.test(body) && SERVICE_CALL_RE.test(body) && !CAP_RE.test(body) && !RETRY_BOUND_RE.test(body)) return name;
+  }
+  return null;
+}
 
 /**
  * Heuristic: if content contains a loop that also contains a service call
@@ -53,6 +80,19 @@ export function check(ctx: CheckCtx): RuleVerdict {
   const src = ctx.content;
   if (src == null || src.trim().length === 0) {
     return { id: BILL01_ID, verdict: "unknown", reason: "no content to inspect (unknown≠pass)" };
+  }
+
+  const live = src.split("\n").map((line) => stripStrings(liveCode(line))).join("\n");
+  if (!isProsePath(ctx.filePath)) {
+    const poll = recursivePoll(live);
+    if (poll) return { id: BILL01_ID, verdict: "fail", reason: "recursive timer repeatedly calls a service without a visible bound", evidence: poll };
+    for (const match of live.matchAll(/\bsetInterval\s*\(/g)) {
+      const start = match.index! + match[0].length - 1;
+      const end = closingDelimiter(live, start, "(", ")");
+      if (end < 0) continue;
+      const call = live.slice(start, end + 1);
+      if (SERVICE_CALL_RE.test(call) && !CAP_RE.test(call) && !RETRY_BOUND_RE.test(call)) return { id: BILL01_ID, verdict: "fail", reason: "repeating timer calls a service without a visible bound" };
+    }
   }
 
   // Quick exit: no loop at all

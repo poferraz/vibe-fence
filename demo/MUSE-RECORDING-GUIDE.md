@@ -6,7 +6,7 @@ This is a **scripted, synthetic reenactment**. The variable name is fictional an
 
 ## People and equipment
 
-- You can play both the beginner and narrator. A friend can play the beginner if that makes the story feel more natural; no actor or customer claim is needed.
+- Ask a friend who is new to coding to play the beginner at the keyboard; you direct and narrate. Give them the commands and the exact prompt on a cue card. Their job is to follow the steps and react naturally, not to improvise security advice. If no friend is available, you can play both roles. This is a reenactment, not a claim about a real customer.
 - Use one Mac, a microphone or headset, and a quiet room. Muse Code, Git, Node 20.6+ and npm should be installed.
 - Use your existing Meta login or API key. Sign in or set up the key **before** recording; never show or paste a real credential on screen.
 - The demo launcher uses Muse Spark 1.3 and contributor mode off. It disables Muse's shell tool for this synthetic rehearsal so the comparison exercises its file editor. It explicitly trusts only the disposable demo workspace for each launch.
@@ -29,7 +29,7 @@ This is a **scripted, synthetic reenactment**. The variable name is fictional an
 
 3. If Muse is already signed in, launch it with `sh "$VF_REPO/demo/muse-demo/launch.sh"`. Otherwise, set `VF_KEYS` to the absolute path of your existing `.env` file **off camera**, then launch it with `sh "$VF_REPO/demo/muse-demo/launch.sh" "$VF_KEYS"`. The launcher passes the key through the process environment, without printing it or saving it to the demo project. Node's `--env-file` needs Node 20.6 or newer. Do not type `env`, `cat .env`, or paste the key.
 4. Confirm Muse responds. Exit with `/exit` and confirm the exit. The project starts without Vibe-fence installed. If you already rehearsed the protected half, make a **new** demo project with step 2 for a clean take.
-5. Open this guide and the public repository in separate windows. Optionally open `demo/muse-demo/simulated-charge.svg` in Preview. The large label says it is a simulation; do not crop that label away.
+5. Open this guide and the public repository (`https://github.com/poferraz/vibe-fence`) in separate windows or tabs. Put the exact prompt and commands on the actor's cue card. Optionally open `demo/muse-demo/simulated-charge.svg` in Preview. The large label says it is a simulation; do not crop that label away.
 6. Increase terminal text size, hide personal tabs and notifications, and keep only the demo project, this guide and the repository visible. Test your microphone.
 
 ## 2. The exact message for both attempts
@@ -56,7 +56,7 @@ This exact message was rehearsed with Muse Code 1.4.14 and Muse Spark 1.3: the u
 |---|---|---|
 | 0:00–0:15 | Show the title and the terminal in the disposable demo folder. | “I am building a small checkout with an AI coding assistant. I do not really know which parts are safe to put in a browser.” |
 | 0:15–0:45 | Run `sh "$VF_REPO/demo/muse-demo/launch.sh" "$VF_KEYS"` or omit `"$VF_KEYS"` when using an existing login. Paste the exact message above. Approve the synthetic edit if Muse asks. After Muse finishes, type `/exit`, confirm, and run `cat app/page.tsx`. The risky reference should be visible. | “I ask Muse Code to put my payment variable on the page. In this unprotected take, it makes the edit. This is a fictional variable and contains no real key.” |
-| 0:45–1:00 | Briefly show the clearly labelled simulation card, then the Vibe-fence repository. | “If a real secret were exposed, someone could misuse it. This $100 amount is only an illustration. I found Vibe-fence and want a second check.” |
+| 0:45–1:00 | Briefly show the clearly labelled simulation card. The beginner searches the web for `AI coding agent security` and then opens the prepared Vibe-fence repository tab. Do not imply a particular search ranking or that the fictional charge occurred. | “If a real secret were exposed, someone could misuse it. This $100 amount is only an illustration. I looked for an AI coding guardrail and opened Vibe-fence.” |
 | 1:00–1:25 | Back in the disposable project, run `git restore -- app/page.tsx` to reset the demo page. Install Vibe-fence with the verified command below, then run `node ./.fence/bin/vibe-fence.cjs doctor --host=muse`. | “I reset the fictional example and install Vibe-fence into this project. It configures a Muse Code hook and reports what still needs verification.” |
 | 1:25–2:05 | Start a **new** Muse session with the same launcher. Paste the **same** message. Show the SEC-01 block and Muse's explanation. | “I make the same request again. This time Vibe-fence stops the file edit before it happens and tells Muse why. Muse explains that a real secret belongs on the server, not in a browser-visible variable.” |
 | 2:05–2:30 | Exit Muse and run `cat app/page.tsx`. The original page should still be there without the risky line. | “The requested edit did not land. Vibe-fence made the deterministic decision locally; Muse helps me understand the warning.” |

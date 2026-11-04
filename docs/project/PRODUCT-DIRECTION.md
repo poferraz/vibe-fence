@@ -10,7 +10,7 @@ This document records direction, not proof that every feature is implemented. Th
 - **Git-guarded checks:** Configured Git hooks run checks before a commit or push. They do not intercept arbitrary agent actions; a redirected hook path or missing executable can disable them.
 - **Advisory guidance:** Instructions and skills help an agent follow the project workflow. They are not a security boundary.
 
-The current Codex adapter installs guidance and metadata but does not itself install a pre-tool interceptor. Claude Code, Cursor, and OpenCode have gate integrations that need verification in the actual host; they can allow actions when the integration fails. Use the [evidence page's limitations](../EVIDENCE.md#limitations) for the current disclosure.
+The Codex adapter configures a pre-tool hook, but its execution in a real host remains unverified. Claude Code, Cursor, and OpenCode also have gate integrations that need verification in the actual host; they can allow actions when the integration fails. Use the [evidence page's limitations](../EVIDENCE.md#limitations) for the current disclosure.
 
 ## Principles
 

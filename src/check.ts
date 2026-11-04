@@ -25,6 +25,7 @@ export interface CheckFinding {
   remediation?: string;
   reasonCode?: ScanReasonCode;
   line?: number;
+  historical?: boolean;
 }
 
 export interface CheckReport {
@@ -117,6 +118,7 @@ function scanContent(rel: string, content: string, files: string[], projectRoot:
         : HISTORY_REASONS[id] ?? "Potential issue in outgoing history — inspect the indicated commit locally."
       : v.reason;
     const f: CheckFinding = { file: rel, ruleId: id, severity: v.verdict === "unknown" ? "warn" : entry.severity, verdict: v.verdict, reason };
+    if (isCommittedBlob) f.historical = true;
     if (!isCommittedBlob && v.evidence) f.evidence = v.evidence;
     if (!isCommittedBlob && Number.isSafeInteger(v.line) && v.line! > 0) f.line = v.line;
     findings.push(f);
@@ -516,11 +518,12 @@ export function publicReport(report: CheckReport): CheckReport {
     ...report,
     findings: report.findings.map(f => {
       const scan = ["WORKTREE-SCAN", "INDEX-SCAN", "PUSH-SCAN"].includes(f.ruleId);
-      const scanInfo = scan ? publicScanInfo(f.reasonCode) : undefined;
+      const scanInfo = scan ? publicScanInfo(f.reasonCode, f.ruleId) : undefined;
       const reason = f.verdict === "unknown"
         ? "This rule could not verify the file; review it manually (unknown is not a pass)."
         : scanInfo?.reason ?? publicSummary(f.ruleId);
-      const remediation = f.verdict === "unknown" ? undefined : scanInfo?.remediation ?? publicRemediation(f.ruleId);
+      const baseRemediation = f.verdict === "unknown" ? undefined : scanInfo?.remediation ?? publicRemediation(f.ruleId);
+      const remediation = baseRemediation && f.historical ? `${baseRemediation} This finding is in outgoing commits; changing the current file does not remove it from Git history.` : baseRemediation;
       return {
         file: safeLocation(f.file),
         ruleId: Object.hasOwn(REGISTRY, f.ruleId) || ["S-06", "WORKTREE-SCAN", "INDEX-SCAN", "PUSH-SCAN"].includes(f.ruleId) ? f.ruleId : "OTHER",
@@ -529,6 +532,7 @@ export function publicReport(report: CheckReport): CheckReport {
         reason,
         ...(remediation ? { remediation } : {}),
         ...(scanInfo && f.reasonCode ? { reasonCode: f.reasonCode } : {}),
+        ...(f.historical ? { historical: true } : {}),
         ...(Number.isSafeInteger(f.line) && f.line! > 0 ? { line: f.line } : {}),
       };
     }),

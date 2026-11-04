@@ -45,7 +45,7 @@ export const MAX_WONDER_CALLS_DEFAULT = 5; // GEM-08 cap
 
 export interface FenceConfig {
   version: 1;
-  model_mode: ModelMode; // S-15/GEM-09 — default "standard"
+  model_mode: ModelMode; // Local preference label; does not change provider request settings.
   fence_version: string;
   updatedAt: string;
 }

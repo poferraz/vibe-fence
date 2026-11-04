@@ -30,12 +30,13 @@ publish without explicit authorization.
 
 ## Release (when authorized)
 
-- [ ] Clean install from a fresh clone: `bun install`, `bun run build`,
-      `node dist/cli.js init` in a scratch repo, then `status`, `check`, `undo`.
+- [ ] Clean install from a fresh clone: run `bun install` and `bun run build`,
+      save the checkout's absolute path, then run its `dist/cli.js init` in a
+      scratch repo and verify `status`, `check`, and `undo`.
 - [ ] `bun pm pack --dry-run`: expected files only, no `.fence/private/`, no
       tests in `dist/`.
-- [ ] Publish only with a tag and `NPM_TOKEN`; the release workflow runs the
-      gates first.
+- [ ] Before any authorized publication, run and record the full gate and
+      review the package. This public candidate has no automated release workflow.
 - [ ] After publishing, verify `npx vibe-fence init` in a scratch repo and
       update the README install section.
 

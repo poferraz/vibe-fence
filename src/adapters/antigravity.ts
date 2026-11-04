@@ -59,6 +59,22 @@ export function buildAntigravityOverrides(): string {
   ].join("\n");
 }
 
+/** Exact pre-advisory template; customized guidance must never be overwritten. */
+const LEGACY_ANTIGRAVITY_OVERRIDES = [
+  "<!-- vibe-fence: Antigravity overrides — extends AGENTS.md canonical policy -->",
+  "# Antigravity — Fence Overrides",
+  "",
+  "> Canonical: AGENTS.md (≤400 tokens router). This file holds Antigravity-specific overrides only.",
+  "> Do not duplicate AGENTS.md — add only what Antigravity needs beyond the canonical policy.",
+  "",
+  "## Overrides",
+  "",
+  "- Hooks: PreToolUse/PostToolUse via .agents/ — minimal surface (S-10/C-01).",
+  "- Skills: .agents/skills/<skill>/SKILL.md — L1/L2/L3 progressive disclosure (S-02).",
+  "- Privacy: Standard mode — code never trains Meta (S-15/GEM-09).",
+  "",
+].join("\n");
+
 export function installAntigravityAdapter(projectRoot: string, opts: { modelMode?: string } = {}): string[] {
   if (!adapterPathsSafe(projectRoot, ["AGENTS.md", ".fence/adapters/antigravity.json", ".agents/skills", ".agents/rules/antigravity.md"])) { console.warn("[vibe-fence] Adapter contains a managed symlink; leaving it unchanged."); return []; }
   const written: string[] = [];
@@ -76,7 +92,7 @@ export function installAntigravityAdapter(projectRoot: string, opts: { modelMode
     const dir = join(projectRoot, ".agents", "rules");
     mkdirSync(dir, { recursive: true });
     const p = join(dir, "antigravity.md");
-    if (!existsSync(p)) {
+    if (!existsSync(p) || readFileSync(p, "utf8") === LEGACY_ANTIGRAVITY_OVERRIDES) {
       writeFileSync(p, buildAntigravityOverrides(), "utf-8");
       written.push(".agents/rules/antigravity.md");
     }

@@ -14,7 +14,7 @@ In scope for this harness (what we treat as security, not just bugs):
 
 - Secret exfiltration or leak (`NEXT_PUBLIC_*` / `VITE_*` shape lint bypass, `.env` inclusion in bundle)
 - Credential-path access (`~/.ssh`, `~/.aws`, service-role keys) via skill or adapter bypass
-- Missing RLS / auth guard that the fence should have flagged (PRV-09, BILL-01)
+- Sensitive fixture data and potentially unbounded billable loops in the patterns covered by PRV-09 and BILL-01; these rules do not establish authentication or RLS coverage
 - Dependency supply-chain via `postinstall` planting malicious `AGENTS.md` / skills (GEM-01 integrity attestation)
 - `curl|sh` / `wget|sh` pipe-to-shell execution (NET-01 hard-block bypass)
 

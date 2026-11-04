@@ -79,7 +79,7 @@ export function buildFenceRouterMdc(): CursorRuleMdc {
       "> Canonical: AGENTS.md (≤400 tokens). This file is a Cursor-native mirror.",
       "> Skills: .agents/skills/<skill>/SKILL.md — L1/L2/L3 progressive disclosure (S-02).",
       "> Verification: Read→Think→Write→Check; trust ladder compile→lint→tests×2.",
-      "> Privacy: Standard mode — code never trains Meta (S-15/GEM-09).",
+      "> Privacy: Review the local mode in .fence/config.json and provider terms before sending data.",
       "",
     ].join("\n"),
   });

@@ -26,6 +26,19 @@ function makeProject(): string {
 }
 
 describe("install version and timing", () => {
+  it("does not promise provider training behavior in contributor-mode guidance", async () => {
+    const root = makeProject();
+    await install(root, { contributorMode: true, adapters: ["codex", "cursor"] });
+    const config = JSON.parse(readFileSync(join(root, ".fence", "config.json"), "utf8"));
+    expect(config.model_mode).toBe("contributor");
+    expect(readFileSync(join(root, "AGENTS.md"), "utf8")).not.toContain("vibe-fence active");
+    for (const path of ["AGENTS.md", ".cursor/rules/vibe-fence-router.mdc"]) {
+      const guidance = readFileSync(join(root, path), "utf8");
+      expect(guidance).not.toContain("code never trains Meta");
+      expect(guidance).toContain("provider terms");
+    }
+  });
+
   it("measures an install from its own start, even after a long process delay", async () => {
     const root = makeProject();
     const now = Date.now;
@@ -54,11 +67,12 @@ describe("install version and timing", () => {
     const configPath = join(root, ".fence", "config.json");
     mkdirSync(join(root, ".fence"), { recursive: true });
     writeFileSync(configPath, JSON.stringify({ version: 1, fence_version: "0.1.0", model_mode: "contributor", companion: { enabled: false } }));
-    await install(root, { adapters: [] });
+    const receipt = await install(root, { adapters: [] });
     const updated = readFileSync(configPath, "utf8");
     const config = JSON.parse(updated);
     expect(config.fence_version).toBe(packageVersion);
     expect(config.model_mode).toBe("contributor");
+    expect(receipt.modelMode).toBe("contributor");
     expect(config.companion).toEqual({ enabled: false });
     await install(root, { adapters: [] });
     expect(readFileSync(configPath, "utf8")).toBe(updated);

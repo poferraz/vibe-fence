@@ -40,7 +40,7 @@ import { installGitHooks, inspectGitHooks, effectiveHooksDir, canonicalPath, com
 
 export const FENCE_SYNC_TOKEN_ENV = "FENCE_SYNC_TOKEN";
 export const CONTRIBUTOR_DISCLOSURE =
-  "⚠️  Contributor Mode: code and prompts you send may be used to train Meta models. Use only for non-private projects. See https://dev.meta.ai/legal/model-api-terms";
+  "⚠️  Contributor preference is recorded locally; it does not change provider settings. Review Meta's terms and account settings before sending data: https://dev.meta.ai/legal/model-api-terms";
 
 export interface InstallOptions {
   dryRun?: boolean;
@@ -267,7 +267,7 @@ export function trackedEnvFiles(projectRoot: string): string[] {
 export async function install(projectRoot: string, opts: InstallOptions = {}): Promise<InstallReceipt> {
   const startMs = Date.now();
   const elapsed = () => Date.now() - startMs;
-  const modelMode = opts.contributorMode ? "contributor" as const : "standard" as const;
+  let modelMode: "standard" | "contributor" = opts.contributorMode ? "contributor" : "standard";
 
   // Refuse an escaping managed root before probes or writes.
   const managedPaths = [
@@ -287,6 +287,14 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
       catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
     }
     assertWithinProjectRoot(projectRoot, current);
+  }
+
+  // Preserve a prior contributor preference in the receipt and adapter metadata.
+  if (!opts.contributorMode) {
+    try {
+      const previous = JSON.parse(readFileSync(join(projectRoot, ".fence", "config.json"), "utf8")) as { model_mode?: unknown };
+      if (previous?.model_mode === "contributor") modelMode = "contributor";
+    } catch { /* Missing or invalid config uses the standard default. */ }
   }
 
   // 0. Contributor disclosure gate — GEM-09 P0
@@ -325,7 +333,7 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
     const p = join(projectRoot, ".fence", "config.json");
     const existing = existsSync(p) ? (() => { try { return JSON.parse(readFileSync(p, "utf-8") as string) as Record<string, unknown>; } catch { return null; } })() : null;
     // Never downgrade contributor → standard silently; respect explicit existing if no flag
-    const nextMode = opts.contributorMode ? "contributor" : (existing?.["model_mode"] as string ?? "standard");
+    const nextMode = modelMode;
     const fenceVersion = packageVersion();
     // Skip write when nothing changed — init ×3 must be zero-churn (FINAL-v2 §7).
     const unchanged = existing?.["model_mode"] === nextMode && existing?.["fence_version"] === fenceVersion && existing?.["version"] === 1;

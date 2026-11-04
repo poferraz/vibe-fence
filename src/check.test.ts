@@ -91,6 +91,8 @@ describe("actionable public diagnostics", () => {
       const report = runCheck(root);
       expect(publicReport(report).findings.filter(f => f.ruleId === "S-06").map(f => f.file).sort()).toEqual([".fence/invariants.md", "AGENTS.md"]);
       expect(formatHuman(report)).toContain("git diff");
+      expect(formatHuman(report)).toContain("outside the managed block");
+      expect(formatHuman(report)).toContain("staged or untracked");
       expect(formatHuman(report)).not.toContain("SECRET_SENTINEL_99182");
       expect(formatHuman(report)).not.toContain("vibe-fence diff");
       writeFileSync(join(root, "AGENTS.md"), "original\n");
@@ -308,7 +310,21 @@ describe("index-aware scans (L1)", () => {
     expect(report.findings.some((f) => f.ruleId === "SEC-03" && f.verdict === "fail" && f.file.startsWith(".env (commit "))).toBe(true);
     expect(report.findings.some((f) => f.ruleId === "SEC-03" && f.verdict === "fail" && f.file.startsWith(".env.example"))).toBe(false);
     expect(JSON.stringify(report)).not.toContain(marker);
+    const output = formatHuman(report);
+    expect(output).toContain("changing the current file does not remove it from Git history");
+    expect(output).not.toContain(marker);
     expect(exitCodeForReport(report)).toBe(1);
+  });
+
+  it("explains that reviewing an oversized historical blob does not unblock the automatic hook", () => {
+    const root = makeGitProject();
+    const base = sh(root, "git rev-parse HEAD");
+    writeFileSync(join(root, "large.ts"), "export const longValue = 12345;\n");
+    commitAll(root, "large");
+    const report = runPushCheck(root, [`${base}..HEAD`], { maxBytesPerFile: 2 });
+    expect(publicReport(report).findings.some(f => f.reasonCode === "max-bytes")).toBe(true);
+    expect(formatHuman(report)).toContain("automatic pre-push hook will still block");
+    expect(formatHuman(report)).toContain("historical");
   });
 
   it("blocks an empty env file in outgoing history without exposing contents", () => {
@@ -366,6 +382,7 @@ describe("index-aware scans (L1)", () => {
     sh(root, "git -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -qm submodule");
     const report = runPushCheck(root, [`${base}..HEAD`]);
     expect(report.findings.some((f) => f.ruleId === "PUSH-SCAN" && /submodule/i.test(f.reason))).toBe(true);
+    expect(formatHuman(report)).toContain("automatic pre-push hook will still block");
     expect(exitCodeForReport(report)).toBe(1);
   });
 

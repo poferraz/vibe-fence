@@ -249,6 +249,34 @@ describe("codex/hermes/antigravity conformance", () => {
     walk(root);
     expect(found).toEqual([join(root, ".fence", "adapters", "antigravity.json")]);
   });
+
+  it("migrates untouched legacy Antigravity guidance but preserves user-customized guidance", () => {
+    const old = [
+      "<!-- vibe-fence: Antigravity overrides — extends AGENTS.md canonical policy -->",
+      "# Antigravity — Fence Overrides",
+      "",
+      "> Canonical: AGENTS.md (≤400 tokens router). This file holds Antigravity-specific overrides only.",
+      "> Do not duplicate AGENTS.md — add only what Antigravity needs beyond the canonical policy.",
+      "",
+      "## Overrides",
+      "",
+      "- Hooks: PreToolUse/PostToolUse via .agents/ — minimal surface (S-10/C-01).",
+      "- Skills: .agents/skills/<skill>/SKILL.md — L1/L2/L3 progressive disclosure (S-02).",
+      "- Privacy: Standard mode — code never trains Meta (S-15/GEM-09).",
+      "",
+    ].join("\n");
+    for (const customized of [false, true]) {
+      const root = makeProject();
+      const path = join(root, ".agents", "rules", "antigravity.md");
+      mkdirSync(join(root, ".agents", "rules"), { recursive: true });
+      const original = old + (customized ? "\nCustom instructions.\n" : "");
+      writeFileSync(path, original);
+      installAntigravityAdapter(root);
+      const result = readFileSync(path, "utf8");
+      if (customized) expect(result).toBe(original);
+      else expect(result).toContain("advisory guidance only");
+    }
+  });
 });
 
 

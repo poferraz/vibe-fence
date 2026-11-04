@@ -36,7 +36,7 @@ function help(): string {
     "",
     "Options (init):",
     "  --dry-run            Print what would change; write nothing",
-    "  --contributor-mode   Opt in to Contributor model mode (training disclosure applies)",
+    "  --contributor-mode   Record a contributor preference locally; check provider settings separately",
     "  --full               Force native mode even on WebContainer-like runtimes",
     `  --adapters=<list>    Subset of: ${DEFAULT_ADAPTER_IDS.join(", ")} (default: all)`,
     "  --profile=muse        Preset: Claude adapter (demo-hero path; overridden by --adapters)",

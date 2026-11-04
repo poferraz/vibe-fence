@@ -108,11 +108,11 @@ export const AGENTS_FENCE_BLOCK_END = "<!-- vibe-fence:end -->";
 export function buildAgentsFenceBlock(): string {
   return [
     AGENTS_FENCE_BLOCK_START,
-    "> 🛡️ vibe-fence active — deterministic fence decides; model explains (S-05).",
+    "> 🛡️ vibe-fence guidance — checks depend on working hooks; model explanations are optional.",
     "> Skills: .agents/skills/<skill>/SKILL.md — L1 name+description at startup, L2/L3 on match.",
     "> Verification: Read→Think→Write→Check + trust ladder compile→lint→tests×2→generated.",
     "> Containment: project-root realpath + git checkpoint + fence undo (≤3 gates/session).",
-    "> Privacy: Standard mode — code never trains Meta (GEM-09/S-15). See .fence/config.json.",
+    "> Privacy: Review the local mode in .fence/config.json and provider terms before sending data.",
     AGENTS_FENCE_BLOCK_END,
   ].join("\n");
 }

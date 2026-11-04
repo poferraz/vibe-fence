@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FENCE_SYNC_TOKEN_ENV, persistAttestation, verifyAttestation } from "./integrity";
-import { runCheck, exitCodeForReport } from "../check";
+import { runCheck, exitCodeForReport, formatHuman } from "../check";
 
 const root = mkdtempSync(join(tmpdir(), "vf-integrity-"));
 const original = process.env[FENCE_SYNC_TOKEN_ENV];
@@ -22,7 +22,9 @@ it("does not let an arbitrary token conceal drift and reports corrupt records", 
   writeFileSync(join(root, ".fence/.integrity.json"), JSON.stringify({ version: 1, files: {} }));
   expect(verifyAttestation(root).status).toBe("unknown");
   writeFileSync(join(root, ".fence/.integrity.json"), "invalid");
-  expect(exitCodeForReport(runCheck(root))).toBe(1);
+  const report = runCheck(root);
+  expect(exitCodeForReport(report)).toBe(1);
+  expect(formatHuman(report)).toContain("outside the managed block");
 });
 
 it("refuses to write an attestation through a symlink", () => {

@@ -23,6 +23,8 @@ export function publicSummary(id: string): string {
 
 export type ScanReasonCode = "max-files" | "max-bytes" | "max-commits" | "unreadable" | "unmerged" | "not-git" | "missing-root" | "shallow" | "submodule" | "missing-upstream" | "invalid-range" | "integrity-corrupt";
 
+const INTEGRITY_RECOVERY = "Fix: Review staged or untracked changes too (use git diff and git diff --cached). Restore unintended edits. Before re-running 'vibe-fence init', move any edits you want to keep outside the managed block in AGENTS.md; init replaces that block.";
+
 const REMEDIATIONS: Record<string, string> = {
   "SEC-01": "Fix: Move the secret to a server-only variable and rotate it if it was shared or committed.",
   "SEC-02": "Fix: Remove the credential-file access and use an approved secret provider instead.",
@@ -35,7 +37,14 @@ const REMEDIATIONS: Record<string, string> = {
   "FS-01": "Fix: Keep file operations within the project directory.",
   "BILL-01": "Fix: Add a limit to the potentially billable operation.",
   "PRV-09": "Fix: Replace sensitive fixture data with synthetic examples.",
-  "S-06": "Fix: Review with 'git diff -- AGENTS.md .fence/invariants.md'; restore unintended changes or run 'vibe-fence init' to accept intended changes.",
+  "S-06": INTEGRITY_RECOVERY,
+};
+
+const PUSH_REMEDIATIONS: Partial<Record<ScanReasonCode, string>> = {
+  "max-files": "Fix: Review smaller explicit ranges and, where practical, split the push into smaller updates. The automatic pre-push hook will still block an oversized push.",
+  "max-bytes": "Fix: Review the historical file and plan any necessary history changes. The automatic pre-push hook will still block while that oversized blob is in the pushed history.",
+  "max-commits": "Fix: Review smaller explicit ranges and, where practical, split the push into smaller updates. The automatic pre-push hook will still block an oversized push.",
+  "submodule": "Fix: Inspect the submodule separately. The automatic pre-push hook will still block a push containing this unsupported submodule change; review your workflow before proceeding.",
 };
 
 const SCAN_REASONS: Record<ScanReasonCode, { reason: string; remediation: string }> = {
@@ -50,15 +59,18 @@ const SCAN_REASONS: Record<ScanReasonCode, { reason: string; remediation: string
   "submodule": { reason: "A submodule requires a separate scan.", remediation: "Fix: Inspect the submodule and its history separately before pushing." },
   "missing-upstream": { reason: "This branch has no upstream tracking reference for the history scan.", remediation: "Fix: Configure an upstream, pass an explicit <base>..<head> range, or run './.fence/bin/vibe-fence check --push --all' to scan all local refs." },
   "invalid-range": { reason: "Git could not resolve the requested history range.", remediation: "Fix: Check the revisions or provide a valid <base>..<head> range." },
-  "integrity-corrupt": { reason: "The integrity baseline is missing, unreadable, or invalid.", remediation: "Fix: Review the instruction files, then run 'vibe-fence init' to create a new baseline." },
+  "integrity-corrupt": { reason: "The integrity baseline is missing, unreadable, or invalid.", remediation: INTEGRITY_RECOVERY },
 };
 
 export function publicRemediation(id: string): string | undefined {
   return Object.hasOwn(REMEDIATIONS, id) ? REMEDIATIONS[id] : undefined;
 }
 
-export function publicScanInfo(code: unknown): { reason: string; remediation: string } | undefined {
-  return typeof code === "string" && Object.hasOwn(SCAN_REASONS, code) ? SCAN_REASONS[code as ScanReasonCode] : undefined;
+export function publicScanInfo(code: unknown, ruleId?: string): { reason: string; remediation: string } | undefined {
+  if (typeof code !== "string" || !Object.hasOwn(SCAN_REASONS, code)) return undefined;
+  const info = SCAN_REASONS[code as ScanReasonCode];
+  const pushRemediation = ruleId === "PUSH-SCAN" ? PUSH_REMEDIATIONS[code as ScanReasonCode] : undefined;
+  return pushRemediation ? { ...info, remediation: pushRemediation } : info;
 }
 
 export function safeLocation(path: string): string {

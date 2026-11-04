@@ -50,7 +50,7 @@ Compare views: https://github.com/poferraz/vibe-fence/compare/
 - Demo fixture (`demo/`; Phase 4b): committed 2-file leak app (`leak-app/config.env` + `page.tsx`, clean at rest via the `your-token-here` placeholder) + `CUES.md` staging init → block → explain → checkpoint → undo, every beat verified with the packed CLI in scratch (init 40ms, SEC-01 block exit 1, no-key explain note, checkpoint warns + lands, undo soft-resets with work preserved, stash round-trip re-blocks). `config.env` (not `.env`) dodges global gitignores that would hide the leak from git.
 
 ### Fixed
-- `release.yml` now runs `bun test` + `bun run eval` before `npm publish` (L5) — a tagged release can no longer ship with red tests or eval regressions.
+- A historical `release.yml` ran tests and evals before publishing (L5). The current public candidate does not include that workflow; run and record the gates separately before any authorized release.
 - `dist/` and the npm tarball no longer ship `*.test.ts` or `.gitkeep` (C9); test counts are unique-only going forward (was 237 run / 127 unique). Guarded by `tools/generate.test.ts`.
 - `vibe-fence check` skips 0-byte files instead of reporting per-rule unknowns (L7) — repo self-scan drops from 45 unknowns to 0.
 - Truth pass (C4/C8/C13/L9/L11/L13): README corrected (`muse-wonder-1.0`, `web`/Cordis/`encrypted` dropped or hedged, honest rule counts, npm 404 hedged, REHEARSAL refs 6/8 + 2 open); all 4 `SKILL.md` Usage blocks teach real subcommands only (enforced by `src/skills/skills.test.ts`); STATUS dates relabeled to Oct 26; REHEARSAL verdicts corrected to 6/8 + 2 open (T2/T8); 13 MB `.docx` blobs removed (`.md` retained); `severity-policy.json` labeled aspirational.

@@ -24,8 +24,10 @@ export function getProtectionStatus(root: string, host?: string) {
   const jq = findExecutable("jq");
   let hooksPath: string | null = null;
   let projectRoot = root;
+  let gitRootResolved = false;
   try {
     projectRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    gitRootResolved = true;
     const path = execFileSync("git", ["rev-parse", "--git-path", "hooks"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
     hooksPath = isAbsolute(path) ? path : resolve(root, path);
   } catch {}
@@ -105,10 +107,11 @@ export function getProtectionStatus(root: string, host?: string) {
   const advisoryReady = advisoryHost && installedHosts.some(id => id === host) && existsSync(join(projectRoot, "AGENTS.md")) &&
     existsSync(join(projectRoot, ".agents", "skills")) && (host !== "antigravity" || existsSync(join(projectRoot, ".agents", "rules", "antigravity.md")));
   const broken = supported && !configured && configPresent;
+  const codexWithoutGit = host === "codex" && configured && !gitRootResolved;
   const shellHook = isClaude || host === "cursor";
   const ready = Boolean(gate && node && (!shellHook || jq));
   const gitReady = Boolean(gate && (gate !== join(projectRoot, ".fence/bin/vibe-fence") || node));
-  const toolState = advisoryHost ? advisoryReady ? "advisory" : "unverified" : !supported ? "unverified" : broken ? "degraded" : !configured ? "advisory" : ready ? "configured-unverified" : "degraded";
+  const toolState = advisoryHost ? advisoryReady ? "advisory" : "unverified" : !supported ? "unverified" : broken || codexWithoutGit ? "degraded" : !configured ? "advisory" : ready ? "configured-unverified" : "degraded";
   const hostLabel = isClaude ? "Claude Code" : host === "cursor" ? "Cursor" : host === "opencode" ? "OpenCode" : "Codex";
   return {
     host,
@@ -119,6 +122,7 @@ export function getProtectionStatus(root: string, host?: string) {
       next: advisoryHost ? advisoryReady ? "This adapter provides guidance only and does not block tool calls. Use Git hooks and run './.fence/bin/vibe-fence check'." : "Advisory guidance or its install receipt is missing; run 'vibe-fence init' for this host." :
         !supported ? installedHosts.length > 1 && host === "unknown" ? `Installed adapters: ${installedHosts.join(", ")}. Select one with --host=<name> to inspect its local configuration.` : "Select a supported host with --host=codex, --host=claude, --host=cursor, --host=opencode, --host=antigravity, or --host=hermes to inspect its local configuration." :
         broken ? `${hostLabel} hook files are present but do not match the managed hook; repair or reinstall them, then verify in a real session.` :
+        codexWithoutGit ? "The Codex hook needs Git and a Git repository to locate the project; initialize Git and verify the hook in a real session." :
         !configured ? `${hostLabel} guidance alone does not block tool calls; install the supported hook.` :
         !ready ? (shellHook ? "The hook is configured but its fence or jq executable is unavailable." : "The hook is configured but its fence or Node executable is unavailable.") :
         `Verify the hook in a real ${hostLabel} session; configuration alone is not proof of enforcement.`,

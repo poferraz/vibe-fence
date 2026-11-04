@@ -152,7 +152,7 @@ export function verifyAttestation(projectRoot: string): IntegrityVerdict {
     status: "fail",
     mismatched,
     message:
-      `Attested instruction file changed — run 'git diff -- AGENTS.md .fence/invariants.md' to review.\n` +
+      `Attested instruction file changed — inspect it, including staged or untracked edits (git diff and git diff --cached).\n` +
       `Mismatched: ${mismatched.join(", ")}`,
   };
 }

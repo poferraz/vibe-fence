@@ -75,6 +75,19 @@ it("reports Cursor and OpenCode as configured but unverified with a local launch
   } finally { if (previous === undefined) delete process.env.FENCE_BIN; else process.env.FENCE_BIN = previous; }
 });
 
+it("reports a Codex hook degraded outside a Git repository", async () => {
+  const { mkdirSync } = await import("node:fs");
+  const { installCodexAdapter } = await import("../adapters/codex");
+  const root = mkdtempSync(join(tmpdir(), "vf-status-no-git-"));
+  created.push(root);
+  installCodexAdapter(root);
+  mkdirSync(join(root, ".fence/bin"), { recursive: true });
+  writeFileSync(join(root, ".fence/bin/vibe-fence"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  const status = getProtectionStatus(root, "codex");
+  expect(status.toolGate.state).toBe("degraded");
+  expect(status.toolGate.next).toContain("Git repository");
+});
+
 it("reports local Git hooks degraded when Node is missing", async () => {
   const { mkdirSync } = await import("node:fs");
   const { installGitHooks } = await import("./git-hooks");

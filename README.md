@@ -78,6 +78,8 @@ Deleting a file or running `undo` does not erase a secret from existing Git hist
 
 Optional `--explain` requests use Meta Muse Spark when configured with `MUSE_API_KEY`. Requests contain fixed rule categories and severity, not source contents, filenames, raw tool arguments, or dynamic rule reasons. The model's response is advisory and does not change a check's decision. Network use is opt-in and may incur provider charges.
 
+The `--contributor-mode` option records a preference in local configuration and event metadata; it does not change the provider's account or API settings. Review the provider's terms and your account settings before sending data.
+
 ## Remove vibe-fence
 
 Back up any project-specific files in `.fence/` and review the following before removing anything; some files may also contain your own settings.

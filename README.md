@@ -6,9 +6,23 @@ The [build provenance](docs/BUILD-PROVENANCE.md) separates the existing scaffold
 
 ## Get started
 
-The November 3 audit found that the published `vibe-fence@0.2.0` package lacks the durable project runtime and can skip Git checks after `npx` exits. Avoid `npx vibe-fence@0.2.0`; use the source build below until a newer release is published and verified.
+You need Node.js 20 or newer and Git. Claude Code and Cursor hooks also require `jq` on your PATH. Run this in the project you want to check:
 
-You need Node.js 20 or newer, Git, and Bun to build this source checkout. Claude Code and Cursor hooks also require `jq` on your PATH. Run the installer in the project you want to check, not in the vibe-fence checkout:
+```sh
+npx --yes vibe-fence@0.2.1 init --adapters=codex
+./.fence/bin/vibe-fence status --host=codex
+./.fence/bin/vibe-fence check
+```
+
+Replace `codex` with `claude`, `cursor`, or `opencode` for the host you use. The installer also provides Antigravity and Hermes configurations with different capabilities; see [host integration details](docs/project/PRODUCT-DIRECTION.md). The `--profile=muse` preset selects the Claude adapter; it does not install a Muse Code integration.
+
+The installer copies a runtime into the target project so its managed hooks can find vibe-fence after the original command exits. Run `init` again to update it. An explicit `FENCE_BIN` override takes precedence. The runtime and its local integrity records can be changed by anyone who can write the project; they are not an independent security boundary.
+
+The older `vibe-fence@0.2.0` package lacks the durable project runtime and can skip Git checks after `npx` exits. It is deprecated; use `0.2.1` or later.
+
+### Build from source
+
+Building the source checkout also requires Bun. Run:
 
 ```sh
 # In the vibe-fence source checkout
@@ -22,10 +36,6 @@ node "$FENCE_SOURCE/dist/cli.js" init --adapters=codex
 ./.fence/bin/vibe-fence status --host=codex
 ./.fence/bin/vibe-fence check
 ```
-
-Replace `codex` with `claude`, `cursor`, or `opencode` for the host you use. The installer also provides Antigravity and Hermes configurations with different capabilities; see [host integration details](docs/project/PRODUCT-DIRECTION.md). The `--profile=muse` preset selects the Claude adapter; it does not install a Muse Code integration.
-
-The installer copies a runtime into the target project so its managed hooks can find vibe-fence after the original command exits. Run `init` again to update it. An explicit `FENCE_BIN` override takes precedence. The runtime and its local integrity records can be changed by anyone who can write the project; they are not an independent security boundary.
 
 ## Check a synthetic example
 
@@ -103,7 +113,7 @@ bun test
 bun run eval
 ```
 
-The [maintainer checklist](docs/MAINTAINER.md) describes release checks. The [documentation index](docs/fence/INDEX.md), [evidence](docs/EVIDENCE.md), and [build provenance](docs/BUILD-PROVENANCE.md) provide implementation details and verification limits. Registry publication is not established by this checkout; use the source instructions above until a release is verified.
+The [maintainer checklist](docs/MAINTAINER.md) describes release checks. The [documentation index](docs/fence/INDEX.md), [evidence](docs/EVIDENCE.md), and [build provenance](docs/BUILD-PROVENANCE.md) provide implementation details and verification limits.
 
 ## License
 

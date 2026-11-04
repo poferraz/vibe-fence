@@ -12,6 +12,7 @@ describe("SEC-02 gate mode", () => {
   it("fails on read tool + credential path", () => {
     expect(check({ content: "~/.ssh/id_rsa", toolName: "read" }).verdict).toBe("fail");
     expect(check({ content: ".env", toolName: "read" }).verdict).toBe("fail");
+    expect(check({ content: ".fence/uninstall.json", toolName: "read" }).verdict).toBe("fail");
   });
 
   it("passes on non-read tools (mention ≠ exfiltration)", () => {

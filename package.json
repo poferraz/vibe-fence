@@ -1,7 +1,7 @@
 {
   "name": "vibe-fence",
-  "version": "0.2.1",
-  "description": "Bounded local checks for coding-agent workflows and Git changes",
+  "version": "0.3.0",
+  "description": "Local guardrails, secret checks, and a circuit breaker for AI coding agents",
   "type": "module",
   "license": "MIT",
   "author": "Paulo Ferraz <poferraz@me.com>",
@@ -14,16 +14,16 @@
     "url": "https://github.com/poferraz/vibe-fence/issues"
   },
   "keywords": [
-    "meta-ai",
-    "muse-spark",
-    "muse-image",
-    "sam3",
-    "harness",
-    "vibe-coding",
     "ai-agents",
     "guardrails",
-    "developer-tools",
-    "hackathon"
+    "vibe-coding",
+    "claude-code",
+    "cursor",
+    "codex",
+    "opencode",
+    "secret-scanner",
+    "git-hooks",
+    "developer-tools"
   ],
   "packageManager": "bun@1.3.14",
   "engines": {
@@ -32,6 +32,7 @@
   },
   "files": [
     "dist/",
+    "docs/assets/",
     "AGENTS.md",
     "LICENSE",
     "README.md"
@@ -47,6 +48,7 @@
     "validate": "bun run tools/validate.ts",
     "deploy": "bun run tools/install.ts",
     "typecheck": "tsc --noEmit",
+    "test": "bun test",
     "eval": "bun run tools/eval.ts --check",
     "eval:baseline": "bun run tools/eval.ts --write-baseline"
   },

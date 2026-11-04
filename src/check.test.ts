@@ -215,7 +215,7 @@ describe("index-aware scans (L1)", () => {
     expect(exitCodeForReport(empty)).toBe(0);
     const plain = makeProject({ "a.ts": "export const x = 1;\n" });
     expect(runIndexCheck(plain).filesScanned).toBe(0);
-    expect(exitCodeForReport(runIndexCheck(plain))).toBe(1);
+    expect(exitCodeForReport(runIndexCheck(plain))).toBe(2);
   });
 
   it("runPushCheck scans an explicit outgoing range (bare rev = commit vs parent)", () => {
@@ -316,14 +316,14 @@ describe("index-aware scans (L1)", () => {
     expect(exitCodeForReport(report)).toBe(1);
   });
 
-  it("explains that reviewing an oversized historical blob does not unblock the automatic hook", () => {
+  it("explains the limits of excluding an oversized historical blob", () => {
     const root = makeGitProject();
     const base = sh(root, "git rev-parse HEAD");
     writeFileSync(join(root, "large.ts"), "export const longValue = 12345;\n");
     commitAll(root, "large");
     const report = runPushCheck(root, [`${base}..HEAD`], { maxBytesPerFile: 2 });
     expect(publicReport(report).findings.some(f => f.reasonCode === "max-bytes")).toBe(true);
-    expect(formatHuman(report)).toContain("automatic pre-push hook will still block");
+    expect(formatHuman(report)).toContain("excluded files are not inspected");
     expect(formatHuman(report)).toContain("historical");
   });
 
@@ -369,9 +369,9 @@ describe("index-aware scans (L1)", () => {
     writeFileSync(join(root, "a.ts"), "export const a = 1;\n");
     writeFileSync(join(root, "b.ts"), "export const b = 2;\n");
     commitAll(root, "clean");
-    expect(exitCodeForReport(runPushCheck(root, [`${base}..HEAD`], { maxFiles: 1 }))).toBe(1);
-    expect(exitCodeForReport(runPushCheck(root, ["nonexistent..HEAD"]))).toBe(1);
-    expect(exitCodeForReport(runPushCheck(root, [`${base}..HEAD`], { maxBytesPerFile: 1 }))).toBe(1);
+    expect(exitCodeForReport(runPushCheck(root, [`${base}..HEAD`], { maxFiles: 1 }))).toBe(2);
+    expect(exitCodeForReport(runPushCheck(root, ["nonexistent..HEAD"]))).toBe(2);
+    expect(exitCodeForReport(runPushCheck(root, [`${base}..HEAD`], { maxBytesPerFile: 1 }))).toBe(2);
     expect(exitCodeForReport(runPushCheck(root, [`${base}..HEAD`]))).toBe(0);
   });
 
@@ -383,7 +383,7 @@ describe("index-aware scans (L1)", () => {
     const report = runPushCheck(root, [`${base}..HEAD`]);
     expect(report.findings.some((f) => f.ruleId === "PUSH-SCAN" && /submodule/i.test(f.reason))).toBe(true);
     expect(formatHuman(report)).toContain("automatic pre-push hook will still block");
-    expect(exitCodeForReport(report)).toBe(1);
+    expect(exitCodeForReport(report)).toBe(2);
   });
 
   it("does not resolve historical file paths through the current worktree symlinks", () => {
@@ -413,7 +413,7 @@ describe("index-aware scans (L1)", () => {
     execFileSync("git", ["clone", "-q", "--depth=1", `file://${root}`, shallow], { env: gitEnv() });
     const report = runPushCheck(shallow, [`${"0".repeat(40)}..HEAD`]);
     expect(report.findings.some((f) => f.ruleId === "PUSH-SCAN" && f.verdict === "fail")).toBe(true);
-    expect(exitCodeForReport(report)).toBe(1);
+    expect(exitCodeForReport(report)).toBe(2);
   });
 
   it("scans a merged branch and does not mistake its deleted paths for unreadable blobs", () => {
@@ -468,11 +468,30 @@ describe("fence-owned integrity in check (C7/S-06)", () => {
 });
 
 describe("incomplete scan boundaries", () => {
+  it("honors fenceignore globs and reports the path and exit code for oversized files", () => {
+    const root = makeProject({ ".fenceignore": "assets/**\n*.map\n", "assets/huge.svg": "abcdef".repeat(30), "bundle.map": "abcdef".repeat(30), "source.ts": "abcdef".repeat(30) });
+    const report = runCheck(root, { maxBytesPerFile: 50 });
+    const publicFindings = publicReport(report).findings.filter(f => f.reasonCode === "max-bytes");
+    expect(publicFindings.map(f => f.file)).toEqual(["source.ts"]);
+    expect(formatHuman(report)).toContain(".fenceignore");
+    expect(exitCodeForReport(report)).toBe(2);
+  });
+
+  it("never hides a staged environment file through a broad fenceignore pattern", () => {
+    const root = makeGitProject();
+    writeFileSync(join(root, ".fenceignore"), "*\n");
+    writeFileSync(join(root, ".env"), "PRIVATE=value\n");
+    sh(root, "git add --force .env");
+    const report = runIndexCheck(root);
+    expect(report.findings.some(f => f.ruleId === "SEC-03")).toBe(true);
+    expect(exitCodeForReport(report)).toBe(1);
+  });
+
   it("blocks a capped worktree while allowing an exact cap", () => {
     const root = makeProject({ "a.ts": "export const ok = 1;\n", "b.ts": LEAK });
     const limited = runCheck(root, { maxFiles: 1 });
     expect(limited.findings.some(f => f.ruleId === "WORKTREE-SCAN")).toBe(true);
-    expect(exitCodeForReport(limited)).toBe(1);
+    expect(exitCodeForReport(limited)).toBe(2);
     expect(runCheck(root, { maxFiles: 2 }).findings.some(f => f.ruleId === "WORKTREE-SCAN")).toBe(false);
     expect(runCheck(root).findings.some(f => f.ruleId === "SEC-01")).toBe(true);
   });
@@ -490,8 +509,8 @@ describe("incomplete scan boundaries", () => {
 
   it("blocks oversized inputs and unavailable repositories", () => {
     const root = makeProject({ "large.ts": "abcdef" });
-    expect(exitCodeForReport(runCheck(root, { maxBytesPerFile: 2 }))).toBe(1);
-    expect(exitCodeForReport(runIndexCheck(root))).toBe(1);
+    expect(exitCodeForReport(runCheck(root, { maxBytesPerFile: 2 }))).toBe(2);
+    expect(exitCodeForReport(runIndexCheck(root))).toBe(2);
   });
 });
 
@@ -513,7 +532,7 @@ it("marks an unreadable eligible worktree file incomplete", async () => {
   try {
     const report = runCheck(root);
     expect(report.findings.some(f => f.ruleId === "WORKTREE-SCAN")).toBe(true);
-    expect(exitCodeForReport(report)).toBe(1);
+    expect(exitCodeForReport(report)).toBe(2);
     expect(report.filesScanned).toBe(0);
   } finally { chmodSync(path, 0o600); }
 });

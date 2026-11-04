@@ -8,7 +8,7 @@ import { describe, it, expect, afterEach } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { checkpoint, fenceUndo, isDestructiveGitCommand, isWithinProjectRoot, CHECKPOINT_PREFIX } from "./git";
 
 const created: string[] = [];
@@ -37,6 +37,64 @@ function headSubject(root: string): string {
 }
 
 describe("checkpoint", () => {
+  it("blocks a detected secret before git add writes its blob, unless explicitly allowed", () => {
+    const root = makeRepo();
+    const token = "sk_" + "live_" + "aB3cD4eF5gH6iJ7kL8mN9pQ2";
+    writeFileSync(join(root, "secret.ts"), `const credential = "${token}";\n`);
+    const blob = sh(root, "git hash-object secret.ts");
+    const before = sh(root, "git rev-parse HEAD");
+    expect(sh(root, `git cat-file -e ${blob} 2>/dev/null || echo absent`)).toBe("absent");
+    const blocked = checkpoint({ action: "unsafe", projectRoot: root, includeUntracked: true });
+    expect(blocked.committed).toBe(false);
+    expect(blocked.message).toContain("secret");
+    expect(sh(root, "git rev-parse HEAD")).toBe(before);
+    expect(sh(root, `git cat-file -e ${blob} 2>/dev/null || echo absent`)).toBe("absent");
+    expect(sh(root, "git diff --cached --name-only")).toBe("");
+    expect(checkpoint({ action: "override", projectRoot: root, includeUntracked: true, allowSecretsInCheckpoint: true }).committed).toBe(true);
+  });
+
+  it("blocks a newly included environment file before staging it", () => {
+    const root = makeRepo();
+    sh(root, "git config --local core.excludesfile /dev/null");
+    writeFileSync(join(root, ".env"), "PRIVATE_VALUE=local\n");
+    const result = checkpoint({ action: "unsafe env", projectRoot: root, includeUntracked: true });
+    expect(result.committed).toBe(false);
+    expect(result.message).toContain(".env");
+    expect(sh(root, "git diff --cached --name-only")).toBe("");
+  });
+
+  it("does not commit when a Git clean filter introduces a secret during staging", () => {
+    const root = makeRepo();
+    writeFileSync(join(root, "data.txt"), "safe before\n");
+    sh(root, "git add data.txt");
+    sh(root, "git -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -qm base");
+    writeFileSync(join(root, ".gitattributes"), "data.txt filter=inject\n");
+    sh(root, "git add .gitattributes");
+    sh(root, "git -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -qm attributes");
+    const token = "sk_" + "live_" + "aB3cD4eF5gH6iJ7kL8mN9pQ2";
+    const filter = join(root, "filter.cjs");
+    writeFileSync(filter, `process.stdout.write(${JSON.stringify(token)});\n`);
+    execFileSync("git", ["config", "--local", "filter.inject.clean", `node ${filter}`], { cwd: root, env: gitEnv() });
+    writeFileSync(join(root, ".fenceignore"), "data.txt\n");
+    writeFileSync(join(root, "data.txt"), "safe new work\n");
+    const before = sh(root, "git rev-parse HEAD");
+    const result = checkpoint({ action: "filtered", projectRoot: root });
+    expect(result.committed).toBe(false);
+    expect(result.message).toContain("staged");
+    expect(sh(root, "git rev-parse HEAD")).toBe(before);
+  });
+
+  it("does not write a detected secret from the checkpoint label into a commit", () => {
+    const root = makeRepo();
+    writeFileSync(join(root, "work.txt"), "work\n");
+    const token = "sk_" + "live_" + "aB3cD4eF5gH6iJ7kL8mN9pQ2";
+    const before = sh(root, "git rev-parse HEAD");
+    const result = checkpoint({ action: token, projectRoot: root, includeUntracked: true });
+    expect(result.committed).toBe(false);
+    expect(sh(root, "git rev-parse HEAD")).toBe(before);
+    expect(sh(root, "git diff --cached --name-only")).toBe("");
+  });
+
   it("commits tracked WIP with the checkpoint prefix", () => {
     const root = makeRepo();
     writeFileSync(join(root, "a.txt"), "v2\n", "utf-8");
@@ -86,8 +144,8 @@ describe("checkpoint", () => {
       warns.push(args.join(" "));
     };
     try {
-      const r = checkpoint({ action: "dirty wip", projectRoot: root });
-      expect(r.committed).toBe(true); // undo points always land — never gated
+      const r = checkpoint({ action: "dirty wip", projectRoot: root, allowSecretsInCheckpoint: true });
+      expect(r.committed).toBe(true); // explicit override retains the warning
     } finally {
       console.warn = origWarn;
     }

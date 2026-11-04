@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-labelledby="title desc">
+  <title id="title">vibe-fence: guardrails for AI coding agents</title>
+  <desc id="desc">A geometric safety rail and shield accompany the project name and supported agent names.</desc>
+  <style>
+    .bg{fill:#102027}.panel{fill:#162b31}.ink{fill:#edf6f1}.muted{fill:#aec6bf}.line{stroke:#355149}.pill{fill:#1c353a;stroke:#47665d}.accent{fill:#b9efcf}.warm{fill:#ffc76a}
+    @media (prefers-color-scheme:light){.bg{fill:#eef5f1}.panel{fill:#ddebe3}.ink{fill:#10271f}.muted{fill:#3e5c50}.line{stroke:#a7c5b4}.pill{fill:#f7fbf8;stroke:#9bbbab}.accent{fill:#176b49}.warm{fill:#aa5a0a}}
+    text{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+  </style>
+  <rect class="bg" width="1200" height="320" rx="20"/>
+  <path class="line" d="M759 0v320M832 0v320M905 0v320M978 0v320M1051 0v320M1124 0v320M750 56h450M750 112h450M750 168h450M750 224h450" fill="none" stroke-width="1" opacity=".45"/>
+  <path class="panel" d="M877 0h323v320H750z" opacity=".82"/>
+  <path class="line" d="M860 18 739 298M926 18 805 298M992 18 871 298M1058 18 937 298M1124 18 1003 298M1190 18 1069 298" fill="none" stroke-width="3" opacity=".7"/>
+  <text x="56" y="51" class="accent mono" fill="#b9efcf" font-size="15" font-weight="700" letter-spacing="2.3">LOCAL FIRST  /  HUMAN IN CONTROL</text>
+  <text x="53" y="119" class="ink" fill="#edf6f1" font-size="60" font-weight="760" letter-spacing="-2.8">vibe-fence<tspan class="warm" fill="#ffc76a">.</tspan></text>
+  <text x="56" y="158" class="ink" fill="#edf6f1" font-size="23" font-weight="550">Deterministic safety guardrails for AI coding agents</text>
+  <text x="56" y="190" class="muted" fill="#aec6bf" font-size="18">Catch selected risky patterns. Understand the next step.</text>
+  <g transform="translate(56 231)" class="mono" font-size="13" font-weight="600">
+    <rect class="pill" x="0" y="0" width="112" height="35" rx="17.5"/><text class="ink" x="19" y="23">Claude Code</text>
+    <rect class="pill" x="120" y="0" width="78" height="35" rx="17.5"/><text class="ink" x="139" y="23">Cursor</text>
+    <rect class="pill" x="206" y="0" width="73" height="35" rx="17.5"/><text class="ink" x="225" y="23">Codex</text>
+    <rect class="pill" x="287" y="0" width="98" height="35" rx="17.5"/><text class="ink" x="306" y="23">OpenCode</text>
+    <rect class="pill" x="393" y="0" width="120" height="35" rx="17.5"/><text class="ink" x="410" y="23">Antigravity</text>
+    <rect class="pill" x="521" y="0" width="78" height="35" rx="17.5"/><text class="ink" x="540" y="23">Hermes</text>
+  </g>
+  <g transform="translate(922 66)">
+    <path class="bg" d="M91 0 175 31v56c0 58-33 93-84 116C40 180 7 145 7 87V31Z"/>
+    <path d="M91 13 162 40v47c0 49-27 80-71 101-44-21-71-52-71-101V40Z" fill="none" stroke="#87dfaa" stroke-width="4"/>
+    <path d="M51 82h80M44 103h94M52 124h78" stroke="#87dfaa" stroke-width="7" stroke-linecap="round"/>
+    <path d="m73 103 13 13 28-31" fill="none" stroke="#ffc76a" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

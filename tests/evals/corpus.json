@@ -2,6 +2,7 @@
   "version": 1,
   "note": "Eval corpus v2 (Oct 26): the 4 verbatim unit-test overlaps were rewritten to distinct payloads; independence beyond that is best-effort, not proven. Runner injects an isolated tmp git repo as projectRoot for every case. expect is fail|pass only; unknown/not-applicable score as miss-on-fail, safe-on-pass, and are counted separately. Secret-shaped fixtures use contentParts (joined at runtime) so no whole secret literal exists in the repo.",
   "cases": [
+    {"rule": "BILL-01", "id": "bill-recursive-01", "content": "async function refresh() { await fetch(url); setTimeout(refresh, 5000); }", "filePath": "worker.ts", "expect": "fail", "note": "recursive timer with an unbounded request"},
     {"rule": "SEC-01", "id": "s01-t1", "content": "apiUrl = process.env.NEXT_PUBLIC_ADMIN_SECRET;", "filePath": "app/api.ts", "expect": "fail", "note": "live reference"},
     {"rule": "SEC-01", "id": "s01-t2", "content": "VITE_PAYMENTS_PRIVATE=live_9x8", "filePath": ".env.production", "expect": "fail", "note": "secret pairing in env assignment"},
     {"rule": "SEC-01", "id": "s01-t3", "content": "apiKey = EXPO_PUBLIC_BILLING_SECRET", "filePath": "app.json", "expect": "fail", "note": "expo prefix (deduped Oct 26 — was EXPO_PUBLIC_AUTH_SECRET)"},

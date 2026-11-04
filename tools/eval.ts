@@ -26,7 +26,7 @@
  */
 import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { devNull, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runCheck } from "../src/check.js";
@@ -94,7 +94,7 @@ function setupEvalRepo(): { root: string; home: string; ready: boolean; cleanup:
     rmSync(home, { recursive: true, force: true });
   };
   try {
-    const env = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null", HOME: home };
+    const env = { ...process.env, GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_SYSTEM: devNull, HOME: home };
     execSync("git init -q -b main .", { cwd: root, env });
     execSync("git -c user.email=eval@local -c user.name=eval -c commit.gpgsign=false commit -q --allow-empty -m init", { cwd: root, env });
     return { root, home, ready: true, cleanup };
@@ -111,7 +111,7 @@ function score(verdict: string, expected: "fail" | "pass"): "tp" | "fp" | "tn" |
 export function runEval(cases: EvalCase[], opts: { rule?: string } = {}): EvalReport {
   const { root, home, ready, cleanup } = setupEvalRepo();
   try {
-    const isolatedEnv = { ...(process.env as Record<string, string>), GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null", HOME: home };
+    const isolatedEnv = { ...(process.env as Record<string, string>), GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_SYSTEM: devNull, HOME: home };
     const perRule = new Map<string, RuleScore>();
     const totals = { tp: 0, fp: 0, tn: 0, fn: 0, unknowns: 0, skipped: 0, precision: 0, recall: 0 };
     const misses: EvalReport["misses"] = [];

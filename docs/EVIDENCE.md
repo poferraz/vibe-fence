@@ -7,8 +7,32 @@ next to it, not a general claim that the tool is safe.
 - **Revision for the original working-tree measurements:** based on `5189213` (`release/final`), with uncommitted source, tests and documentation. These results do not describe a committed public revision; later candidate measurements are identified below.
 - **Environment:** macOS, Bun 1.3.14, Node ≥20. Fabricated fixtures only; no
   paid provider calls and no model-generated code executed in this run.
-- **Reproduce:** `bunx tsc --noEmit`, `bun run build`,
-  `bun run validate`, `bun test`, `bun run eval` (run in that order).
+- **Reproduce:** `bunx --no-install tsc --noEmit`, `bun run build`,
+  `bun run validate`, `bun test`, `bun run eval`, `bun pm pack --dry-run`
+  (run in that order).
+
+## November 3, 0.3.0 source-tree follow-up
+
+The uncommitted working tree based on `5189213` passed the six commands above
+on macOS with Bun 1.3.14 and Node 26.12.0. The build generated 69 files; the
+test suite reported **559 passed, 4 PostgreSQL-dependent skips, and 0 failed**
+across 56 files. The evaluation reported 36 positive and 35 negative cases
+without a baseline regression, plus one unknown. The package dry run listed
+77 files, including the three SVG assets, with an unpacked size of 0.73 MB.
+
+A clean `release/0.3.0` candidate branch prepared on top of public `main`
+(`68b19e0c4889150dc015cff55a7ff7e471c6bc21`) also passed the ordered six-command
+gate: typecheck, build (69 generated files), validation, **490 passed, 4
+PostgreSQL-dependent skips, and 0 failed** across 50 files, evaluation (36 TP,
+0 FP, 35 TN, 0 FN, 1 unknown, no baseline regression), and the 77-file (0.73 MB)
+package dry run.
+
+These are local results, not evidence for a released `0.3.0` package or an
+actual editor invoking a hook. The new GitHub Actions matrix and publishing
+workflow have not run here; Windows and Linux, and the minimum Node 20 runtime,
+remain unverified for this snapshot. An attempt to obtain Node 20 for a local
+check could not reach the npm registry from this environment. The Windows job
+runs the portable hook smoke test rather than the full Unix-oriented suite.
 
 ## Gates
 
@@ -40,7 +64,7 @@ The authoritative ladder — claim, audience, failure decision, assumptions and 
 | Corpus eval (`tests/evals/corpus.json`) | Per-rule precision/recall floors against a held-out corpus, with a pinned baseline and an unknown ceiling | General-world rates; the corpus is small and hand-built |
 | H — workflows (`tests/benches/workflows.test.ts`) | 20 recorded scenario snapshots replay offline (48 pass, 4 postgres-gated skips) | Live-model behaviour; skipped cases are stub-covered only |
 
-Known misses are kept in `tests/benches/KNOWN-GAPS.md` (G-01…G-05) and are
+Known misses are kept in `tests/benches/KNOWN-GAPS.md` and are
 never relabelled as benign to keep a suite green.
 
 ## Limitations

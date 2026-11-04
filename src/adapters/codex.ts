@@ -19,7 +19,7 @@ import { join } from "node:path";
 import type { Adapter } from "./types";
 import { buildAgentsFenceBlock, mergeAgentsMd } from "./claude";
 import { scrubFenceKey, writeAdapterReceipt } from "./receipts";
-import { buildCodexGateHook, CODEX_GATE_COMMAND, CODEX_GATE_FILE, CODEX_GATE_MARKER, CODEX_GATE_MATCHER } from "./codex-gate";
+import { buildCodexGateHook, CODEX_GATE_COMMAND, CODEX_GATE_FILE, CODEX_GATE_MARKER, CODEX_GATE_MATCHER, LEGACY_CODEX_GATE_COMMAND } from "./codex-gate";
 
 export const codexAdapter: Adapter = {
   name: "codex",
@@ -102,14 +102,15 @@ export function installCodexAdapter(projectRoot: string, opts: { modelMode?: str
         if (!hooks || typeof hooks !== "object" || Array.isArray(hooks)) throw new Error("invalid hooks object");
         const existing = hooks.PreToolUse ?? [];
         if (!Array.isArray(existing)) throw new Error("invalid PreToolUse hooks");
-        const isOurs = (entry: unknown): boolean => {
-          if (!entry || typeof entry !== "object") return false;
-          const handlers = (entry as { hooks?: unknown }).hooks;
-          return Array.isArray(handlers) && handlers.some((h: unknown) =>
-            !!h && typeof h === "object" && (h as { command?: unknown }).command === CODEX_GATE_COMMAND);
-        };
+        const withoutOurs = existing.flatMap((entry: unknown) => {
+          if (!entry || typeof entry !== "object" || !Array.isArray((entry as { hooks?: unknown }).hooks)) return [entry];
+          const group = entry as { hooks: unknown[] };
+          const remaining = group.hooks.filter((h: unknown) => !h || typeof h !== "object" ||
+            ![CODEX_GATE_COMMAND, LEGACY_CODEX_GATE_COMMAND].includes((h as { command?: string }).command ?? ""));
+          return remaining.length ? [{ ...group, hooks: remaining }] : [];
+        });
         const next = { ...raw, hooks: { ...hooks, PreToolUse: [
-          ...existing.filter((entry: unknown) => !isOurs(entry)),
+          ...withoutOurs,
           { matcher: CODEX_GATE_MATCHER, hooks: [{ type: "command", command: CODEX_GATE_COMMAND, timeout: 15 }] },
         ] } };
         const config = JSON.stringify(next, null, 2) + "\n";

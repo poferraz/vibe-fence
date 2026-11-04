@@ -1,208 +1,101 @@
-/**
- * src/framework/circuit-breaker.ts
- * S-04 — Verification is mechanical, never self-assessment. Tournament Selection + 2-Attempt Breaker.
- *   FINAL-v2 §2 S-04 + cherry-pick #3 (independent Stream 02): after 2 consecutive failures,
- *   trip to read-only consultation + queue push.
- * S-12 — Elicitation on failure: parallel best-of-k (k≤5) → first pass wins; diagnosis artefact before retry.
- * Anti-patterns: §6 #6 (no LLM-judge gating), #7 (no ungrounded self-critique / debate / MoA on interactive path).
- */
-
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+/** Persistent two-failure circuit breaker. Workspace state is not a trust boundary. */
+import { randomBytes } from "node:crypto";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { adapterPathsSafe } from "../adapters/safe-paths.js";
+import { pushEntry } from "./queue.js";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export type BreakerState = "closed" | "open"; // closed = normal; open = read-only + queue
-
+export type BreakerState = "closed" | "open";
 export interface CircuitState {
   version: 1;
   state: BreakerState;
   consecutiveFailures: number;
-  threshold: number; // default 2 per S-04 spec
-  openedAt: string | null; // ISO-8601 when tripped
-  lastFailure: {
-    taskId: string;
-    reason: string;
-    diagnosisPath: string | null; // .fence/verdicts/<task>.json — required before retry per S-04
-  } | null;
+  threshold: number;
+  openedAt: string | null;
+  lastFailure: { taskId: string; reason: string; diagnosisPath: string | null } | null;
 }
-
-export interface FailureReport {
-  taskId: string;
-  reason: string;
-  diagnosisPath?: string;
-  // TODO: add evidence_ids from verifier (compile/lint/test output) for audit trail
-}
-
-export interface QueueEntry {
-  id: string;
-  queuedAt: string;
-  source: "circuit-breaker";
-  payload: FailureReport;
-  // TODO: align with .fence/queue.json canonical schema (M2 queue spec)
-  // TODO: add payload pin (hash+lock) per M3 three-condition gate
-}
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
+export interface FailureReport { taskId: string; reason: string; diagnosisPath?: string }
+export interface QueueEntry { id: string; queuedAt: string; source: "circuit-breaker"; payload: FailureReport }
 export const CIRCUIT_STATE_PATH = ".fence/state/circuit.json";
 export const QUEUE_PATH = ".fence/queue.json";
-export const DEFAULT_THRESHOLD = 2; // S-04 — 2-attempt breaker
-
-// ---------------------------------------------------------------------------
-// State I/O
-// ---------------------------------------------------------------------------
+export const DEFAULT_THRESHOLD = 2;
 
 function defaultState(): CircuitState {
-  return {
-    version: 1,
-    state: "closed",
-    consecutiveFailures: 0,
-    threshold: DEFAULT_THRESHOLD,
-    openedAt: null,
-    lastFailure: null,
-  };
+  return { version: 1, state: "closed", consecutiveFailures: 0, threshold: DEFAULT_THRESHOLD, openedAt: null, lastFailure: null };
 }
-
-export function loadCircuitState(projectRoot: string): CircuitState {
-  const p = join(projectRoot, CIRCUIT_STATE_PATH);
-  if (!existsSync(p)) return defaultState();
-  // TODO: validate schema version — migrate if version mismatches
-  return JSON.parse(readFileSync(p, "utf-8")) as CircuitState;
+function assertSafe(root: string): void {
+  if (!adapterPathsSafe(root, [CIRCUIT_STATE_PATH, ".fence/state/circuit.lock", QUEUE_PATH, ".fence/verdicts"])) throw new Error("unsafe circuit state path");
 }
-
-function saveCircuitState(projectRoot: string, state: CircuitState): void {
-  const p = join(projectRoot, CIRCUIT_STATE_PATH);
-  // TODO: atomic write (tmp + rename); ensure .fence/state/ exists
-  writeFileSync(p, JSON.stringify(state, null, 2) + "\n", "utf-8");
-}
-
-// ---------------------------------------------------------------------------
-// Core transitions
-// ---------------------------------------------------------------------------
-
-/**
- * Record a successful task — resets consecutive failure count.
- * S-04 — green → commit path; breaker stays closed.
- */
-export function recordSuccess(projectRoot: string, _taskId: string): CircuitState {
-  const state = loadCircuitState(projectRoot);
-  state.consecutiveFailures = 0;
-  state.lastFailure = null;
-  // If breaker was open and we got a success (e.g. manual queue resolution), close it
-  // TODO: decide — should open→closed require explicit `fence circuit reset` instead of auto-close?
-  if (state.state === "open") {
-    state.state = "closed";
-    state.openedAt = null;
-  }
-  saveCircuitState(projectRoot, state);
+export function loadCircuitState(root: string): CircuitState {
+  assertSafe(root);
+  const path = join(root, CIRCUIT_STATE_PATH);
+  if (!existsSync(path)) return defaultState();
+  const state = JSON.parse(readFileSync(path, "utf8")) as CircuitState;
+  if (state.version !== 1 || !["closed", "open"].includes(state.state) || !Number.isSafeInteger(state.consecutiveFailures) || state.consecutiveFailures < 0 || !Number.isSafeInteger(state.threshold) || state.threshold < 1) throw new Error("invalid circuit state");
   return state;
 }
-
-/**
- * Record a failure. On threshold reached, trip breaker → read-only + queue push.
- * S-04 — red → compact trace + "diagnose and fix" + one retry → queue.
- * S-12 — diagnosis artefact before retry is mandatory.
- */
-export function recordFailure(projectRoot: string, report: FailureReport): CircuitState {
-  const state = loadCircuitState(projectRoot);
-  state.consecutiveFailures += 1;
-  state.lastFailure = {
-    taskId: report.taskId,
-    reason: report.reason,
-    diagnosisPath: report.diagnosisPath ?? null,
-  };
-
-  // TODO: enforce diagnosis artefact exists before accepting failure report
-  // if (!report.diagnosisPath || !existsSync(join(projectRoot, report.diagnosisPath))) {
-  //   throw new Error("S-04: diagnosis artefact required before retry — write .fence/verdicts/<task>.json");
-  // }
-
-  if (state.consecutiveFailures >= state.threshold && state.state === "closed") {
-    state.state = "open";
-    state.openedAt = new Date().toISOString();
-    pushToQueue(projectRoot, report);
-    // TODO: emit event to .fence/events.ndjson — breaker tripped
-    // TODO: notify companion — "circuit open: 2 failures, now read-only. Queue has 1 item."
+function save(root: string, state: CircuitState): void {
+  assertSafe(root);
+  const path = join(root, CIRCUIT_STATE_PATH);
+  const temp = join(root, ".fence", "state", `.circuit-${randomBytes(10).toString("hex")}`);
+  try { writeFileSync(temp, JSON.stringify(state, null, 2) + "\n", { flag: "wx", mode: 0o600 }); renameSync(temp, path); }
+  finally { try { unlinkSync(temp); } catch {} }
+}
+function withLock<T>(root: string, fn: () => T): T {
+  assertSafe(root);
+  const dir = join(root, ".fence", "state");
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, "circuit.lock");
+  let fd: number | undefined;
+  for (let i = 0; i < 40; i++) {
+    try { fd = openSync(path, "wx", 0o600); break; }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      try { if (Date.now() - statSync(path).mtimeMs > 30_000) unlinkSync(path); } catch {}
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
   }
-
-  saveCircuitState(projectRoot, state);
-  return state;
+  if (fd === undefined) throw new Error("circuit state is busy");
+  try { return fn(); }
+  finally { closeSync(fd); try { unlinkSync(path); } catch {} }
 }
-
-/**
- * Check if agent is allowed to mutate. When open, only read-only consultation.
- * S-04/S-10 — containment boundary; agent explains but does not write.
- */
-export function assertCanMutate(projectRoot: string): void {
-  const state = loadCircuitState(projectRoot);
-  if (state.state === "open") {
-    // TODO: integrate with PreToolUse hook — deny Write/Edit/Bash(mutate) with actionable message
-    throw new Error(
-      `circuit breaker open — read-only mode (failures: ${state.consecutiveFailures}/${state.threshold}). ` +
-        `Resolve queued items or run 'npx vibe-fence circuit reset' after diagnosis. ` +
-        `See ${CIRCUIT_STATE_PATH}`,
-    );
-  }
+export function recordSuccess(root: string, _taskId: string): CircuitState {
+  return withLock(root, () => {
+    const state = loadCircuitState(root);
+    // Only an explicit reset closes an open circuit.
+    if (state.state === "closed" && state.consecutiveFailures) { state.consecutiveFailures = 0; state.lastFailure = null; save(root, state); }
+    return state;
+  });
 }
-
-/**
- * Manual reset — operator has diagnosed and wants to retry.
- * TODO: require --reason flag for audit trail; log to events.ndjson
- */
-export function resetCircuit(projectRoot: string, _reason: string): CircuitState {
-  const state = loadCircuitState(projectRoot);
-  state.state = "closed";
-  state.consecutiveFailures = 0;
-  state.openedAt = null;
-  // TODO: do not clear lastFailure — keep for post-mortem until queue item resolved
-  saveCircuitState(projectRoot, state);
-  return state;
+export function recordFailure(root: string, report: FailureReport): CircuitState {
+  return withLock(root, () => {
+    const state = loadCircuitState(root);
+    if (state.state === "open") return state;
+    state.consecutiveFailures = state.lastFailure?.taskId === report.taskId ? state.consecutiveFailures + 1 : 1;
+    state.lastFailure = { taskId: report.taskId, reason: report.reason, diagnosisPath: report.diagnosisPath ?? null };
+    if (shouldTrip(state)) { state.state = "open"; state.openedAt = new Date().toISOString(); }
+    save(root, state);
+    if (state.state === "open") {
+      try {
+        // A malformed or non-canonical queue is left untouched.
+        const path = join(root, QUEUE_PATH);
+        if (existsSync(path)) {
+          const q = JSON.parse(readFileSync(path, "utf8"));
+          if (q?.version !== 1 || !Array.isArray(q.entries)) return state;
+        }
+        pushEntry(root, { id: `cb-${report.taskId.slice(0, 16)}`, payloadHash: report.taskId, locked: true, createdAt: state.openedAt! });
+      } catch { /* The open state still blocks; never replace user queue data. */ }
+    }
+    return state;
+  });
 }
-
-/**
- * Pure trip predicate — no I/O. Returns true when breaker should trip.
- * Spec: trip when consecutiveFailures >= threshold and state is closed.
- */
+export function assertCanMutate(root: string): void {
+  if (loadCircuitState(root).state === "open") throw new Error("Circuit breaker open. Stop retrying and ask the user; run 'vibe-fence reset' after review.");
+}
+export function resetCircuit(root: string, _reason: string): CircuitState {
+  return withLock(root, () => { const state = loadCircuitState(root); state.state = "closed"; state.consecutiveFailures = 0; state.openedAt = null; save(root, state); return state; });
+}
 export function shouldTrip(state: Pick<CircuitState, "state" | "consecutiveFailures" | "threshold">): boolean {
   return state.state === "closed" && state.consecutiveFailures >= state.threshold;
 }
-
-// ---------------------------------------------------------------------------
-// Queue push (read-only + queue contract)
-// ---------------------------------------------------------------------------
-
-function pushToQueue(projectRoot: string, report: FailureReport): void {
-  const queuePath = join(projectRoot, QUEUE_PATH);
-  let queue: QueueEntry[] = [];
-  if (existsSync(queuePath)) {
-    queue = JSON.parse(readFileSync(queuePath, "utf-8")) as QueueEntry[];
-  }
-  const entry: QueueEntry = {
-    id: `cb-${Date.now()}`,
-    queuedAt: new Date().toISOString(),
-    source: "circuit-breaker",
-    payload: report,
-  };
-  queue.push(entry);
-  // TODO: validate queue entry against canonical .fence/queue.json schema
-  // TODO: ensure .fence/queue.json is not writable by agent (write-scope check in tools/validate.ts)
-  writeFileSync(queuePath, JSON.stringify(queue, null, 2) + "\n", "utf-8");
-}
-
-// ---------------------------------------------------------------------------
-// Tournament Selection note (S-04/S-12)
-// ---------------------------------------------------------------------------
-
-/**
- * Tournament Selection — K parallel candidates → first green wins.
- * S-12 — elicitation: 1 sample → cheapest verify → on failure parallel best-of-k (k≤5).
- * This breaker wraps that loop: if all k fail, that's one logical failure (not k).
- * TODO: wire verifier.ts trust ladder as the "cheapest verify" per S-12
- * TODO: cap k≤5 and enforce happy-path ~1.0-1.2× budget (single sample usually wins)
- */
 export const TOURNAMENT_NOTE = "S-12 Tournament Selection: K parallel → first green wins; breaker counts tournament as one attempt.";

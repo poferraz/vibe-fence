@@ -12,6 +12,7 @@
 
 import { readFileSync, existsSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { adapterPathsSafe } from "../adapters/safe-paths.js";
 
 // ---------------------------------------------------------------------------
 // Types — Teaching Dial Vector Schema
@@ -96,13 +97,16 @@ function defaultDialState(): DialState {
 }
 
 export function loadDialState(projectRoot: string): DialState {
+  if (!adapterPathsSafe(projectRoot, [DIAL_STATE_PATH])) throw new Error("unsafe teaching dial path");
   const p = join(projectRoot, DIAL_STATE_PATH);
   if (!existsSync(p)) return defaultDialState();
-  // TODO: validate schema version; migrate if needed
-  return JSON.parse(readFileSync(p, "utf-8")) as DialState;
+  const state = JSON.parse(readFileSync(p, "utf-8")) as DialState;
+  if (state.version !== 1 || !["max", "medium", "min", "silent"].includes(state.global) || !state.vector || typeof state.vector !== "object") throw new Error("invalid teaching dial state");
+  return state;
 }
 
 export function saveDialState(projectRoot: string, state: DialState): void {
+  if (!adapterPathsSafe(projectRoot, [DIAL_STATE_PATH])) throw new Error("unsafe teaching dial path");
   const p = join(projectRoot, DIAL_STATE_PATH);
   // TODO: atomic write (tmp + rename); ensure .fence/state/ exists
   writeFileSync(p, JSON.stringify(state, null, 2) + "\n", "utf-8");
@@ -166,11 +170,11 @@ export function setDomainLevel(
 export function buildTeachingCard(
   _projectRoot: string,
   _domain: DialDomain,
-  _context: { action: string; diffSummary: string },
+  _context: { action: string; diffSummary: string; remediation?: string; why?: string },
 ): TeachingCard | null {
   const state = loadDialState(_projectRoot);
   const level = effectiveLevel(state, _domain);
-  if (level === "silent") return null; // silent = skip model call entirely (S-13 / GEM-09)
+  if (level === "silent" || level === "min") return null;
 
   // TODO: check level to determine verbosity:
   //   max    → full card with expand link
@@ -181,10 +185,10 @@ export function buildTeachingCard(
   // TODO: enforce "delivered at checkpoint boundaries, never mid-task" — caller must be checkpoint handler
 
   return {
-    whatChanged: "TODO",
-    why: "TODO",
-    yourCall: "TODO",
-    howWeWillKnow: "TODO",
+    whatChanged: `${_context.action}: ${_context.diffSummary}`,
+    why: _context.why ?? "The check found a pattern that may cause harm; review the finding before proceeding.",
+    yourCall: _context.remediation ?? "Review the finding and choose a safe change.",
+    howWeWillKnow: "Run vibe-fence check again and review the results.",
     expandPath: null,
   };
 }

@@ -11,9 +11,11 @@
 import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, relative } from "node:path";
-import { publicRemediation, publicScanInfo, publicSummary, safeLocation, type ScanReasonCode } from "./framework/public-findings.js";
+import { publicImpact, publicRemediation, publicScanInfo, publicSummary, safeLocation, type ScanReasonCode } from "./framework/public-findings.js";
 import { REGISTRY } from "./rules/index.js";
-import { FENCE_OWNED_FILES, verifyAttestation } from "./framework/integrity.js";
+import { isAttestedPath, verifyAttestation } from "./framework/integrity.js";
+import { buildTeachingCard } from "./framework/dial.js";
+import { loadFenceIgnore } from "./framework/fenceignore.js";
 
 export interface CheckFinding {
   file: string;
@@ -41,6 +43,8 @@ export interface CheckReport {
 export interface CheckOptions {
   maxFiles?: number;
   maxBytesPerFile?: number;
+  /** Internal callers may require the entire index despite project exclusions. */
+  ignorePatterns?: boolean;
 }
 
 const SKIP_DIRS = new Set([".git", "node_modules", ".fence", "dist"]);
@@ -52,13 +56,16 @@ const BINARY_EXTS = new Set([
 export const DEFAULT_MAX_FILES = 5000;
 export const DEFAULT_MAX_BYTES = 512 * 1024;
 
-function listFiles(root: string, maxFiles: number, maxBytes: number): { files: string[]; skipped: number; incomplete: Set<ScanReasonCode> } {
+function listFiles(root: string, maxFiles: number, maxBytes: number): { files: string[]; skipped: number; incomplete: Array<{ code: ScanReasonCode; file?: string }> } {
   const files: string[] = [];
   let skipped = 0;
-  const incomplete = new Set<ScanReasonCode>();
+  const incomplete: Array<{ code: ScanReasonCode; file?: string }> = [];
+  const ignore = loadFenceIgnore(root);
+  if (ignore.unreadable) incomplete.push({ code: "unreadable", file: ".fenceignore" });
+  const add = (code: ScanReasonCode, file?: string) => { if (!incomplete.some(item => item.code === code && item.file === file)) incomplete.push({ code, file }); };
   const walk = (dir: string): void => {
     let entries: string[];
-    try { entries = readdirSync(dir).sort(); } catch { incomplete.add("unreadable"); return; }
+    try { entries = readdirSync(dir).sort(); } catch { add("unreadable", relative(root, dir) || undefined); return; }
     for (const entry of entries) {
       const full = join(dir, entry);
       try {
@@ -67,19 +74,19 @@ function listFiles(root: string, maxFiles: number, maxBytes: number): { files: s
         if (st.isDirectory()) { if (!SKIP_DIRS.has(entry)) walk(full); continue; }
         if (!st.isFile()) { skipped++; continue; }
         const rel = relative(root, full);
-        if (shouldSkipBlob(rel) || (st.size === 0 && !/(^|\/)\.env(?:\.|$)/i.test(rel))) { skipped++; continue; }
-        if (st.size > maxBytes) { incomplete.add("max-bytes"); skipped++; continue; }
-        if (files.length >= Math.max(0, maxFiles)) { incomplete.add("max-files"); skipped++; continue; }
+        if (ignore.ignores(rel) || shouldSkipBlob(rel) || (st.size === 0 && !/(^|\/)\.env(?:\.|$)/i.test(rel))) { skipped++; continue; }
+        if (st.size > maxBytes) { add("max-bytes", rel); skipped++; continue; }
+        if (files.length >= Math.max(0, maxFiles)) { add("max-files"); skipped++; continue; }
         files.push(rel);
-      } catch { incomplete.add("unreadable"); }
+      } catch { add("unreadable", relative(root, full)); }
     }
   };
   walk(root);
   return { files, skipped, incomplete };
 }
 
-function incompleteFinding(ruleId: "WORKTREE-SCAN" | "INDEX-SCAN" | "PUSH-SCAN", reasonCode: ScanReasonCode, reason = "Scan incomplete: some eligible input could not be inspected or a limit was reached."): CheckFinding {
-  return { file: ruleId === "PUSH-SCAN" ? "<push>" : "<scan>", ruleId, severity: "block", verdict: "fail", reason, reasonCode };
+function incompleteFinding(ruleId: "WORKTREE-SCAN" | "INDEX-SCAN" | "PUSH-SCAN", reasonCode: ScanReasonCode, reason = "Scan incomplete: some eligible input could not be inspected or a limit was reached.", file?: string): CheckFinding {
+  return { file: file ?? (ruleId === "PUSH-SCAN" ? "<push>" : "<scan>"), ruleId, severity: "block", verdict: "fail", reason, reasonCode };
 }
 
 // Historical reports must not print bytes extracted from old files: those may
@@ -143,16 +150,16 @@ export function runCheck(projectRoot: string, opts: CheckOptions = {}): CheckRep
   }
 
   const { files, skipped, incomplete } = listFiles(projectRoot, maxFiles, maxBytes);
-  for (const code of incomplete) findings.push(incompleteFinding("WORKTREE-SCAN", code));
+  for (const item of incomplete) findings.push(incompleteFinding("WORKTREE-SCAN", item.code, undefined, item.file));
   let scanned = 0;
   for (const rel of files) {
     let content: string;
     try {
       const st = statSync(join(projectRoot, rel));
-      if (st.size > maxBytes) { findings.push(incompleteFinding("WORKTREE-SCAN", "max-bytes")); continue; }
+      if (st.size > maxBytes) { findings.push(incompleteFinding("WORKTREE-SCAN", "max-bytes", undefined, rel)); continue; }
       content = readFileSync(join(projectRoot, rel), "utf-8");
     } catch {
-      findings.push(incompleteFinding("WORKTREE-SCAN", "unreadable"));
+      findings.push(incompleteFinding("WORKTREE-SCAN", "unreadable", undefined, rel));
       continue;
     }
     scanned++;
@@ -165,7 +172,7 @@ export function runCheck(projectRoot: string, opts: CheckOptions = {}): CheckRep
   try {
     const att = verifyAttestation(projectRoot);
     if (att.status === "fail") {
-      for (const file of att.mismatched.filter(path => FENCE_OWNED_FILES.includes(path))) {
+      for (const file of att.mismatched.filter(isAttestedPath)) {
         findings.push({ file, ruleId: "S-06", severity: "block", verdict: "fail", reason: att.message });
       }
     } else if (att.status === "unknown" && existsSync(join(projectRoot, ".fence"))) {
@@ -311,12 +318,15 @@ export function runIndexCheck(projectRoot: string, opts: CheckOptions = {}): Che
   const maxBytes = opts.maxBytesPerFile ?? DEFAULT_MAX_BYTES;
   const findings: CheckFinding[] = [];
   if (!existsSync(projectRoot)) return summarize(0, 0, [incompleteFinding("INDEX-SCAN", "missing-root")]);
+  const ignore = opts.ignorePatterns === false ? { unreadable: false, ignores: (_path: string) => false } : loadFenceIgnore(projectRoot);
+  if (ignore.unreadable) findings.push(incompleteFinding("INDEX-SCAN", "unreadable", undefined, ".fenceignore"));
   const out = gitOut(projectRoot, ["diff", "--cached", "--name-only", "-z", "--diff-filter=ACMRTU"], 4 * 1024 * 1024);
   if (out === null) {
     const inRepo = gitOut(projectRoot, ["rev-parse", "--is-inside-work-tree"], 1024)?.toString("utf8").trim() === "true";
     return summarize(0, 0, [incompleteFinding("INDEX-SCAN", inRepo ? "unreadable" : "not-git")]);
   }
-  const names = out.toString("utf-8").split("\0").filter(Boolean).sort();
+  const allNames = out.toString("utf-8").split("\0").filter(Boolean).sort();
+  const names = allNames.filter(name => !ignore.ignores(name));
   const metadata = gitOut(projectRoot, ["ls-files", "--stage", "-z"], 8 * 1024 * 1024);
   if (metadata === null) return summarize(0, 0, [incompleteFinding("INDEX-SCAN", "unreadable")]);
   const modes = new Map<string, string>();
@@ -328,8 +338,8 @@ export function runIndexCheck(projectRoot: string, opts: CheckOptions = {}): Che
     else unmerged.add(match[3]!);
   }
   const capped = names.slice(0, Math.max(0, maxFiles));
-  let skipped = names.length - capped.length;
-  if (skipped > 0) findings.push(incompleteFinding("INDEX-SCAN", "max-files"));
+  let skipped = allNames.length - capped.length;
+  if (names.length > capped.length) findings.push(incompleteFinding("INDEX-SCAN", "max-files"));
   let scanned = 0;
   for (const rel of capped) {
     const mode = modes.get(rel);
@@ -345,7 +355,7 @@ export function runIndexCheck(projectRoot: string, opts: CheckOptions = {}): Che
       skipped++;
       const sizeText = gitOut(projectRoot, ["cat-file", "-s", `:0:${rel}`], 1024)?.toString("utf8").trim();
       const size = sizeText && /^\d+$/.test(sizeText) ? Number(sizeText) : NaN;
-      findings.push(incompleteFinding("INDEX-SCAN", Number.isSafeInteger(size) && size > maxBytes ? "max-bytes" : "unreadable"));
+      findings.push(incompleteFinding("INDEX-SCAN", Number.isSafeInteger(size) && size > maxBytes ? "max-bytes" : "unreadable", undefined, rel));
       continue;
     }
     if (content.length === 0 && !/(^|\/)\.env(?:\.|$)/i.test(rel)) { skipped++; continue; }
@@ -363,13 +373,15 @@ export function runPushCheck(projectRoot: string, ranges: string[], opts: CheckO
   const findings: CheckFinding[] = [];
   let scanned = 0;
   let skipped = 0;
-  const incomplete = (reasonCode: ScanReasonCode, reason: string): void => {
-    findings.push(incompleteFinding("PUSH-SCAN", reasonCode, reason));
+  const incomplete = (reasonCode: ScanReasonCode, reason: string, file?: string): void => {
+    findings.push(incompleteFinding("PUSH-SCAN", reasonCode, reason, file));
   };
   if (!existsSync(projectRoot)) {
     incomplete("missing-root", "Cannot inspect outgoing commits: project directory is unavailable.");
     return summarize(0, 0, findings);
   }
+  const ignore = loadFenceIgnore(projectRoot);
+  if (ignore.unreadable) findings.push(incompleteFinding("PUSH-SCAN", "unreadable", undefined, ".fenceignore"));
 
   if (ranges.length > 0 && ranges.some((r) => !/^0+$/.test(r.split("..").at(-1) ?? ""))) {
     const shallow = gitOut(projectRoot, ["rev-parse", "--is-shallow-repository"], 1024);
@@ -424,7 +436,9 @@ export function runPushCheck(projectRoot: string, ranges: string[], opts: CheckO
       incomplete("unreadable", `Cannot list changed files for commit ${commit.slice(0, 12)}; inspection is incomplete.`);
       continue;
     }
-    const names = [...new Set(out.toString("utf-8").split("\0").filter(Boolean))].sort();
+    const allNames = [...new Set(out.toString("utf-8").split("\0").filter(Boolean))].sort();
+    const names = allNames.filter(name => !ignore.ignores(name));
+    skipped += allNames.length - names.length;
     // Batch metadata and contents per chunk instead of spawning two Git
     // processes per file: a 200-file push measured ~4.1s that way.
     const remaining = maxFiles - examined;
@@ -470,7 +484,7 @@ export function runPushCheck(projectRoot: string, ranges: string[], opts: CheckO
       if (binary.has(rel)) continue; // skipped by extension, not missing
       const blockedEntry = blocked.get(rel);
       if (blockedEntry !== undefined) {
-        incomplete(blockedEntry.code, blockedEntry.reason);
+        incomplete(blockedEntry.code, blockedEntry.reason, `${rel} (commit ${shortSha})`);
         continue;
       }
       const entry = entries.get(rel);
@@ -509,8 +523,10 @@ export function runPushCheck(projectRoot: string, ranges: string[], opts: CheckO
   return summarize(scanned, skipped, findings);
 }
 
-export function exitCodeForReport(report: CheckReport): 0 | 1 {
-  return report.blocks > 0 ? 1 : 0;
+export function exitCodeForReport(report: CheckReport): 0 | 1 | 2 {
+  const scans = ["WORKTREE-SCAN", "INDEX-SCAN", "PUSH-SCAN"];
+  if (report.findings.some(f => f.verdict === "fail" && f.severity === "block" && !scans.includes(f.ruleId))) return 1;
+  return report.findings.some(f => f.verdict === "fail" && scans.includes(f.ruleId)) ? 2 : 0;
 }
 
 export function publicReport(report: CheckReport): CheckReport {
@@ -539,19 +555,35 @@ export function publicReport(report: CheckReport): CheckReport {
   };
 }
 
-export function formatHuman(rawReport: CheckReport): string {
+export function formatHuman(rawReport: CheckReport, opts: { projectRoot?: string } = {}): string {
   const report = publicReport(rawReport);
   const lines: string[] = [];
   const location = (f: CheckFinding): string => f.line ? `${f.file}:${f.line}` : f.file;
+  const teaching = (f: CheckFinding, prefix = "  "): void => {
+    if (!opts.projectRoot) return;
+    try {
+      const card = buildTeachingCard(opts.projectRoot, "general", { action: f.ruleId, diffSummary: f.reason, remediation: f.remediation, why: publicImpact(f.ruleId) });
+      if (!card) return;
+      lines.push(`${prefix}What changed: ${card.whatChanged}`);
+      lines.push(`${prefix}Why: ${card.why}`);
+      lines.push(`${prefix}Your call: ${card.yourCall}`);
+      lines.push(`${prefix}How we'll know: ${card.howWeWillKnow}`);
+      lines.push(`${prefix}Copy-paste this into your AI: vibe-fence reported ${f.ruleId} at ${JSON.stringify(location(f))}. ${f.remediation ?? "Review and fix the issue."} Re-run vibe-fence check.`);
+    } catch { /* Bad optional teaching state must not change the check verdict. */ }
+  };
   for (const f of report.findings.filter((x) => x.verdict === "fail" && x.severity === "block")) {
-    lines.push(`FAIL ${f.ruleId} [${f.severity}] ${location(f)}`);
-    lines.push(`  ${f.reason}`);
-    if (f.remediation) lines.push(`  ${f.remediation}`);
+    lines.push("╭─ VIBE-FENCE BLOCKED ─────────────────────────────");
+    lines.push(`│ FAIL ${f.ruleId} [${f.severity}] ${location(f)}`);
+    lines.push(`│ What happened: ${f.reason}`);
+    if (f.remediation) lines.push(`│ How to fix it: ${f.remediation}`);
+    teaching(f, "│ ");
+    lines.push("╰──────────────────────────────────────────────────");
   }
   for (const f of report.findings.filter((x) => x.verdict === "fail" && x.severity !== "block")) {
     lines.push(`WARN ${f.ruleId} [${f.severity}] ${location(f)}`);
     lines.push(`  ${f.reason}`);
     if (f.remediation) lines.push(`  ${f.remediation}`);
+    teaching(f);
   }
   for (const f of report.findings.filter((x) => x.verdict === "unknown")) {
     lines.push(`UNKNOWN ${f.ruleId} [review] ${location(f)}`);

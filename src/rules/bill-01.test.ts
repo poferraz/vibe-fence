@@ -8,6 +8,14 @@ import { describe, it, expect } from "bun:test";
 import { check } from "./bill-01";
 
 describe("BILL-01", () => {
+  it("finds recursive polling but leaves bounded retries and one-shot timers alone", () => {
+    expect(check({ filePath: "poll.ts", content: "async function poll() { await fetch(url); setTimeout(poll, 1000); }" }).verdict).toBe("fail");
+    expect(check({ filePath: "poll.ts", content: "const poll = async () => { await api(); setTimeout(() => poll(), 1000); };" }).verdict).toBe("fail");
+    expect(check({ filePath: "poll.ts", content: "async function poll() { if (++attempts >= 3) return; await fetch(url); setTimeout(poll, 1000); }" }).verdict).toBe("pass");
+    expect(check({ filePath: "poll.ts", content: "setTimeout(() => fetch(url), 1000);" }).verdict).toBe("pass");
+    expect(check({ filePath: "poll.ts", content: "setInterval(async () => {\n await fetch(url);\n}, 1000);" }).verdict).toBe("fail");
+  });
+
   it("fails on adjacent loop + service call without cap", () => {
     const v = check({ content: "for (const job of queue) {\n  await fetch(job.url);\n}\n", filePath: "worker.ts" });
     expect(v.verdict).toBe("fail");

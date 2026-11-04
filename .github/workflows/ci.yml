@@ -7,8 +7,12 @@ on:
     branches: [main]
 
 jobs:
-  ci:
-    runs-on: ubuntu-latest
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -18,9 +22,25 @@ jobs:
         with:
           node-version: "20"
       - run: bun install --frozen-lockfile
-      - run: bunx tsc --noEmit
+      - run: bunx --no-install tsc --noEmit
       - run: bun run build
       - run: bun run validate
+      # The existing suite includes Unix shell, symlink and Git-hook fixtures.
+      # Keep the Windows job useful while those fixtures are made portable.
       - run: bun test
+        if: runner.os != 'Windows'
+      - run: bun test tests/portable-smoke.test.ts
+        if: runner.os == 'Windows'
       - run: bun run eval
       - run: bun pm pack --dry-run
+  # Preserve the existing branch-protection check name while requiring every
+  # matrix job to pass (including jobs that were cancelled or skipped).
+  ci:
+    if: always()
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every matrix job
+        env:
+          MATRIX_RESULT: ${{ needs.verify.result }}
+        run: test "$MATRIX_RESULT" = success

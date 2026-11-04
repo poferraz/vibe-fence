@@ -18,6 +18,7 @@ it("installs an idempotent launcher with the packaged assets", () => {
   if (result.status === "unavailable") throw new Error(result.reason);
   const before = readFileSync(result.launcherPath, "utf8");
   expect(execFileSync(result.launcherPath, ["--version"], { encoding: "utf8" })).toContain(result.version);
+  expect(execFileSync("node", [join(root, ".fence/bin/vibe-fence.cjs"), "--version"], { encoding: "utf8" })).toContain(result.version);
   const snapshot = join(root, ".fence", "runtime", "versions", `${result.version}-${result.digest}`);
   expect(readFileSync(join(snapshot, "dist", "config", "ops-terms.json"), "utf8").length).toBeGreaterThan(0);
   expect(readFileSync(join(snapshot, "dist", "skills", "vibe-guard", "SKILL.md"), "utf8").length).toBeGreaterThan(0);

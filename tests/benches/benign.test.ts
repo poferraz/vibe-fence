@@ -8,10 +8,21 @@
  */
 import { describe, it, expect } from "bun:test";
 import { loadBenignBenches, scoreVariant } from "../../tools/eval";
+import { evaluateToolCall } from "../../src/framework/gate";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const benches = loadBenignBenches();
 
 describe("benign bench fixtures", () => {
+  it("allows a harmless package script", () => {
+    const root = mkdtempSync(join(tmpdir(), "vf-benign-script-"));
+    try {
+      writeFileSync(join(root, "package.json"), JSON.stringify({ scripts: { analyze: "node ./scripts/analyze.js" } }));
+      expect(evaluateToolCall({ tool: "Bash", args: { command: "npm run analyze" }, projectRoot: root })).toEqual([]);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
   it("covers all 11 rules with >=10 fixtures each", () => {
     expect(benches).toHaveLength(11);
     for (const b of benches) {

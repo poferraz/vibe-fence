@@ -22,6 +22,7 @@ import { chmodSync, existsSync, lstatSync, readFileSync, writeFileSync, mkdirSyn
 import { basename, join, resolve, relative, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
+import { homedir } from "node:os";
 import { execSync, execFileSync } from "node:child_process";
 import { installClaudeAdapter, buildAgentsFenceBlock } from "./adapters/claude.js";
 import { installCursorAdapter } from "./adapters/cursor.js";
@@ -33,6 +34,8 @@ import { installProjectRuntime } from "./framework/project-runtime.js";
 import { packageVersion } from "./version.js";
 import { persistAttestation } from "./framework/integrity.js";
 import { installGitHooks, inspectGitHooks, effectiveHooksDir, canonicalPath, commonHooksDir, hooksRepairCommand, hooksRepairNote } from "./framework/git-hooks.js";
+import { adapterPathsSafe } from "./adapters/safe-paths.js";
+import { captureInstallBaseline, recordInstallResult } from "./uninstall.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -46,7 +49,8 @@ export interface InstallOptions {
   dryRun?: boolean;
   contributorMode?: boolean;
   full?: boolean; // WebContainer file-only → native full
-  adapters?: string[]; // subset; default all
+  adapters?: string[]; // subset; auto-detected when omitted
+  noPackageScripts?: boolean;
 }
 
 export interface InstallReceipt {
@@ -73,6 +77,36 @@ export const ADAPTERS: Record<string, AdapterInstaller> = {
 };
 
 export const DEFAULT_ADAPTER_IDS = Object.keys(ADAPTERS);
+
+/** Prefer project-specific hosts; use home markers only when the project has none. */
+export function detectAdapters(projectRoot: string): string[] {
+  const detect = (base: string) => DEFAULT_ADAPTER_IDS.filter(id => existsSync(join(base, `.${id}`)));
+  const local = detect(projectRoot);
+  if (local.length) return local;
+  const global = detect(homedir());
+  return global.length ? global : ["codex", "claude", "cursor", "opencode"];
+}
+
+function addPackageScripts(projectRoot: string): boolean {
+  const path = join(projectRoot, "package.json");
+  if (!existsSync(path) || !adapterPathsSafe(projectRoot, ["package.json"])) return false;
+  try {
+    const pkg = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+    if (!pkg || typeof pkg !== "object" || Array.isArray(pkg)) return false;
+    if (pkg.scripts !== undefined && (!pkg.scripts || typeof pkg.scripts !== "object" || Array.isArray(pkg.scripts))) return false;
+    const scripts = { ...((pkg.scripts ?? {}) as Record<string, unknown>) };
+    let changed = false;
+    for (const command of ["check", "status", "undo"]) {
+      const name = `fence:${command}`;
+      if (!(name in scripts)) { scripts[name] = `node ./.fence/bin/vibe-fence.cjs ${command}`; changed = true; }
+    }
+    if (changed) { pkg.scripts = scripts; writeFileSync(path, JSON.stringify(pkg, null, 2) + "\n", "utf8"); }
+    return changed;
+  } catch {
+    console.warn("[vibe-fence] package.json could not be updated; existing contents were left alone.");
+    return false;
+  }
+}
 
 /** Dir of this module: src/ in dev, dist/ in the packed bundle (skills/templates ship beside it). */
 export function hereDir(): string {
@@ -198,6 +232,7 @@ export const GITIGNORE_MARKER = "# vibe-fence";
 /** Ignore entries the fence owns: fence state + local env files. `.env.example` is deliberately not covered. */
 export const GITIGNORE_ENTRIES = [
   ".fence/.integrity.json",
+  ".fence/uninstall.json",
   ".fence/runtime/",
   ".fence/bin/",
   ".fence/events.ndjson",
@@ -268,13 +303,16 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
   const startMs = Date.now();
   const elapsed = () => Date.now() - startMs;
   let modelMode: "standard" | "contributor" = opts.contributorMode ? "contributor" : "standard";
+  const requestedAdapters = opts.adapters ?? detectAdapters(projectRoot);
+  const adapterIds = [...new Set(requestedAdapters.filter(id => Object.hasOwn(ADAPTERS, id)))];
+  for (const id of requestedAdapters) if (id !== "none" && !Object.hasOwn(ADAPTERS, id)) console.warn(`[vibe-fence] unknown adapter "${id}" — skipping (known: ${DEFAULT_ADAPTER_IDS.join(", ")})`);
 
   // Refuse an escaping managed root before probes or writes.
   const managedPaths = [
-    ".fence/config.json", ".fence/app-profile.json", ".fence/state/dial.json", ".fence/hooks/postinstall-guard.sh", ".fence/.integrity.json", ".fence/events.ndjson", ".fence/rules", ".fence/runtime", ".fence/bin", ".fence/adapters",
+    ".fence/config.json", ".fence/app-profile.json", ".fence/state/dial.json", ".fence/hooks/postinstall-guard.sh", ".fence/.integrity.json", ".fence/uninstall.json", ".fence/events.ndjson", ".fence/rules", ".fence/runtime", ".fence/bin", ".fence/adapters",
     ...DEFAULT_ADAPTER_IDS.map(id => `.fence/adapters/${id}.json`),
     "AGENTS.md", "CLAUDE.md", ".agents/skills", ".agents/memory/MEMORY.md", ".agents/rules/antigravity.md",
-    ".claude/settings.json", ".claude/hooks/fence-gate.sh", ".cursor/hooks.json", ".cursor/hooks/fence-gate.sh", ".cursor/rules/vibe-fence-router.mdc", ".cursor/skills",
+    ".claude/settings.json", ".claude/hooks/fence-gate.sh", ".claude/hooks/fence-gate.cjs", ".cursor/hooks.json", ".cursor/hooks/fence-gate.sh", ".cursor/hooks/fence-gate.cjs", ".cursor/rules/vibe-fence-router.mdc", ".cursor/skills",
     ".codex/hooks.json", ".codex/hooks/fence-gate.cjs", ".codex/config.json", ".opencode/plugins/fence-guard.js", "opencode.json", ".hermes/config.json",
   ];
   const skillSource = join(hereDir(), "skills");
@@ -288,6 +326,7 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
     }
     assertWithinProjectRoot(projectRoot, current);
   }
+  const uninstallBaseline = opts.dryRun ? null : captureInstallBaseline(projectRoot, [...managedPaths, ".gitignore", "package.json"]);
 
   // Preserve a prior contributor preference in the receipt and adapter metadata.
   if (!opts.contributorMode) {
@@ -336,13 +375,14 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
     const nextMode = modelMode;
     const fenceVersion = packageVersion();
     // Skip write when nothing changed — init ×3 must be zero-churn (FINAL-v2 §7).
-    const unchanged = existing?.["model_mode"] === nextMode && existing?.["fence_version"] === fenceVersion && existing?.["version"] === 1;
+    const unchanged = existing?.["model_mode"] === nextMode && existing?.["fence_version"] === fenceVersion && existing?.["version"] === 1 && JSON.stringify(existing?.["adapters"]) === JSON.stringify(adapterIds);
     if (!opts.dryRun && !unchanged) {
       const config = {
         ...existing,
         version: 1,
         model_mode: nextMode,
         fence_version: fenceVersion,
+        adapters: adapterIds,
         updatedAt: new Date().toISOString(),
       };
       assertWithinProjectRoot(projectRoot, p);
@@ -448,7 +488,6 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
   }
 
   // 9. Adapter installs — explicit map (merge-not-clobber inside each adapter)
-  const adapterIds = opts.adapters ?? DEFAULT_ADAPTER_IDS;
   for (const id of adapterIds) {
     const fn = ADAPTERS[id];
     if (!fn) {
@@ -494,6 +533,7 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
     const runtime = installProjectRuntime(projectRoot, distDir, join(dirname(distDir), "package.json"));
     if (runtime.status === "unavailable") console.warn(`[vibe-fence] Runtime unavailable: ${runtime.reason} Build or reinstall the package.`);
     else console.log("[vibe-fence] Project runtime ready: ./.fence/bin/vibe-fence");
+    if (!opts.noPackageScripts && addPackageScripts(projectRoot)) filesWritten.push("package.json");
   }
 
   // 9c. Git hooks — pre-commit/pre-push run `vibe-fence check` (Guarded tier).
@@ -590,6 +630,10 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
         elapsedMs: receipt.elapsedMs,
       }) + "\n", "utf-8");
     } catch {}
+    if (uninstallBaseline) {
+      try { recordInstallResult(projectRoot, uninstallBaseline); }
+      catch { console.warn("[vibe-fence] Could not save the uninstall record; remove managed files manually."); }
+    }
   } else {
     console.log(`[dry-run] would install adapters: ${adapterIds.join(", ")} — mode ${probe.runtime} — ${elapsed()}ms`);
   }

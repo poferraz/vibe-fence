@@ -19,7 +19,11 @@ export interface VerifyRemoteOptions {
   connectionString?: string;
   /** Timeout ms for the query (default 5000) */
   timeoutMs?: number;
+  /** Optional adapter for environments supplying a PostgreSQL client. */
+  clientFactory?: (connectionString: string) => RemoteClient;
 }
+
+interface RemoteClient { connect(): Promise<void>; query(sql: string): Promise<{ rows: unknown[] }>; end(): Promise<void> }
 
 function resolveConnectionString(explicit?: string): string | null {
   if (explicit) return explicit;
@@ -46,23 +50,19 @@ export async function verifyRemote(opts: VerifyRemoteOptions = {}): Promise<Veri
   const timeoutMs = opts.timeoutMs ?? 5000;
 
   // Dynamic import so repo works without pg installed (unknown, not crash)
-  let pg: { Client: new (config: { connectionString: string }) => { connect(): Promise<void>; query(s: string): Promise<{ rows: unknown[] }>; end(): Promise<void> } };
+  let client: RemoteClient;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    pg = await import("pg" as string) as any;
-  } catch {
-    return {
-      verdict: "unknown",
-      reason: "pg driver not installed — run `bun add pg` for remote verification (unknown≠pass)",
-      errorCode: "ERR_NO_PG_DRIVER",
-    };
-  }
-
-  const client = new pg.Client({ connectionString: connStr });
+    if (opts.clientFactory) client = opts.clientFactory(connStr);
+    else {
+      const pg = await import("pg" as string) as { Client: new (config: { connectionString: string }) => RemoteClient };
+      client = new pg.Client({ connectionString: connStr });
+    }
+  } catch { return { verdict: "unknown", reason: "Optional PostgreSQL driver unavailable; remote check not performed (unknown≠pass).", errorCode: "ERR_NO_PG_DRIVER" }; }
 
   // Guard timeout — must resolve to unknown, never hang
+  let timer: ReturnType<typeof setTimeout>;
   const timeoutPromise = new Promise<VerifyRemoteResult>((resolve) =>
-    setTimeout(
+    timer = setTimeout(
       () => resolve({ verdict: "unknown", reason: `pg_policies query timed out after ${timeoutMs}ms (unknown≠pass)`, errorCode: "ERR_TIMEOUT" }),
       timeoutMs,
     ),
@@ -81,7 +81,7 @@ export async function verifyRemote(opts: VerifyRemoteOptions = {}): Promise<Veri
           AND rowsecurity = false
       `;
       const policyQuery = `
-        SELECT polname, schemaname, tablename, permissive, roles::text, qual::text, with_check::text
+        SELECT policyname AS polname, schemaname, tablename, permissive, roles::text, qual::text, with_check::text
         FROM pg_policies
         WHERE schemaname = 'public'
       `;
@@ -109,7 +109,7 @@ export async function verifyRemote(opts: VerifyRemoteOptions = {}): Promise<Veri
       if (noRls.length === 0 && permissiveTrue.length === 0) {
         return {
           verdict: "pass",
-          reason: "all public tables have RLS enabled and no USING(true) permissive policy",
+          reason: "No disabled public-table RLS or literal true policies found; this is not a complete authorization audit.",
           details: policies.map((p) => ({ table: p.tablename, policy: p.polname, permissive: p.permissive, roles: [p.roles] })),
         };
       }
@@ -123,10 +123,9 @@ export async function verifyRemote(opts: VerifyRemoteOptions = {}): Promise<Veri
         reason: reasons.join("; "),
         details: [...permissiveTrue.map((p) => ({ table: p.tablename, policy: p.polname, permissive: p.permissive, roles: [p.roles] }))],
       };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+    } catch {
       // Offline / auth / network → unknown, never pass (S-05 invariant)
-      return { verdict: "unknown", reason: `pg_policies introspection failed: ${msg} (unknown≠pass)`, errorCode: "ERR_QUERY" };
+      return { verdict: "unknown", reason: "Database introspection failed; remote posture was not verified (unknown≠pass).", errorCode: "ERR_QUERY" };
     } finally {
       try {
         await client.end();
@@ -136,5 +135,8 @@ export async function verifyRemote(opts: VerifyRemoteOptions = {}): Promise<Veri
     }
   })();
 
-  return Promise.race([work, timeoutPromise]);
+  const result = await Promise.race([work, timeoutPromise]);
+  clearTimeout(timer!);
+  if (result.errorCode === "ERR_TIMEOUT") void client.end().catch(() => {});
+  return result;
 }

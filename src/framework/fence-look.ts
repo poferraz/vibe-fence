@@ -12,8 +12,10 @@
  * runFenceLook() which: Playwright screenshot → Spark vision verdict → optional fix → re-check.
  */
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
+import { adapterPathsSafe } from "../adapters/safe-paths.js";
+import { appendProjectEvent } from "./safe-events.js";
 
 // ---------------------------------------------------------------------------
 // Events — append-only .fence/events.ndjson (append-only; queue/dial/deploys derived)
@@ -58,26 +60,34 @@ export interface PflopCounter {
 
 export const EVENTS_PATH = ".fence/events.ndjson";
 
+/** Never imply live host enforcement from local configuration alone. */
+export function formatStatusHeader(toolState: string, integrityState: string): string {
+  const label = integrityState === "fail" || toolState === "degraded" ? "ACTION NEEDED" : "REVIEW PROTECTION";
+  return `╭─ VIBE-FENCE STATUS · ${label} ─`;
+}
+
 /**
  * Append a fence-look event to .fence/events.ndjson.
  * Creates parent dir if absent; append-only (never truncates).
  */
 export function appendFenceLookEvent(projectRoot: string, event: FenceLookEvent): void {
   const abs = join(projectRoot, EVENTS_PATH);
+  if (!adapterPathsSafe(projectRoot, [EVENTS_PATH])) throw new Error("unsafe event path");
   mkdirSync(dirname(abs), { recursive: true });
   const row: FenceLookEvent = {
     ...event,
     at: event.at ?? new Date().toISOString(),
   };
-  appendFileSync(abs, JSON.stringify(row) + "\n", "utf-8");
+  appendProjectEvent(projectRoot, JSON.stringify(row) + "\n");
 }
 
 /** Generic append helper — any event row with a `type` field. */
 export function appendEvent(projectRoot: string, row: Record<string, unknown>): void {
   const abs = join(projectRoot, EVENTS_PATH);
+  if (!adapterPathsSafe(projectRoot, [EVENTS_PATH])) throw new Error("unsafe event path");
   mkdirSync(dirname(abs), { recursive: true });
   const enriched = { at: new Date().toISOString(), ...row };
-  appendFileSync(abs, JSON.stringify(enriched) + "\n", "utf-8");
+  appendProjectEvent(projectRoot, JSON.stringify(enriched) + "\n");
 }
 
 /** Read all events (best-effort; skips malformed lines). */

@@ -9,8 +9,13 @@
 import { execSync, execFileSync } from "node:child_process";
 import { appendProjectEvent } from "./safe-events.js";
 import { isAbsolute, join, sep } from "node:path";
+import { lstatSync, readFileSync, readlinkSync } from "node:fs";
 import { runIndexCheck, type CheckReport } from "../check.js";
 import { canonicalPath } from "./git-hooks.js";
+import { safeLocation } from "./public-findings.js";
+import { check as checkSec01 } from "../rules/sec-01.js";
+import { check as checkSec02 } from "../rules/sec-02.js";
+import { check as checkSec03 } from "../rules/sec-03.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -20,6 +25,7 @@ export interface CheckpointOptions {
   action: string; // human-readable action label — becomes part of commit message
   projectRoot?: string;
   includeUntracked?: boolean; // default false — only stage tracked changes
+  allowSecretsInCheckpoint?: boolean;
 }
 
 export interface UndoOptions {
@@ -118,18 +124,59 @@ export function inspectCheckpointScan(projectRoot: string, scan: (root: string) 
   } catch { return { status: "incomplete", blockingFindings: null }; }
 }
 
+/** Inspect candidates before `git add`, which itself writes blobs to Git's object store. */
+function inspectCheckpointCandidates(root: string, includeUntracked: boolean): { status: CheckpointScanStatus; file?: string } {
+  try {
+    const list = (args: string[]): string[] => execFileSync("git", args, { cwd: root, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"] }).split("\0").filter(Boolean);
+    const files = new Set([
+      ...list(["diff", "--no-ext-diff", "--name-only", "-z", "--diff-filter=ACMRT"]),
+      ...list(["diff", "--cached", "--no-ext-diff", "--name-only", "-z", "--diff-filter=ACMRT"]),
+      ...(includeUntracked ? list(["ls-files", "--others", "--exclude-standard", "-z"]) : []),
+    ]);
+    for (const file of files) {
+      const path = join(root, file);
+      let content: string;
+      try {
+        const stat = lstatSync(path);
+        if (stat.isSymbolicLink()) content = readlinkSync(path);
+        else if (!stat.isFile() || stat.size > 512 * 1024) return { status: "incomplete", file };
+        else content = readFileSync(path, "utf8");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        return { status: "incomplete", file };
+      }
+      const context = { content, filePath: file, projectRoot: root, isCommittedBlob: true };
+      if ([checkSec01(context), checkSec02(context), checkSec03(context)].some(result => result.verdict === "fail")) return { status: "blocked", file };
+    }
+    return { status: "clear" };
+  } catch { return { status: "incomplete" }; }
+}
+
 export function checkpoint(opts: CheckpointOptions): CheckpointResult {
-  const cwd = opts.projectRoot ?? process.cwd();
+  let cwd = opts.projectRoot ?? process.cwd();
 
   if (!isGitRepo(cwd)) {
     return { committed: false, commitHash: null, message: "not a git repo — run `git init` first, then checkpoint" };
   }
+  cwd = tryGitArgs(cwd, ["rev-parse", "--show-toplevel"]) ?? cwd;
 
   if (!hasChanges(cwd)) {
     return { committed: false, commitHash: null, message: "no changes — skipping checkpoint" };
   }
 
   const message = `${CHECKPOINT_PREFIX} [${opts.action}]`;
+  if (!opts.allowSecretsInCheckpoint) {
+    if (checkSec03({ content: opts.action, filePath: "checkpoint-label.txt" }).verdict === "fail") {
+      return { committed: false, commitHash: null, message: "checkpoint blocked: the action label appears to contain a secret; remove it before retrying." };
+    }
+    const preflight = inspectCheckpointCandidates(cwd, !!opts.includeUntracked);
+    if (preflight.status !== "clear") {
+      const where = preflight.file ? ` (${safeLocation(preflight.file)})` : "";
+      return { committed: false, commitHash: null, message: preflight.status === "blocked"
+        ? `checkpoint blocked: a possible secret or credential exposure was found${where}. Fix it before retrying, or explicitly use --allow-secrets-in-checkpoint.`
+        : `checkpoint blocked: secret inspection was incomplete${where}. Review the file before retrying, or explicitly use --allow-secrets-in-checkpoint.` };
+    }
+  }
   // Tracked-only by default (untracked WIP stays out of the snapshot); -A only on request.
   // Both respect .gitignore.
   gitArgs(cwd, opts.includeUntracked ? ["add", "-A"] : ["add", "-u"]);
@@ -138,10 +185,12 @@ export function checkpoint(opts: CheckpointOptions): CheckpointResult {
     return { committed: false, commitHash: null, message: "nothing to snapshot — no staged changes (untracked files need --include-untracked)" };
   }
   // D7: checkpoints deliberately capture WIP as-is (--no-verify below), so a
-  // contaminated checkpoint would land silently. Scan the stage — which right
-  // now holds exactly the checkpoint content — and warn LOUDLY when it holds
-  // blocks. Never gate: an undo point must always land.
-  const scanResult = inspectCheckpointScan(cwd, runIndexCheck);
+  // Scan the staged result as a second check; explicit overrides remain visible.
+  let stagedReport: CheckReport | undefined;
+  const scanResult = inspectCheckpointScan(cwd, root => { stagedReport = runIndexCheck(root, { ignorePatterns: false }); return stagedReport; });
+  if (!opts.allowSecretsInCheckpoint && (scanResult.status === "incomplete" || stagedReport?.findings.some(f => ["SEC-01", "SEC-02", "SEC-03"].includes(f.ruleId) && f.verdict === "fail"))) {
+    return { committed: false, commitHash: null, message: "checkpoint blocked: staged secret inspection failed or was incomplete. Git may already have written staged blobs; review and rotate any exposed secret before retrying." };
+  }
   // --no-verify is deliberate: a checkpoint captures WIP as-is (it may hold a
   // leak the fence is about to fix). Enforcement runs at real commits + `check`.
   gitArgs(cwd, [...FENCE_IDENTITY, "commit", "-m", message, "--no-verify"]);

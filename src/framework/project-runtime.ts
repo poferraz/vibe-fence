@@ -45,6 +45,7 @@ function digestTree(dist: string, manifest: string): string {
 export function installProjectRuntime(projectRoot: string, sourceDistDir: string, sourcePackageJson: string): RuntimeInstallResult {
   let stage: string | undefined;
   let temporaryLauncher: string | undefined;
+  let temporaryNodeLauncher: string | undefined;
   try {
     const packageData = JSON.parse(readFileSync(sourcePackageJson, "utf8")) as { version?: unknown };
     const version = packageData.version;
@@ -57,8 +58,10 @@ export function installProjectRuntime(projectRoot: string, sourceDistDir: string
     const snapshot = join(versions, `${version}-${digest}`);
     const bin = join(projectRoot, ".fence", "bin");
     const launcherPath = join(bin, "vibe-fence");
-    for (const path of [versions, snapshot, bin, launcherPath]) safePath(projectRoot, path);
+    const nodeLauncherPath = join(bin, "vibe-fence.cjs");
+    for (const path of [versions, snapshot, bin, launcherPath, nodeLauncherPath]) safePath(projectRoot, path);
     if (existsSync(launcherPath) && !readFileSync(launcherPath, "utf8").includes(marker)) throw new Error("unmanaged launcher exists");
+    if (existsSync(nodeLauncherPath) && !readFileSync(nodeLauncherPath, "utf8").includes(marker.slice(2))) throw new Error("unmanaged Node launcher exists");
     mkdirSync(versions, { recursive: true });
     mkdirSync(bin, { recursive: true });
     if (existsSync(snapshot)) {
@@ -71,17 +74,23 @@ export function installProjectRuntime(projectRoot: string, sourceDistDir: string
       if (digestTree(join(stage, "dist"), join(stage, "package.json")) !== digest) throw new Error("runtime copy verification failed");
       renameSync(stage, snapshot); stage = undefined;
     }
-    const content = `#!/bin/sh\n${marker}\nHERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1\nexec node "$HERE/../runtime/versions/${version}-${digest}/dist/cli.js" "$@"\n`;
-    if (existsSync(launcherPath) && readFileSync(launcherPath, "utf8") === content && (lstatSync(launcherPath).mode & 0o111)) return { status: "unchanged", launcherPath, version, digest };
+    const content = `#!/bin/sh\n${marker}\nHERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1\nexport VIBE_FENCE_DELEGATED=1\nexec node "$HERE/../runtime/versions/${version}-${digest}/dist/cli.js" "$@"\n`;
+    const nodeContent = `// ${marker.slice(2)}\nconst { join } = require("node:path");\nconst { spawnSync } = require("node:child_process");\nconst cli = join(__dirname, "..", "runtime", "versions", ${JSON.stringify(`${version}-${digest}`)}, "dist", "cli.js");\nconst result = spawnSync(process.execPath, [cli, ...process.argv.slice(2)], { stdio: "inherit", env: { ...process.env, VIBE_FENCE_DELEGATED: "1" } });\nprocess.exit(result.status === null ? 2 : result.status);\n`;
+    if (existsSync(launcherPath) && readFileSync(launcherPath, "utf8") === content && (lstatSync(launcherPath).mode & 0o111) && existsSync(nodeLauncherPath) && readFileSync(nodeLauncherPath, "utf8") === nodeContent) return { status: "unchanged", launcherPath, version, digest };
     temporaryLauncher = join(bin, `.vibe-fence-${randomBytes(12).toString("hex")}`);
+    temporaryNodeLauncher = join(bin, `.vibe-fence-node-${randomBytes(12).toString("hex")}`);
     writeFileSync(temporaryLauncher, content, { flag: "wx", mode: 0o755 });
+    writeFileSync(temporaryNodeLauncher, nodeContent, { flag: "wx", mode: 0o755 });
     chmodSync(temporaryLauncher, 0o755);
+    chmodSync(temporaryNodeLauncher, 0o755);
     renameSync(temporaryLauncher, launcherPath); temporaryLauncher = undefined;
+    renameSync(temporaryNodeLauncher, nodeLauncherPath); temporaryNodeLauncher = undefined;
     return { status: "installed", launcherPath, version, digest };
   } catch {
     return { status: "unavailable", reason: "Runtime snapshot could not be installed safely; check the packaged assets and managed paths." };
   } finally {
     if (stage) rmSync(stage, { recursive: true, force: true });
     if (temporaryLauncher) rmSync(temporaryLauncher, { force: true });
+    if (temporaryNodeLauncher) rmSync(temporaryNodeLauncher, { force: true });
   }
 }

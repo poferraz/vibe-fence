@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="440" viewBox="0 0 1200 440" role="img" aria-labelledby="title desc">
+  <title id="title">Where vibe-fence checks actions</title>
+  <desc id="desc">Supported coding agents can call a local pre-tool gate; Git hooks run staged and outgoing-history checks. Both use the local rules and project runtime.</desc>
+  <rect width="1200" height="440" rx="20" fill="#eef5f1"/>
+  <g font-family="ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif">
+    <text x="48" y="56" fill="#164c36" font-size="14" font-weight="700" letter-spacing="2">TWO CHECKPOINTS · ONE LOCAL RULE ENGINE</text>
+    <g fill="#fff" stroke="#bbd3c4" stroke-width="1.5">
+      <rect x="48" y="92" width="232" height="101" rx="13"/><rect x="345" y="92" width="242" height="101" rx="13"/><rect x="652" y="92" width="246" height="101" rx="13"/>
+      <rect x="48" y="230" width="232" height="101" rx="13"/><rect x="345" y="230" width="242" height="101" rx="13"/><rect x="652" y="230" width="246" height="101" rx="13"/>
+    </g>
+    <g fill="#153228" font-size="18" font-weight="700">
+      <text x="69" y="128">AI coding agent</text><text x="366" y="128">Pre-tool gate</text><text x="673" y="128">Tool action</text>
+      <text x="69" y="266">Git commit / push</text><text x="366" y="266">Git hooks</text><text x="673" y="266">Local check</text>
+    </g>
+    <g fill="#49675a" font-size="14">
+      <text x="69" y="155">Supported host integration</text><text x="366" y="155">Selected actions inspected</text><text x="673" y="155">Allow or block with a reason</text>
+      <text x="69" y="293">Before changes leave</text><text x="366" y="293">pre-commit / pre-push</text><text x="673" y="293">Staged and outgoing data</text>
+    </g>
+    <g fill="none" stroke="#26764f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M285 142h51m-10-8 10 8-10 8M592 142h51m-10-8 10 8-10 8M285 280h51m-10-8 10 8-10 8M592 280h51m-10-8 10 8-10 8"/></g>
+    <rect x="958" y="121" width="194" height="183" rx="16" fill="#163c2c"/>
+    <path d="M990 161h130M990 178h130M990 195h130" stroke="#83d6a4" stroke-width="3"/>
+    <text x="990" y="235" fill="#e8f7ee" font-size="17" font-weight="700">Local runtime</text>
+    <text x="990" y="260" fill="#b8d6c3" font-size="14">Rules + findings</text>
+    <path d="M903 142h39m-10-8 10 8-10 8M903 280h39m-10-8 10 8-10 8" fill="none" stroke="#26764f" stroke-width="3"/>
+    <text x="48" y="387" fill="#49675a" font-size="15">Hooks must be enabled by the host. Unavailable integrations can warn and allow actions.</text>
+  </g>
+</svg>

@@ -373,10 +373,10 @@ function runTestsTier(projectRoot: string, taskId: string, tier: "tests" | "test
  * tier does not — later checks still run so their evidence is on record.
  * overall is "pass" only when every tier ran and passed.
  */
-export async function runTrustLadder(projectRoot: string, taskId: string): Promise<VerifyReport> {
+export async function runTrustLadder(projectRoot: string, taskId: string, options: { generateEphemeral?: boolean } = {}): Promise<VerifyReport> {
   const tiers: TierResult[] = [];
   const hadTests = hasTests(projectRoot);
-  const ephemeralPath = ensureEphemeralSuite(projectRoot);
+  const ephemeralPath = options.generateEphemeral === false ? null : ensureEphemeralSuite(projectRoot);
   const includeGenerated = ephemeralPath !== null;
 
   const ladder: TrustTier[] = ["compile", "lint", "tests", "tests-x2", "build"];

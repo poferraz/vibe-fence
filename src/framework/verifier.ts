@@ -13,7 +13,7 @@
  * otherwise any unknown makes the whole report "unknown".
  */
 
-import { existsSync, writeFileSync, readFileSync, mkdirSync, globSync } from "node:fs";
+import { existsSync, writeFileSync, readFileSync, mkdirSync, readdirSync, lstatSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 
@@ -214,20 +214,28 @@ function runScriptTier(
  * Our own generated smoke file never counts as evidence of real tests.
  */
 export function hasTests(projectRoot: string): boolean {
-  const patterns = ["**/*.test.*", "**/*.spec.*", "__tests__/**"] as const;
-
-  // Exclude noise dirs — must not treat dist/node_modules/.git as evidence of tests
-  const exclude = (p: string): boolean =>
-    p.includes("node_modules") || p.includes("dist/") || p.includes(".git/") || p.includes(".fence/");
-
-  for (const pat of patterns) {
-    try {
-      const hits = globSync(pat, { cwd: projectRoot, exclude } as unknown as Record<string, unknown>);
-      if (hits.some((h) => h !== EPHEMERAL_PATH && !h.endsWith(`/${EPHEMERAL_PATH}`))) return true;
-    } catch {
-      // glob failure is not evidence of absence — fall through to package.json check
+  const excludedDirs = new Set(["node_modules", "dist", ".git", ".fence"]);
+  const walk = (dir: string, relDir: string, inTestsDir: boolean): boolean => {
+    let entries: string[];
+    try { entries = readdirSync(dir); } catch { return false; }
+    for (const name of entries) {
+      const rel = relDir ? `${relDir}/${name}` : name;
+      if (rel === EPHEMERAL_PATH) continue;
+      const full = join(dir, name);
+      try {
+        const st = lstatSync(full);
+        if (st.isSymbolicLink()) continue;
+        if (st.isDirectory()) {
+          if (excludedDirs.has(name)) continue;
+          if (walk(full, rel, inTestsDir || name === "__tests__")) return true;
+        } else if (st.isFile()) {
+          if (inTestsDir || /\.(?:test|spec)\.[^./\\]+$/i.test(name)) return true;
+        }
+      } catch {}
     }
-  }
+    return false;
+  };
+  if (walk(projectRoot, "", false)) return true;
 
   // package.json scripts.test — must be present and not an echo placeholder
   const scripts = readPackageScripts(projectRoot);

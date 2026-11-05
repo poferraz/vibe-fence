@@ -5,7 +5,7 @@
  * S-14: report success *and* unsafe-action rate; gate releases on latter (ClawsBench).
  * CLM (arXiv:2609.37725): 35–60% compute delta (437→179 PFLOPs EdgeBench, −38.8% @ matched
  * accuracy) as visceral demo cue; wire events.ndjson PFLOP counter for Visceral Delta split-screen.
- * Related: docs/PLAN.md §Hackathon, DEMO-SCRIPT.md, prd S-14, 06 deepseek look spec.
+ * Related: the project research decisions and evidence documents.
  *
  * Runtime note: Playwright + Spark calls are stubbed behind capability checks (no live
  * browser/model required for validate/typecheck). Real wiring: fence-look CLI invokes

@@ -1,5 +1,6 @@
 # dependencies
 node_modules/
+/node_modules
 
 # build output (generated, disposable)
 dist/
@@ -50,3 +51,13 @@ tools/out/
 /docs/research/PROMPT-argon4-zip-v2.md
 /docs/research/PROMPT-gemini-argon4-deep-path.md
 /docs/superpowers/
+
+# Private planning, review notes and security working material
+/docs/PLAN.md
+/docs/project/BENCH-SCOREBOARD.md
+/tests/benches/KNOWN-GAPS.md
+/demo/SUBMISSION-DRAFT.md
+/demo/RECORDING-GUIDE.md
+/demo/MUSE-RECORDING-GUIDE.md
+/demo/voiceover/
+/tests/adversarial/README.md

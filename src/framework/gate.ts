@@ -66,7 +66,7 @@ function joinedStrings(args: Record<string, unknown>): string {
   return joined.length > MAX_CONTENT ? joined.slice(0, MAX_CONTENT) : joined;
 }
 
-/** Reconstruct the changed lines of Muse's exact find/replace edit. */
+/** Reconstruct Muse edits; widen inspection when multiline delimiters can change. */
 function museEditContent(tool: string, args: Record<string, unknown>, filePath: string | undefined, root: string | undefined): { content?: string; incomplete: boolean } | null {
   if (tool.toLowerCase() !== "edit_file" || typeof args.find !== "string" || typeof args.replace !== "string") return null;
   if (!root || !filePath || !args.find) return { incomplete: true };
@@ -81,10 +81,18 @@ function museEditContent(tool: string, args: Record<string, unknown>, filePath: 
     const start = original.indexOf(args.find);
     if (start < 0 || original.indexOf(args.find, start + 1) !== -1) return { incomplete: true };
     const end = start + args.find.length;
+    const reconstructed = original.slice(0, start) + args.replace + original.slice(end);
+    if (reconstructed.includes("\0") || Buffer.byteLength(reconstructed, "utf8") > MAX_CONTENT) return { incomplete: true };
+    // An edit may form or remove a delimiter across either splice boundary.
+    // Inspect the whole bounded file when that could change multiline context.
+    const before = original.slice(Math.max(0, start - 1), start);
+    const after = original.slice(end, Math.min(original.length, end + 1));
+    const delimiterBoundary = `${before}${args.find}${after}\n${before}${args.replace}${after}`;
+    if (/\/\*|\*\/|`/.test(delimiterBoundary)) return { content: reconstructed, incomplete: false };
     const lineStart = original.lastIndexOf("\n", start - 1) + 1;
     const nextLine = original.indexOf("\n", end);
     const content = original.slice(lineStart, start) + args.replace + original.slice(end, nextLine < 0 ? original.length : nextLine);
-    return content.length <= MAX_CONTENT ? { content, incomplete: false } : { incomplete: true };
+    return { content, incomplete: false };
   } catch {
     return { incomplete: true };
   }

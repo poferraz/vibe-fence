@@ -20,4 +20,4 @@ The Codex adapter configures a pre-tool hook, but its execution in a real host r
 4. Preserve reproducible tests, benchmark methods, known gaps, and supporting evidence for maintainers and users. Personal working material may remain locally in ignored project files.
 5. Prefer verified, reversible steps and plain-language consequences. A passing test is evidence only for what it actually checks.
 
-See the [documentation index](../fence/INDEX.md), [benchmark scoreboard](BENCH-SCOREBOARD.md), [known gaps](../../tests/benches/KNOWN-GAPS.md), and [research decisions](../research/synthesis/FINAL-v4.md) for supporting context. Historical research and plans remain useful references, but superseded product-direction claims should not override this document.
+See the [documentation index](../fence/INDEX.md), [evaluation evidence](../EVIDENCE.md), and [research decisions](../research/synthesis/FINAL-v4.md) for supporting context. Historical research and plans remain useful references, but superseded product-direction claims should not override this document.

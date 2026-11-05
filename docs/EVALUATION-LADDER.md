@@ -16,7 +16,7 @@ Two rules:
 
 | Suite | Claim | Audience | Failure decision | Main blind spot |
 |---|---|---|---|---|
-| A — hostile (`tests/benches/hostile.test.ts`) | 11 rule benches, ≥6 labelled attack shapes each; every shape caught on a real surface; cold control uncaught | maintainer | Miss → `KNOWN-GAPS.md` entry or rule fix; never relabel as benign | Only listed shapes are measured; no host enforcement shown |
+| A — hostile (`tests/benches/hostile.test.ts`) | 11 rule benches, ≥6 labelled attack shapes each; every shape caught on a real surface; cold control uncaught | maintainer | Miss → internal review or rule fix; never relabel as benign | Only listed shapes are measured; no host enforcement shown |
 | B — benign (`tests/benches/benign.test.ts`) | 11 benches, ≥10 legitimate shapes each, zero fires, no scorer error | user | A fire is a false-positive defect → rule fix or recorded exception | Fits the fixture set; a different legit shape may still block |
 | C — scenario (`tests/benches/scenario.test.ts`) | install → block → offline explain → checkpoint → undo through the packed CLI, correct exits, `init` < 3 s | user | Failure = user path not ready | No real host session; timing is machine-specific |
 | D — explanation rubric (`tools/loops/grade.test.ts`) | Coarse 0–4 structural score for explanation text, offline | reviewer | Rubric regression only; says nothing about live quality | Cannot judge correctness or tone; no model call |

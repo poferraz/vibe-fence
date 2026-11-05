@@ -14,7 +14,7 @@ synthesis/         → you synthesize here after all runs (per-stream + FINAL.md
 00-meta/           → log of what happened when
 ```
 
-## Streams — Locked 2026-10-21 (synthesis) · Active entry point is `synthesis/FINAL-v4.md` (221 lines; 14 deep-read docs/4 clusters)
+## Streams — Locked 2026-10-21 (synthesis) · Active entry point is `synthesis/FINAL-v4.md` (public decision summary)
 
 | # | Stream | Question | Prompt |
 |---|--------|----------|--------|
@@ -29,7 +29,7 @@ Each prompt is self-contained: it tells the model what to research, how to cite,
 
 ### What synthesis produced
 
-Per-stream: `synthesis/01..06-*.md` (147/259/203/345/275/252 lines). Cross-stream: **FINAL-v4.md is the single source of truth** (221 lines, 2026-10-21, Deep-Read Vault 14 docs/4 clusters) — 15 settled S-01…S-15, 10 contested C-01…C-10+3 sub-rows, M1–M4 file-level checklist with 11 GEM patches (P0/P1/P2), B-01…B-08, 14 anti-patterns, hackathon Visceral Delta script + 5×4 rubric, traceability appendix. `FINAL-v3.md`/`FINAL.md` superseded, not deleted. Audits: `_CONSISTENCY.md` (134→103 dedup, C-01…C-10) · `COMPARISON.md` (primary vs independent) · `INDEPENDENT-GEMS.md` (11 patches) · `HTML-REVIEW.md` (8 hallucinations, 6 P1 fixes applied to `synthesis-explorer.html`). Start Phase 1 from `FINAL-v4.md`.
+Per-stream: `synthesis/01..06-*.md` (147/259/203/345/275/252 lines). Cross-stream: **FINAL-v4.md is the single source of truth** (public decision summary, 2026-10-21) — 15 settled S-01…S-15, 10 contested C-01…C-10+3 sub-rows, B-01…B-08, anti-patterns, and traceability. `FINAL-v3.md`/`FINAL.md` superseded, not deleted. Audits: `_CONSISTENCY.md` (134→103 dedup, C-01…C-10) · `COMPARISON.md` (primary vs independent) · `INDEPENDENT-GEMS.md` (11 patches) · `HTML-REVIEW.md` (8 hallucinations, 6 P1 fixes applied to `synthesis-explorer.html`). Start Phase 1 from `FINAL-v4.md`.
 
 ---
 
@@ -55,7 +55,7 @@ Scope: Claude Code skills, OpenCode plugins, Codex prompts, Cursor rules/MDC, Ro
 Prompt/file structure, context engineering (selective loading, Read→Think→Write→Check, budgeting vs bloat), harness post-mortems (Archestra, Anthropic). Deliverable: causal levers vibe-fence should pull.
 
 ### 03 — Elicitation & Synthesis
-Paulo's hypothesis — "ask 5, self-critique, synthesize 1" vs "ask 1" — grounded in papers: self-consistency, best-of-N, LLM-as-judge, debate, self-refine, MoA. Cost/latency tradeoffs. Which patterns the harness runs silently.
+The initial hypothesis — "ask 5, self-critique, synthesize 1" vs "ask 1" — grounded in papers: self-consistency, best-of-N, LLM-as-judge, debate, self-refine, MoA. Cost/latency tradeoffs. Which patterns the harness runs silently.
 
 ### 04 — Developer Guardrails
 Security (OWASP, secrets, deps, auth), git/GitHub hygiene, Vercel deploy, project hygiene, data/privacy. Each rule: severity (block/warn/nudge) + enforcement + teachable explanation.
@@ -68,14 +68,9 @@ Muse Spark / Image / SAM 3.1 capabilities + API shape, Muse Code relationship, o
 
 ---
 
-## Phase 1 — Scaffold vibe-fence → READ `synthesis/FINAL-v4.md` (221 lines)
+## Project decisions
 
-| Milestone | Depends on | Output |
-|-----------|------------|--------|
-| M1 — Project skeleton | — | `git init`, `src/` sole authority, `tools/`, `docs/fence/`, `dist/` + `.integrity.json` + WebContainer probe ([FINAL-v4 §4 M1](synthesis/FINAL-v4.md)) |
-| M2 — Framework primitives | 02, 03, 05 | teaching dial, turbo, queue, state files, verifier, circuit-breaker, context-budget, severity-policy, anti-sycophancy, portability gate ([FINAL-v4 §4 M2](synthesis/FINAL-v4.md)) |
-| M3 — Skill definitions | 01, 02, 04 | `vibe-init`, `vibe-guard`, `vibe-plan`, `vibe-teach` specs + BILL-01/PRV-09 + remote RLS + anonymizer ([FINAL-v4 §4 M3](synthesis/FINAL-v4.md)) |
-| M4 — Adapters + installer | 01, 06 | per-runtime wiring + `npx vibe-fence init` + SAM contract + Wonder routing + Standard-mode ethics + Visceral Delta demo ([FINAL-v4 §4 M4 + §7](synthesis/FINAL-v4.md)) |
+The public [synthesis](synthesis/FINAL-v4.md) records the settled and contested research decisions. Detailed milestone and submission planning is retained privately.
 
 ---
 

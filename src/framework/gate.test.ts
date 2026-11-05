@@ -61,6 +61,32 @@ describe("gate", () => {
     expect(introduced.map(f => f.ruleId)).toContain("SEC-01");
   });
 
+  it("checks the reconstructed file when an edit changes a multiline comment", () => {
+    const root = mkdtempSync(join(tmpdir(), "vf-muse-comment-"));
+    created.push(root);
+    writeFileSync(join(root, "billing.ts"), "/*\nconst k = process.env.NEXT_PUBLIC_STRIPE_SECRET_KEY; // */\n");
+    const findings = evaluateToolCall({ tool: "edit_file", args: { path: "billing.ts", find: "/*", replace: "" }, projectRoot: root });
+    expect(findings.map(f => f.ruleId)).toContain("SEC-01");
+  });
+
+  it("allows repairing one of several existing findings", () => {
+    const root = mkdtempSync(join(tmpdir(), "vf-muse-partial-repair-"));
+    created.push(root);
+    const first = "const a = process.env.NEXT_PUBLIC_FIRST_SECRET;";
+    const second = "const b = process.env.NEXT_PUBLIC_SECOND_SECRET;";
+    writeFileSync(join(root, "billing.ts"), `${first}\n${second}\n`);
+    const findings = evaluateToolCall({ tool: "edit_file", args: { path: "billing.ts", find: first, replace: "const a = serverKey;" }, projectRoot: root });
+    expect(findings.map(f => f.ruleId)).not.toContain("SEC-01");
+  });
+
+  it("allows an unrelated safe edit next to a multiline example", () => {
+    const root = mkdtempSync(join(tmpdir(), "vf-muse-unrelated-edit-"));
+    created.push(root);
+    writeFileSync(join(root, "billing.ts"), "/*\nconst k = process.env.NEXT_PUBLIC_STRIPE_SECRET_KEY;\n*/\nconst label = 'before';\n");
+    const findings = evaluateToolCall({ tool: "edit_file", args: { path: "billing.ts", find: "before", replace: "after" }, projectRoot: root });
+    expect(findings.map(f => f.ruleId)).not.toContain("SEC-01");
+  });
+
   it("does not silently pass a Muse edit when its existing file cannot be inspected", () => {
     const root = mkdtempSync(join(tmpdir(), "vf-muse-missing-"));
     created.push(root);

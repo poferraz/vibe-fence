@@ -4,7 +4,7 @@
   "description": "Local guardrails, secret checks, and a circuit breaker for AI coding agents",
   "type": "module",
   "license": "MIT",
-  "author": "Paulo Ferraz <poferraz@me.com>",
+  "author": "Paulo Ferraz",
   "repository": {
     "type": "git",
     "url": "https://github.com/poferraz/vibe-fence.git"

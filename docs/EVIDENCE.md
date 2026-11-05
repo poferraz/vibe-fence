@@ -1,160 +1,35 @@
 # Evaluation evidence
 
-## November 4: Muse Code synthetic host rehearsal
+## Muse Code and Meta model rehearsal
 
-On a working candidate based on public `v0.3.0`, disposable Muse Code 1.4.14 sessions using `muse-spark-1.3` attempted to introduce a synthetic public-secret-shaped environment reference. Before installing the Muse adapter, Muse's `write_file` created the file. After `init --profile=muse` and a fresh trusted session, the `PreToolUse` hook returned a SEC-01 block; Muse reported the denial and the file was not created. A separate before-and-after rehearsal used the same prompt to edit an existing page: Muse's `edit_file` changed the page before installation, and the hook blocked the edit after installation. No real credential was placed in either fixture. The earlier `v0.3.0` local `--explain` path also returned a separate live Spark response to a synthetic finding.
+A synthetic before-and-after rehearsal on a 0.4.0 working candidate used Muse Code 1.4.14 with Muse Spark 1.3. Before the Muse hook was installed, a requested edit added a fictional public-secret-shaped reference. After installation and a fresh trusted session, the hook blocked that same edit and the file remained unchanged. No real credential was used. A separate opt-in Spark explanation of a synthetic finding was also exercised.
 
-This is one observed host, tool and input, not proof that every Muse action is intercepted. Project hooks require workspace trust and a session restart after installation; unsupported tools, oversized inputs, hook failures, and bypasses remain limitations. The release candidate's commit and full verification results must be checked separately.
+These observations cover a particular host, tool, and input. They do not establish coverage of every host action or unsafe input. Project trust and a fresh session are required for Muse to load its hook.
 
-The same synthetic edit was also blocked after installing a locally packed `0.4.0` candidate into a fresh project. On macOS with Bun 1.3.14 and Node 26.12.0, that working candidate passed typecheck, build, validation, **499 tests with 4 PostgreSQL-dependent skips**, evaluation (36 positive, 35 negative, one unknown), and package dry run. These are local candidate results; they do not by themselves establish a published package or a tested final commit.
+## Verification
 
-A later hardened `0.4.0` candidate passed the same local checks with **505 tests passed, 4 PostgreSQL-dependent skips, and 0 failures**; evaluation remained 36 positive, 35 negative, and one unknown. A fresh local tarball install was exercised with the actual Muse API and Muse Code using the exact synthetic recording prompt: the unsafe edit landed before installation, the Muse hook reported SEC-01 after installation, and the original page remained unchanged. The doctor probe also ran successfully. A separate real-Muse rehearsal removed an existing unsafe line successfully. These are bounded observations of the local candidate, not proof of registry publication or coverage of every action.
+The earlier 0.4.0 working candidate passed typecheck, build, validation, evaluation, package inspection, and 505 tests, with four PostgreSQL-dependent cases skipped. The evaluation uses a small synthetic corpus; its results are not general-world detection rates. The repository configures cross-platform checks; see [GitHub Actions](https://github.com/poferraz/vibe-fence/actions/workflows/ci.yml).
 
-A further user-authorized `check --explain` rehearsal on the synthetic page returned a live `muse-spark-1.3` explanation of SEC-01; the deterministic check remained blocked. This tests the optional explanation path separately from the Muse Code host session.
+Reproduce the local gates with:
 
-This page records what has been measured, on which revision, and what remains
-unknown. It is deliberately narrow: a passing suite supports the specific claim
-next to it, not a general claim that the tool is safe.
+```sh
+bun install --frozen-lockfile
+bunx --no-install tsc --noEmit
+bun run build
+bun run validate
+bun test
+bun run eval
+bun pm pack --dry-run
+```
 
-- **Revision for the original working-tree measurements:** based on `5189213` (`release/final`), with uncommitted source, tests and documentation. These results do not describe a committed public revision; later candidate measurements are identified below.
-- **Environment:** macOS, Bun 1.3.14, Node ≥20. Fabricated fixtures only; no
-  paid provider calls and no model-generated code executed in this run.
-- **Reproduce:** `bunx --no-install tsc --noEmit`, `bun run build`,
-  `bun run validate`, `bun test`, `bun run eval`, `bun pm pack --dry-run`
-  (run in that order).
+The [reviewer guide](REVIEW.md) explains how to exercise the source-built CLI and Muse hook in a disposable project. The [evaluation ladder](EVALUATION-LADDER.md) describes what the retained fixture suites do and do not show.
 
-## November 3, 0.3.0 source-tree follow-up
+## Limits
 
-The uncommitted working tree based on `5189213` passed the six commands above
-on macOS with Bun 1.3.14 and Node 26.12.0. The build generated 69 files; the
-test suite reported **559 passed, 4 PostgreSQL-dependent skips, and 0 failed**
-across 56 files. The evaluation reported 36 positive and 35 negative cases
-without a baseline regression, plus one unknown. The package dry run listed
-77 files, including the three SVG assets, with an unpacked size of 0.73 MB.
+- Checks recognize bounded patterns; a clean result is not a security guarantee, and the tool is not a sandbox.
+- Host enforcement depends on the host loading and invoking the configured hook. Some integrations may warn and allow an action when the gate is unavailable; Git hooks can be bypassed.
+- The Muse find/replace path inspects affected lines and widens inspection when an edit can alter multiline delimiters. If the existing file cannot be inspected safely, it blocks that edit rather than reporting it clean.
+- The optional Meta explanation is advisory. The local rule makes the block decision, and its separate request uses fixed finding categories and severity rather than source contents, filenames, or raw tool arguments.
+- [Build provenance](BUILD-PROVENANCE.md) distinguishes earlier work from hackathon work. It does not determine event eligibility.
 
-A clean `release/0.3.0` candidate branch prepared on top of public `main`
-(`68b19e0c4889150dc015cff55a7ff7e471c6bc21`) also passed the ordered six-command
-gate: typecheck, build (69 generated files), validation, **490 passed, 4
-PostgreSQL-dependent skips, and 0 failed** across 50 files, evaluation (36 TP,
-0 FP, 35 TN, 0 FN, 1 unknown, no baseline regression), and the 77-file (0.73 MB)
-package dry run.
-
-These are local results, not evidence for a released `0.3.0` package or an
-actual editor invoking a hook. The new GitHub Actions matrix and publishing
-workflow have not run here; Windows and Linux, and the minimum Node 20 runtime,
-remain unverified for this snapshot. An attempt to obtain Node 20 for a local
-check could not reach the npm registry from this environment. The Windows job
-runs the portable hook smoke test rather than the full Unix-oriented suite.
-
-## Gates
-
-| Check | Historical result on `919e702` (not current candidate) |
-|---|---|
-| TypeScript (`tsc --noEmit`) | 0 errors |
-| Build (`tools/generate.ts`) | ok, 60 files in `dist/` |
-| Validation (`tools/validate.ts`) | ok (AGENTS ≤400 tokens, SKILL budgets, schemas) |
-| Test suite (`bun test`) | 452 pass, 4 skip, 0 fail, 46 files (skips: W08 postgres-gated, documented) |
-| Eval corpus (`bun run eval --check`) | 34 positive / 34 negative, 1 unknown, no regressions |
-| Self-scan (`bun src/cli.ts check`) | exit 0, 0 block findings (one pre-existing BILL-01 warning in `src/rules/sec-02.ts`) |
-
-On November 3 the uncommitted candidate based on `5189213` passed the ordered gate: typecheck, build (64 generated files), validate, 494 tests passed / 4 PostgreSQL-dependent skips / 0 failed, and eval (35 positive, 35 negative, one unknown, no baseline regression). These results describe a dirty working tree, not a committed public revision. The offline packed-install Git test passed. Two disposable manual-scan rehearsals blocked a fabricated finding and passed after it was removed; real-host execution remains unverified.
-
-`unknown` means a rule could not decide from the available content. It is
-counted separately and never treated as a pass.
-
-## Suites and the claim each supports
-
-The authoritative ladder — claim, audience, failure decision, assumptions and blind spots for every retained suite — is [EVALUATION-LADDER.md](EVALUATION-LADDER.md) with its machine-readable copy in `tests/evals/ladder.json`. Suites are never combined into one number.
-
-| Suite | Claim it supports | What it does not show |
-|---|---|---|
-| A — hostile (`tests/benches/hostile.test.ts`) | 11 rule benches, each with at least 6 labelled attack shapes; every shape is caught on at least one real surface (gate or tree scan), and a cold control stays uncaught | That unlisted attack shapes are caught; that the host enforces the block |
-| B — benign (`tests/benches/benign.test.ts`) | 11 rule benches, each with at least 10 legitimate shapes that must not fire (zero false positives) | That these are the only legitimate shapes users write |
-| C — scenario (`tests/benches/scenario.test.ts`) | install → block → explain (offline) → checkpoint → undo runs end-to-end through the packed CLI with correct exit codes, and `init` stays under the 3 s budget | That a real host session behaves the same |
-| D — explanation rubric (`tools/loops/grade.ts`) | Offline structural scoring of explanation text (coarse 0–4 signal) | Explanation quality in a live model call; no live call is made |
-| M — bounded explanation (`src/framework/explain.test.ts`) | Mocked calls test category-only prompts, a request limit, timeout, and invalid-output handling | Provider behavior, explanation usefulness, or a dollar spending cap |
-| Corpus eval (`tests/evals/corpus.json`) | Per-rule precision/recall floors against a held-out corpus, with a pinned baseline and an unknown ceiling | General-world rates; the corpus is small and hand-built |
-| H — workflows (`tests/benches/workflows.test.ts`) | 20 recorded scenario snapshots replay offline (48 pass, 4 postgres-gated skips) | Live-model behaviour; skipped cases are stub-covered only |
-
-Known misses are kept in `tests/benches/KNOWN-GAPS.md` and are
-never relabelled as benign to keep a suite green.
-
-## Limitations
-
-- **Detection, not prevention.** The scanner inspects content. It is not a
-  sandbox and does not make an agent safe. Enforcement depends on the host:
-  where a host cannot run a pre-action check, the tool says so and offers the
-  Git-hook and `check` fallbacks.
-- **Host execution is not verified.** Hook discovery, trust prompts and actual
-  execution in Codex, Claude Code, Cursor, OpenCode and Hermes have not been
-  confirmed end-to-end in a real session. Receipts say "installed — host
-  execution not verified" for that reason.
-- **History scanning is bounded.** `check --push` scans changed blobs in
-  outgoing commits, but skips binary extensions, blocks on submodules and on
-  any scan it cannot complete (512 KiB per file, 5,000 commits, 5,000 changed
-  file entries). It reports what it inspected and refuses to call an incomplete
-  scan clean. It is not a complete secret detector, and findings show paths and
-  commits without repeating historical file contents.
-- **Live provider evidence is not established by the gate above.** That run was
-  $0 fixture-only: no paid call and no model-generated code execution. A separate
-  recorded synthetic Spark request is described below. Earlier
-  notes report the following calls, which have not been independently verified here: the Oct 26
-  Spark probe (`muse-spark-1.3`, `resp_6adff4cb…`), two Oct 28 live
-  `--explain` calls (`resp_6ae248a7…`, `resp_6ae248d7…`, in
-  `.fence/events.ndjson`), the Nov 3 Wonder probe (`muse-wonder-1.0`,
-  `resp_6ae93cf8…`), the Nov 3 Muse Image generation (`logo.webp` +
-  `.fence/meta-image.json`), the Baseten redteam batch (~30K tokens, benign
-  0/66 FP), and the Modal probe (~3.6K tokens) — see
-  `docs/project/BENCH-SCOREBOARD.md`. Raw paid artefacts stay in gitignored
-  `tools/out/` and `.fence/`; event rows alone contain request metadata, not response text, and do not independently prove provider success.
-- **Platforms.** Results above are from one macOS development machine; other
-  platforms are untested.
-
-## Reporting a problem
-
-Use the security reporting path in `SECURITY.md`. Do not include real secrets in
-a report; a fabricated reproducer is enough.
-
-## November 3 follow-up verification
-
-After the earlier run above, the dirty working tree passed the requested ordered gate again: typecheck, build (64 generated files), validate, 495 tests passed / 4 PostgreSQL-dependent skips / 0 failed, and eval (35 positive, 35 negative, one unknown; no baseline regression). The gate used offline or mocked model requests. `git diff --check` passed. These results do not establish behavior in an actual coding-agent host.
-
-A later local implementation pass on the same uncommitted branch passed typecheck, build (65 generated files), validation, and the full suite: **509 passed, 4 PostgreSQL-dependent skips, 0 failed** across 52 files. The evaluation reported 35 true positives, 0 false positives, 35 true negatives, 0 false negatives, and one unknown, with no baseline regression. This was a dirty working tree; documentation was subsequently updated, and no final committed candidate was tested by this run. No live host interception or new paid provider call was made.
-
-An offline `0.2.1` tarball from that source build contained the runtime, templates, skills, README and license, with no `.fence`, `.env`, or test files. In a fresh synthetic Git repository without Bun or a global `vibe-fence` on PATH, the packed installer created a working project-local runtime. The runtime reported version `0.2.1`, auto-detected the Codex configuration as unverified, identified a missing upstream, blocked a staged synthetic SEC-01 finding, and allowed a corrected commit. This was local package verification, not an npm publication or a live host session.
-
-An isolated public-tree candidate based on `ce56fa1` was committed locally as `751521b0f5572dc1a3fb9ce88b698d4bdc9cc94f`. On that exact commit, a frozen-lockfile install and the ordered gate passed: **440 tests passed, 4 PostgreSQL-dependent skips, 0 failed**, with the same 35 TP, 35 TN, and one unknown in the synthetic evaluation. The smaller public tree has fewer tests than the working checkout. Subsequent review found and corrected a separate invalid-range error that echoed raw input. This revision is an ancestor of the later public candidate described below.
-
-The follow-up candidate `82f815242c0879f0df6e3756d22318854b8456ac`, including that redaction fix, also passed the full ordered gate with 440 passes, four PostgreSQL-dependent skips, no failures, and no evaluation regression. A later documentation-only follow-up clarifies the revision labels. These are local results; no GitHub Actions result is implied.
-
-The reviewed source candidate `7b26efdaf3a024d1e9d307ad6c70cbd08992d9c4` passed the full ordered gate in a clean local clone: **447 passed, 4 PostgreSQL-dependent skips, 0 failed**; the synthetic evaluation reported 35 true positives, 35 true negatives, no false positives or false negatives, and one unknown. A test-fixture portability fix followed as `21b06249af339220516446bd1f7adbd66bf344d6`; the [GitHub Actions CI run on main](https://github.com/poferraz/vibe-fence/actions/runs/41747507232) passed on that revision.
-
-The published `vibe-fence@0.2.1` tarball has registry SHA-1 `b928c1502064efc30672201387e8f0cf1e2f0d3a`, matching the reviewed local tarball. In a fresh disposable Git project without Bun or a global fence executable on PATH, `npx --yes vibe-fence@0.2.1 init --adapters=codex` created the local runtime, which reported version 0.2.1 and an unverified Codex configuration. A synthetic SEC-01 commit was blocked, and the corrected commit succeeded. The registry deprecation notice for `0.2.0` was also verified. This does not establish live host interception.
-
-The npm package page still displays the source-install advice included in the 0.2.1 tarball before publication. The repository README has the verified npm command; [npm updates the package page README when a new version is published](https://docs.npmjs.com/about-package-readme-files/).
-
-A separate user-authorized direct Muse Spark request using a synthetic SEC-01 finding returned an explanation. The recorded response is stored locally in the private demo materials; it is not evidence of a host interception or a live response during a future recording. The successful request reported 64 input and 185 output tokens; estimated standard-rate cost was $0.000866 before adjustments. An earlier invalid-response request did not report usage, so total spend is unknown.
-
-## Meta model integration and recorded synthetic example
-
-The opt-in explanation path is implemented in [explain.ts](../src/framework/explain.ts) and [meta-client.ts](../src/framework/meta-client.ts). The deterministic checks decide whether to block; the model provides advisory text. The request is built from fixed rule categories and severities, without source contents, filenames, or tool arguments.
-
-On November 3, a user-authorized direct call to the explanation function returned the following response to a synthetic SEC-01 finding. It was a real provider response, recorded separately from the offline test gate; it does not establish live host interception or automatic model use for every block.
-
-| Field | Recorded value |
-|---|---|
-| Model | `muse-spark-1.3` |
-| Finding sent | `SEC-01 [block]: A secret may be exposed to client code.` |
-| Request settings | `store: false`, `max_output_tokens: 512`, `reasoning: { effort: "minimal" }` |
-| Provider-reported usage | 64 input and 185 output tokens |
-| Estimated cost of successful call | $0.000866 at the recorded standard rates, before adjustments; not an invoice |
-
-Recorded response to the synthetic finding:
-
-> We found 1 issue that needs attention before you go live — your app may be sharing a private password or key with visitors, which could let someone misuse your accounts or services.
->
-> **Fix for SEC-01:** Move that secret key to the secure server side so it's never sent to the browser.
-
-An earlier invalid response had no reported usage, so total spend is unknown.
-
-[meta-probe.ts](../tools/meta-probe.ts) and [meta-image.ts](../tools/meta-image.ts) are development probes, distinct from the product's optional explanation path. The [evaluation ladder](EVALUATION-LADDER.md) and [benchmark scoreboard](project/BENCH-SCOREBOARD.md) distinguish offline fixtures from reported open-weight experiments. SAM is contract-tested and has no product caller. These records do not establish hackathon eligibility or organizer acceptance of the model integration.
+Report sensitive vulnerabilities through [the security policy](../SECURITY.md), using a fabricated reproducer rather than real secrets.

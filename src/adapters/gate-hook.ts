@@ -24,9 +24,20 @@ export function buildGateHook(codex = false, pinnedProjectRoot?: string): string
     if (parent === probe) break;
     probe = parent;
   }`;
+  const cwdSetup = pinnedProjectRoot !== undefined
+    ? `let gateCwd;
+  try {
+    const project = realpathSync(root);
+    gateCwd = realpathSync(resolve((typeof event.cwd === "string" && event.cwd) || process.cwd()));
+    if (!statSync(gateCwd).isDirectory() || (gateCwd !== project && !gateCwd.startsWith(project + sep))) throw new Error("invalid cwd");
+  } catch {
+    process.stderr.write("vibe-fence could not verify the tool working directory inside this project.\\n");
+    process.exit(2);
+  }`
+    : `const gateCwd = process.cwd();`;
   return `// ${marker} — reinstall with vibe-fence init.
-const { readFileSync, accessSync, constants, statSync, writeSync, existsSync } = require("node:fs");
-const { join, delimiter, isAbsolute, extname, basename, dirname, resolve } = require("node:path");
+const { readFileSync, accessSync, constants, statSync, writeSync, existsSync, realpathSync } = require("node:fs");
+const { join, delimiter, isAbsolute, extname, basename, dirname, resolve, sep } = require("node:path");
 const { spawnSync } = require("node:child_process");
 const cursor = basename(dirname(__dirname)) === ".cursor";
 function allow() { if (cursor) writeSync(1, JSON.stringify({ permission: "allow" }) + "\\n"); }
@@ -45,10 +56,11 @@ try {
   }
   const start = (typeof event.cwd === "string" && event.cwd) || process.env.CLAUDE_PROJECT_DIR || process.env.CURSOR_PROJECT_DIR || process.cwd();
   ${rootSetup}
+  ${cwdSetup}
   const executable = (name) => {
     if (!name) return null;
     const paths = isAbsolute(name) || name.includes("/") || name.includes("\\\\") ? [name] : (process.env.PATH || "").split(delimiter).map(p => join(p || ".", name));
-    for (const p of paths) { try { accessSync(p, constants.X_OK); if (statSync(p).isFile()) return p; } catch {} }
+    for (const p of paths) { try { accessSync(p, constants.X_OK); if (statSync(p).isFile()) return resolve(p); } catch {} }
     return null;
   };
   const override = executable(process.env.FENCE_BIN);
@@ -57,7 +69,7 @@ try {
   if (!bin) { warn("The gate is unavailable; this action was not checked."); process.exit(0); }
   const gateArgs = ["gate", "--tool", tool, "--args-stdin", "--root", root];
   const nodeScript = [".js", ".cjs", ".mjs"].includes(extname(bin).toLowerCase());
-  const result = spawnSync(nodeScript ? process.execPath : bin, nodeScript ? [bin, ...gateArgs] : gateArgs, { input: JSON.stringify(args), encoding: "utf8", timeout: 10000 });
+  const result = spawnSync(nodeScript ? process.execPath : bin, nodeScript ? [bin, ...gateArgs] : gateArgs, { cwd: gateCwd, input: JSON.stringify(args), encoding: "utf8", timeout: 10000 });
   if (result.status === 1) {
     const ids = [...new Set((result.stdout || "").match(/\\b[A-Z]+-\\d{2}\\b/g) || [])];
     if (/\\bEDIT-SCAN\\b/.test(result.stdout || "")) process.stderr.write("vibe-fence could not inspect the existing file for this edit. Check its path and size, then retry.\\n");

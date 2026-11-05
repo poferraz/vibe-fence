@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { buildMuseGateCommand, buildMuseGateHook, installMuseAdapter } from "./muse";
 
 const projects: string[] = [];
@@ -87,6 +87,55 @@ describe("Muse Code pre-tool integration", () => {
     const runtime = spawnSync(command, { shell: true, cwd: nested, input: event, encoding: "utf8", env });
     expect(existsSync(marker)).toBe(false);
     expect(runtime.status).toBe(2);
+  });
+
+  it("uses the reported nested cwd when the hook starts from the project root", () => {
+    const root = project();
+    const nested = join(root, "nested");
+    mkdirSync(nested);
+    installMuseAdapter(root);
+    writeFileSync(join(root, "billing.ts"), 'const note = "marker";\n');
+    writeFileSync(join(nested, "billing.ts"), 'const key = process.env.NEXT_PUBLIC_STRIPE_SECRET_KEY; // marker\n');
+    const script = join(root, ".muse/hooks/fence-gate.cjs");
+    const result = spawnSync("node", [script], {
+      cwd: root,
+      input: JSON.stringify({ cwd: nested, tool_name: "edit_file", tool_input: { path: "billing.ts", find: "marker", replace: "updated" } }),
+      encoding: "utf8",
+      env: { ...process.env, FENCE_BIN: resolve(import.meta.dir, "../../dist/cli.js") },
+    });
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain("SEC-01");
+  });
+
+  it("blocks a reported Muse cwd outside the installed project", () => {
+    const root = project();
+    const outside = project();
+    installMuseAdapter(root);
+    const script = join(root, ".muse/hooks/fence-gate.cjs");
+    const result = spawnSync("node", [script], {
+      cwd: root,
+      input: JSON.stringify({ cwd: outside, tool_name: "write_file", tool_input: { path: "safe.ts", content: "export const safe = true;" } }),
+      encoding: "utf8",
+      env: { ...process.env, FENCE_BIN: resolve(import.meta.dir, "../../dist/cli.js") },
+    });
+    expect(result.status).toBe(2);
+  });
+
+  it("resolves a relative runtime override before using the reported nested cwd", () => {
+    const root = project();
+    const nested = join(root, "nested");
+    mkdirSync(nested);
+    installMuseAdapter(root);
+    const script = join(root, ".muse/hooks/fence-gate.cjs");
+    const override = relative(root, resolve(import.meta.dir, "../../dist/cli.js"));
+    const result = spawnSync("node", [script], {
+      cwd: root,
+      input: JSON.stringify({ cwd: nested, tool_name: "write_file", tool_input: { path: "billing.ts", content: "const k = process.env.NEXT_PUBLIC_STRIPE_SECRET_KEY;" } }),
+      encoding: "utf8",
+      env: { ...process.env, FENCE_BIN: override },
+    });
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain("SEC-01");
   });
 
   it("refreshes the bound hook after moving a project with spaces and quotes", () => {

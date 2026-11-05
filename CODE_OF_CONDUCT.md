@@ -38,7 +38,7 @@ This Code of Conduct applies within all community spaces, and also applies when 
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported privately to the maintainer at [poferraz@me.com](mailto:poferraz@me.com). All complaints will be reviewed and investigated promptly and fairly.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported privately to the maintainer through the GitHub profile linked from this repository. All complaints will be reviewed and investigated promptly and fairly.
 
 Maintainers have the right and responsibility to remove, edit, or reject comments, commits, code, wiki edits, issues, and other contributions that are not aligned with this Code of Conduct, and to ban temporarily or permanently any contributor for behaviors deemed inappropriate.
 

@@ -15,6 +15,7 @@ export const SUMMARIES: Record<string, string> = {
   "WORKTREE-SCAN": "A worktree scan was incomplete.",
   "INDEX-SCAN": "A staged scan was incomplete.",
   "PUSH-SCAN": "A history scan was incomplete.",
+  "EDIT-SCAN": "The existing file could not be inspected for this edit.",
 };
 
 
@@ -58,6 +59,7 @@ const REMEDIATIONS: Record<string, string> = {
   "BILL-01": "Fix: Add a limit to the potentially billable operation.",
   "PRV-09": "Fix: Replace sensitive fixture data with synthetic examples.",
   "S-06": INTEGRITY_RECOVERY,
+  "EDIT-SCAN": "Fix: Check the file path and size, then retry after the file can be inspected.",
 };
 
 const PUSH_REMEDIATIONS: Partial<Record<ScanReasonCode, string>> = {

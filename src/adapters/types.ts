@@ -14,6 +14,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export type AdapterRuntime =
+  | "muse"
   | "claude-code"
   | "codex"
   | "cursor"
@@ -75,6 +76,14 @@ export interface Adapter {
 }
 
 export const ADAPTERS: Adapter[] = [
+  {
+    name: "muse",
+    label: "Muse Code",
+    runtime: "muse-code",
+    agentsMapping: { canonical: "AGENTS.md", runtimePaths: ["AGENTS.md", ".agents/AGENTS.md"] },
+    hookSurface: { hooks: ["PreToolUse"] },
+    skillsDir: ".agents/skills",
+  },
   {
     name: "claude-code",
     label: "Claude Code",

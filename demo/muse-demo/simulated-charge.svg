@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">A fictional example of a surprise charge</title>
+  <desc id="desc">A clearly marked simulation showing a possible one hundred dollar cost if a secret is exposed. No actual charge occurred.</desc>
+  <rect width="1280" height="720" fill="#101620"/>
+  <rect x="100" y="86" width="1080" height="548" rx="28" fill="#1d2938" stroke="#e4a458" stroke-width="3"/>
+  <text x="160" y="166" fill="#f6bc72" font-family="Arial, sans-serif" font-size="31" font-weight="bold" letter-spacing="2">SIMULATION • NO REAL CHARGE</text>
+  <text x="160" y="260" fill="#f4f7fb" font-family="Arial, sans-serif" font-size="46" font-weight="bold">An exposed key could lead to</text>
+  <text x="160" y="385" fill="#ffffff" font-family="Arial, sans-serif" font-size="112" font-weight="bold">$100</text>
+  <text x="160" y="450" fill="#d6e0ea" font-family="Arial, sans-serif" font-size="31">in unexpected charges — a fictional example.</text>
+  <line x1="160" y1="508" x2="1120" y2="508" stroke="#657284" stroke-width="2"/>
+  <text x="160" y="560" fill="#c6d1de" font-family="Arial, sans-serif" font-size="25">No real key, breach, customer, bill or payment is shown.</text>
+</svg>

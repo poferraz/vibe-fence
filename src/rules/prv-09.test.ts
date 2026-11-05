@@ -29,11 +29,11 @@ describe("PRV-09", () => {
   });
 
   it("is not-applicable outside fixture scope", () => {
-    expect(check({ content: '{"author": "poferraz@me.com"}', filePath: "package.json" }).verdict).toBe("not-applicable");
-    expect(check({ content: "contact poferraz@me.com", filePath: "CITATION.cff" }).verdict).toBe("not-applicable");
+    expect(check({ content: '{"author": "builder@example.org"}', filePath: "package.json" }).verdict).toBe("not-applicable");
+    expect(check({ content: "contact builder@example.org", filePath: "CITATION.cff" }).verdict).toBe("not-applicable");
     // A repo merely containing fixtures elsewhere does not widen scope.
     expect(
-      check({ content: '{"author": "poferraz@me.com"}', filePath: "package.json", fileList: ["tests/fixtures/a.json"] }).verdict,
+      check({ content: '{"author": "builder@example.org"}', filePath: "package.json", fileList: ["tests/fixtures/a.json"] }).verdict,
     ).toBe("not-applicable");
   });
 

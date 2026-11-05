@@ -33,7 +33,7 @@ const CREDENTIAL_PATH_RES: Array<{ re: RegExp; label: string }> = [
   { re: /~\/\.aws\/credentials\b/i, label: "~/.aws/credentials" },
   { re: /\.aws\/credentials\b/i, label: ".aws/credentials" },
   // .env variants: .env, .env.local, .env.production, etc. — but not .env.example (safe template)
-  { re: /(?:^|[\s\"'=:])\.env(?:\.[a-zA-Z0-9_-]+)?\b/, label: ".env" },
+  { re: /(?:^|[\s\"'=:\/\\])\.env(?:\.[a-zA-Z0-9_-]+)?\b/, label: ".env" },
   { re: /\.fence\/\.integrity\.json\b/, label: ".fence/.integrity.json" },
   { re: /\.fence\/uninstall\.json\b/, label: ".fence/uninstall.json" },
 ];

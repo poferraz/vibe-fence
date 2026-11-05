@@ -2,7 +2,7 @@
 
 > **Date:** 2026-10-21 (deep-reads: harness/teaching/elicitation/verifiers/CLM) · **Status:** Locked, auditable. Supersedes `FINAL-v3.md` (Argon audit 2026-10-20 v2) which superseded `FINAL-v2.md`.
 > **Provenance:** 6 research streams (01 harnesses · 02 harness→quality · 03 elicitation · 04 guardrails · 05 companion UX · 06 meta models) · 6 contributors (`muse-spark`, `gemini-3.8-flash`, `gemini-4-argon`, `deepseek-v4.1-flash`, `minimax-m3.1-flash`, `gpt-6`) · 186 sources (bibliography: `docs/research/SOURCES.md`, 186 entries A–H, arXiv-indexed) · ~226 KB · 2 independent synthesis tracks (primary `synthesis/` + replication `synthesis-independent/`) · cross-stream audit `_CONSISTENCY.md` (134→103 dedup · 10 contradictions C-01–C-10 · 8 blind spots B-01–B-08) · reviewed by `COMPARISON.md` (structural audit), `INDEPENDENT-GEMS.md` (11 patches), `HTML-REVIEW.md` (17 fixes F-01–F-17, explorer not spec) · **Deep-Read Vault Expansion (14 docs, 4 clusters) → FINAL-v4**: `deepread-agents-prompting.md` (6 docs: Meta-Harness/Seven-Layers/**Claude-Leak**/ **Context-Engineering**/ **Skills**/SEAL) · `deepread-harness-cluster.md` (3 docs: LilLog/ Self-Harness 2606.09498/ CLM 2609.37725) · `deepread-research-cluster.md` (5 docs: **ContextFiles-Eval**/Verbal-Sampling/Avengers-Pro/RSI-Anything 2610.13912/Prime-Agent 2608.23552) · `deepread-vibe-coding.md` (4 docs + Arxiv2602 goal-blind) · **Guardrail/context/SKILL guardrails in S-01–S-03/S-06 updated from vault deep-reads (see Sources col).**
-> **Invariants:** No per-stream file was modified. Explorer is a companion, not a spec.
+> **Public scope:** Settled decisions and research references remain here; detailed working plans and demonstration scripts are private. The original synthesis is retained locally.
 
 ---
 
@@ -66,64 +66,9 @@ Each row is primary `FINAL.md` §2 verbatim, enriched where `COMPARISON.md` or `
 
 ---
 
-## 4. Actions by Milestone — Grouped by Architectural Dependency (re-sequenced per ARGON-AUDIT-v2.md §6)
+## 4. Private working material
 
-Primary `FINAL.md` §4 is the spine (`COMPARISON.md §2` verdict: keep primary wholesale) + Argon re-sequence (M1 D1–3: integrity+hard-blocks/prv-09/anonymize/bill-01/billing-guard/git undo; M2 D4–5: Spark/ Wonder+`stack-contract.json`/verify-remote+verifier; M3 D6–7: Tier-1 adapters+compliance+ablation+Muse Image; M4 D8–10: freeze+Adversary Bench+Visceral Delta+submit). Each bullet carries file + dependency note. Five independent cherry-picks + 11 GEMs integrated where flagged. Cite per item.
-
-### M1 — Project Skeleton (`git init`, `src/`, `tools/`, `docs/fence/`, `dist/` wiring) — *no upstream deps; unblocks all*
-
-- [x] `src/` sole editable authority → `dist/` disposable; `tools/{generate,validate,install}.ts` enforce `src→dist` parity + context budget + freshness (`fence validate` / `fence sync`). One-fact-one-location. (§01, §02 S-01/S-14)
-- [x] `docs/fence/INDEX.md` router + per-page `description-agent` frontmatter; PR-gated parity + `docs-updated`/`no-docs-needed`/`blocked` receipt. (§02 muse-spark)
-- [x] `.fence/` single-owner state tree; queue, dial, lessons, verdicts, budgets owned by harness. (§02 S-03, §05 Q-01)
-- [x] `.fence/app-profile.json` (`local`/`shared`/`public` → 14/+15/+26 `block` tiers). Unblocks M3 severity mappings. (§04 S-09)
-- [x] Trusted-channel hardening — integrity attestation (SHA-256), same-session `AGENTS.md` overwrite refusal, invisible-Unicode scan, `<untrusted-content>` envelope, `tools/` outside agent write-scope. (§01 D-04, §02 S-06)
-- [x] **`src/framework/integrity.ts` + `.fence/.integrity.json` + `.fence/hooks/postinstall-guard.sh`** — GEM-01 hash attestation + `FENCE_SYNC_TOKEN` gate. **P0.** (*GEM-01*)
-- [x] **WebContainer probe in `tools/install.ts`** — detect `process.versions.webcontainer`/`/.webcontainer`/hook installability; on hit print file-only fallback + `runtime` in `app-profile.json`. (*GEM-02 · cherry-pick #4 · `COMPARISON.md §4.2`*)
-- [x] Doc-gardening receipt + `fence validate` ≤400-token assertion `tools/validate.ts`. Add checkbox+path affordance to all M1–M4 bullets. (*cherry-pick #5*)
-
-### M2 — Framework Primitives (teaching dial, turbo, queue, state files) — *needs M1 state tree + budget*
-
-- [x] `AGENTS.md` ≤400 tokens assertion in `tools/validate.ts`; error if exceeded. Cross-validates 6 streams. (S-01) + **Anti-sycophancy directive** in template. (*cherry-pick #1*)
-- [x] `src/framework/context-budget.yml` — caps for static/dynamic/history/headroom; MCP as code APIs; metadata-only L1/L2/L3; `head -c 4000`. (S-03/S-08) + **image-token headroom note**. (*GEM-02 P2*)
-- [x] `.fence/check` silent Reflexion circuit: every write → `tsc`/lint/tests; green→commit, red→compact trace + "diagnose and fix" + one retry → queue. (03 A-02) + **Tournament Selection** naming + **2-Attempt Circuit Breaker** `src/framework/circuit-breaker.ts` → read-only consultation + `.fence/queue.json`. (*cherry-picks #2/#3*)
-- [x] Hard step budget (well before 16) + WIP=1 Kanban (02 D-06) + per-task telemetry (instruction/retrieval/tool/history, loop length). (S-03) — never stack greedily; A/B isolation+combination (CCI).
-- [x] Architect→Editor gate: plan artefact `.fence/plans/` before mutations. (02 D-07)
-- [x] `src/adapters/{claude,codex,cursor,opencode,hermes}.yml` per-runtime profiles — window/caching/edit-format/model-tier-conditional surface. (C-03) + **prompt-portability gate** eval (Spark/Glimmer/foreign harness). (*GEM-03*)
-- [x] `src/framework/byte-capped-pipeline` — per-task PageRank `vibe-map` ≤1k tokens + 4KB caps + last-5 pruning + ACID artefacts. (02 invent)
-- [x] `src/config/severity-policy.json` deterministic function `no check→nudge; check+irreversible→block; check+reversible→warn`; `unknown≠pass`. (04 S-11/S-14)
-- [x] Teaching dial orthogonal axis — vector `.fence/state/dial.json` + `learning.json` underneath; one global knob UI. (05 S-11) + **state eviction TTL+LRU** 7-day prune (§4). (*GEM-02*) + **goal-blind scaffolding:** SKILL prompts never embed outcome goals (Cao/Jiang/Xu R² −0.058*** leakage); intermediate artefacts via YAML-DSL constrained layer (PracticeGuide) + bite-sized pattern (TechniquesGuide); 3-strike → `circuit-breaker.ts` read-only. · `deepread-vibe-coding.md` §§1–5
-- [x] **`src/framework/verifier.ts` ephemeral smoke suite** `tests/.fence-smoke.test.ts` for zero-test repos; trust ladder `compile→lint→tests×2→generated-tests→judge-for-prose`. (*GEM-11*)
-
-### M3 — Skill Definitions (`vibe-init`, `vibe-guard`, `vibe-plan`, `vibe-teach`) — *needs M1/M2 primitives + severity policy*
-
-- [x] Progressive-disclosure `SKILL.md` everywhere; discovery `.agents/skills/`+`.claude/skills/`; publish to registries. Lint skill text forbidding ungrounded "review your own work" without tool signal. (S-02/S-08, C-02)
-- [x] `vibe-guard` rule records `.fence/rules/<id>.json` `{id, applicability, severity, source, check_adapter, affected_action, evidence_schema, repair_workflow}` + `pass/fail/unknown/not-applicable`; mitigations with evidence+scope+owner+expiry. (04 gpt-6)
-- [x] Guardrail packet: dual-layer secrets (`gitleaks` + Push Protection, `warn→block`), `NEXT_PUBLIC_`/`VITE_`/`PUBLIC_` shape lint, Zod per-route + `pg $1`/ORM + `semgrep p/owasp-top-ten`, headers+CSP nonce Report-Only→enforce, `setSessionCookie()`/`verifyJWT({RS256})`/PKCE+state, RLS `USING (true)` linter, lockfile+`npm ci`+ empty `onlyBuiltDependencies` allowlist + SBOM/cooldown, privacy inventory→`/privacy`+export/delete+consent gate. (04 M3) + **BILL-01** billable-loop guard + **PRV-09** fixture hygiene. (*GEMS-05/06*)
-- [x] `vibe-plan` gated 2-option fork (fast/simple vs scalable/robust), 1 `choice` item/run; `vibe-teach` card `What changed·Why·Your call·How we'll know` with expand on disk. (03, 05)
-- [x] Elicitation inside skills: `1→verify→best-of-k` for code; plan synthesis 2–3 candidates + rubric for prose only; every critique carries tool signal. (S-12) + **Verbalized Sampling primitive** `generate k with prob<threshold` (66.8% diversity recovery, 1.6–2.1× semantic); **SEAL** rewrite>memorization for adapter LoRA tuning (32.7→47% SQuAD). · `deepread-research-cluster.md` §2 + `deepread-agents-prompting.md` §6
-- [x] **Remote RLS verification** `src/framework/verify-remote.ts` — `pg_policies` introspection on `promote public`; `unknown` on offline (never `pass`). (*GEM-04*)
-- [x] **Fixture anonymizer** `tools/anonymize.ts` — synthetic PII replacement preserving referential integrity. (*GEM-06*)
-- [x] **Billing guard** `src/framework/billing-guard.ts` (P2) `withBudgetCap({maxCalls, maxCostUsd})` wrapper + `.fence/templates/` scaffold. (*GEM-05*)
-- [x] `.fence/state/lessons.json` cross-session reflection (eviction+poisoning guard); `.fence/escalate` risk×disagreement routing (≤3× without verifier); `.fence/verifier` trust ladder. + 15-row contradiction table + 10-mode failure taxonomy as `docs/research/` reference. (03 invent, 06 S-16) — *stay out of top-level synthesis; linked here.*
-- [x] Queue agent-as-assignee with payload pin (hash+lock) + three-condition gate (`realpath`+diff/blast+competence) + rolling 90%→demote to post-hoc; 15-row contradiction table as living reference. (05 invent)
-
-### M4 — Adapters + Installer (`npx vibe-fence init` + per-runtime wiring) — *needs M1–M3 ship-ready*
-
-- [x] `npx vibe-fence init` idempotent single-command install: drops `AGENTS.md`, `.fence/`, skills, settings blocks, hooks; merges not clobbers; <3s; one-line/file receipt + paved 3-step path; `fence tour` opt-in; artifact-first, teach-after. (S-02, 05 A-09/Q-01)
-- [x] Wire Spark 1.3 via `POST /v1/responses` stateless encrypted replay (not `previous_response_id`); Wonder 1.0 swap on same `MODEL_API_KEY` Bearer; `silent`=skip model call (`reasoning_effort:"none"` is 400). (06 S-13/D-02/D-05) + **dual-tier routing table** + pricing caps. (*GEM-08*) + **Standard-mode default** ethics gate. (*GEM-09 P0*)
-- [x] Muse Code reference: `AGENTS.md`+`.agents/AGENTS.md`+`MEMORY.md`; trust-gated precedence + read-only `.git/.muse/.agents`; `fence doctor` untrusted-checkout guard. (06 S-14)
-- [x] Namespaced `tool_search` guardrail tools; flat queue schema; never `tool_search`+`json_schema` together. (06 minimax)
-- [x] Curated `PreToolUse`/`PreToolExecution` hook surface with FP budget; bands by guarantee (user-facing "Turbo" forbidden). (01 D-01/D-02, 05 S-10)
-- [x] `fence look` Playwright→Spark verification + append-only `events.ndjson` + **CLM PFLOP/token trace** (35–60% compute delta as visceral cue; `events.ndjson` PFLOP counter wired for S-14 split-screen; `deepread-harness-cluster.md` DOC C). (06 deepseek · S-14)
-- [x] Canary hook proof + version-pinned SDK (malformed-hooks warn without handler; resume/cancellation/denial proven). (06 inv) + Glimmer 30B privacy literal (secrets never in `MEMORY.md`, PII-masked crops, testable "code never leaves machine" on classified path). (06 inv)
-- [x] Adversarial fence bench (8–12 tasks: poisoned `AGENTS.md`, README payload, malicious skill, user-asks-bypass) + seeded fixture suite + false-block rate. (02/04) + instruction-file sanitizer + before/after eval + cost-of-pass telemetry. (01 D-04, 03)
-- [x] **SAM contract** `src/framework/sam.ts` + `sam-guard.test.ts` `SAM_SINGLE_CONCEPT_VIOLATION`. (*GEM-07*)
-- [x] Scope line: **Desktop CLIs v1; WebContainer/mobile out of scope — document explicitly.** (*cherry-pick #4 cont.*)
-- [x] **Scope guard:** Desktop CLIs v1; WebContainer/mobile explicitly out of scope (see M1 probe note). Browser runtimes not claimed. (*GEM-02*)
-
-**Re-sequenced 10-day build (Argon §3, Oct 26→Nov 4):** M1 D1–3: `integrity.ts` lock + 10 hard-blocks + `prv-09.ts`/`anonymize.ts`/`bill-01.ts`/`billing-guard.ts`/`git.ts`; M2 D4–5: Spark `/v1/responses` + Wonder `stack-contract.json` + `verify-remote.ts` + Ephemeral Verifier; M3 D6–7: Tier-1 adapters + `adapter-compliance.ts` + ablation + Muse Image OG badge; M4 D8–10: freeze+Adversary Bench (10/10 incl. `chmod -R 777`)+Visceral Delta×submit. See `ARGON-AUDIT-v2.md` §3 + `RECONCILE.md` remaining 8 gaps.
-
-**GEMS→files map:** integrity `src/framework/integrity.ts` (P0, M1) · WebContainer `tools/install.ts` (P1, M1) · eviction `.fence/state/*.json`+`context-budget.yml` (P2, M2) · portability `src/adapters/*.yml` (P1, M2) · remote RLS `src/framework/verify-remote.ts` (P1, M3) · BILL-01 `src/rules/bill-01.ts` (P1, M3) · PRV-09 `src/rules/prv-09.ts`+`tools/anonymize.ts` (P1, M3) · SAM `src/framework/sam.ts` (P1, M4) · Wonder routing `src/framework/meta-client.ts` (P1, M4) · Standard-mode default same file (P0, M4) · Visceral Delta `docs/PLAN.md` §Hackathon + `docs/research/synthesis/DEMO-SCRIPT.md` (P0, M4) · verifier `src/framework/verifier.ts` (P1, M2/M3).
+Detailed planning and working notes are retained privately.
 
 ---
 
@@ -164,39 +109,9 @@ Primary `FINAL.md` §4 is the spine (`COMPARISON.md §2` verdict: keep primary w
 
 ---
 
-## 7. Hackathon Appendix — Visceral Delta Demo Script + 5×4 Rubric
+## 7. Private working material
 
-*Source: `synthesis-independent/FINAL.md` §5–§6 · `INDEPENDENT-GEMS.md GEM-10` · `COMPARISON.md §2` — attached as verbatim appendix per `COMPARISON.md §4.2`. Primary's eval is the credibility layer underneath; independent's script is the Impact+Demo story. Explorer roadmap rejected as spec (`HTML-REVIEW.md` §3: invents `vibe-fence.config.yaml`, calendar weeks, "Argon" codename).*
-
-### Visceral Delta — 3-Minute Video (80% of judging: Impact 30% + Tooling 25% + Demo 25%)
-
-| Minute | Beat | What's on screen |
-|--------|------|------------------|
-| **0:00–1:00 — Unfenced Disaster** | Non-technical prompt "add user profiles and a database" to raw agent — no fence. | `NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY` in browser bundle (build output / Sources panel) · missing RLS (`SELECT *` leaks all rows) · unhandled promise crash · raw stack trace. No architecture narration. |
-| **1:00–2:00 — The Intervention** | `npx vibe-fence init` live (3s timer). | Receipt: `🛡️ vibe-fence active. Checkpoints enabled. Secrets shielded.` Same prompt re-run → interception banner, git checkpoint logged, Muse Spark 3-bullet plan, **2-Option Teachable Fork** click. |
-| **2:00–3:00 — Polish & Ship** | Multi-modal finish. | Muse Image logo → `public/images/` (file appears) · Teachable Turbo silent Reflexion badges · Vercel deploy URL · live app in browser + **PFLOP/token trace overlay** (CLM 35–60% compute delta visceral cue; `events.ndjson` counter). End card: before/after split-screen. |
-
-Linked in video description + README; rubric is one click away, not in the video. Record day 8–9 per M4 with pre-cached fallback takes for network failure.
-
-### Acceptance Rubric — 5-Step Automated Suite (gates M4 complete)
-
-1. **Idempotence:** `npx vibe-fence init` ×3 in existing repo → zero file churn, identical `git status`.
-2. **Secret-leak intercept:** agent committing AWS secret / `NEXT_PUBLIC_SERVICE_ROLE` → hard `block`, exit 1.
-3. **Rollback integrity:** `npx vibe-fence undo` → clean revert without detached HEAD.
-4. **Token budget:** `tools/validate.ts` asserts `AGENTS.md` ≤400 tokens and no skill >250 lines.
-5. **Meta Model Responses flow:** `src/framework/meta-client.ts` stateless encrypted replay `POST /v1/responses` with `muse-spark-1.3` succeeds.
-
-### 5 Tasks × 4-Rubric Eval Table (deterministic rows + one model-graded row)
-
-| Task / Rubric | Structure | Secrets | Git | Deploy |
-|---------------|-----------|---------|-----|--------|
-| `auth` | scaffold + routes exist | `NEXT_PUBLIC_` lint | checkpoint + no-detached-HEAD | headers/CSP present |
-| `paid API` | BILL-01 guard present | no key in bundle | — | rate-limit/config present |
-| `bug fix` | verifier ladder green | — | `undo` works | fix shipped |
-| `ship-to-prod` | build gate | Report-Only→enforce trace | rollback test | live URL + env isolation |
-| `add-dep` | lockfile parity + SBOM | `onlyBuiltDependencies` | — | cooldown check |
-
-Report **success *and* unsafe-action rate** per task; gate releases on the latter (ClawsBench: capability and safety uncorrelated).
+Detailed planning and working notes are retained privately.
 
 ---
 
@@ -214,7 +129,7 @@ Report **success *and* unsafe-action rate** per task; gate releases on the latte
 | §7 Hackathon | `FINAL.md S-14` eval table | `_CONSISTENCY.md §3` G-BENCH canonical bench | `synthesis-independent/FINAL.md §5–§6` + `COMPARISON.md §4.2` appendix + `INDEPENDENT-GEMS.md GEM-10` Visceral Delta | `HTML-REVIEW.md §2–§3` demo-is-eval + rubric, roadmap not spec |
 | §8 Traceability | — | — | `COMPARISON.md §5` full v2 traceability matrix (expanded) | `HTML-REVIEW.md §5` 17 fixes mapped to FINAL per fix |
 
-*Sources (audit provenance): `01-harnesses.md` through `06-meta-models.md` in both `synthesis/` and `synthesis-independent/` · `_CONSISTENCY.md` · `COMPARISON.md` · `INDEPENDENT-GEMS.md` · `HTML-REVIEW.md` · `docs/PLAN.md` · `docs/research/INDEX.md` · Deep-Read Vault (14 docs, 4 clusters: `deepread-*.md`). No per-stream file modified. Line count: ~235 (FINAL-v4 + vault expansion). Supersedes FINAL-v3 → FINAL-v2 → FINAL.*
+*Sources (audit provenance): `01-harnesses.md` through `06-meta-models.md` in both `synthesis/` and `synthesis-independent/` · `_CONSISTENCY.md` · `COMPARISON.md` · `INDEPENDENT-GEMS.md` · `HTML-REVIEW.md` · the original private plan · `docs/research/INDEX.md` · Deep-Read Vault (14 docs, 4 clusters: `deepread-*.md`). No per-stream file modified. Line count: ~235 (FINAL-v4 + vault expansion). Supersedes FINAL-v3 → FINAL-v2 → FINAL.*
 
 ---
 

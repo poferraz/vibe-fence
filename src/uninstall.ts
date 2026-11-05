@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { adapterPathsSafe } from "./adapters/safe-paths.js";
+import { isMuseGateCommand } from "./adapters/muse.js";
 import { HOOK_MARKER, HOOK_NAMES, inspectGitHooks } from "./framework/git-hooks.js";
 
 const JOURNAL = ".fence/uninstall.json";
@@ -118,7 +119,7 @@ function removeManagedEntries(path: string, bytes: Buffer): Buffer | null {
   if (path === ".gitignore") {
     return Buffer.from(text.replace(/(?:^|\n)# vibe-fence\n(?:\.fence\/(?:\.integrity\.json|uninstall\.json|runtime\/|bin\/|events\.ndjson)\n|\.env(?:\.local|\.\*\.local)?\n)+/g, "\n"));
   }
-  if (![".claude/settings.json", ".cursor/hooks.json", ".codex/hooks.json", "package.json"].includes(path)) return null;
+  if (![".claude/settings.json", ".cursor/hooks.json", ".codex/hooks.json", ".muse/hooks.json", "package.json"].includes(path)) return null;
   try {
     const data = JSON.parse(text) as Record<string, any>;
     if (path === "package.json") {
@@ -128,10 +129,13 @@ function removeManagedEntries(path: string, bytes: Buffer): Buffer | null {
     } else if (data.hooks && typeof data.hooks === "object") {
       const key = path === ".cursor/hooks.json" ? "preToolUse" : "PreToolUse";
       if (Array.isArray(data.hooks[key])) {
-        const managed = (hook: any) => [hook?.command, ...(Array.isArray(hook?.args) ? hook.args : [])].some((command: unknown) => typeof command === "string" && /(?:^|[\\/])fence-gate\.(?:sh|cjs)(?:["']|\s|$)/.test(command));
+        const managed = (hook: any) => path === ".muse/hooks.json"
+          ? isMuseGateCommand(hook?.command)
+          : [hook?.command, ...(Array.isArray(hook?.args) ? hook.args : [])].some((command: unknown) => typeof command === "string" && /(?:^|[\\/])fence-gate\.(?:sh|cjs)(?:["']|\s|$)/.test(command));
         data.hooks[key] = data.hooks[key].flatMap((entry: any) => {
           if (Array.isArray(entry?.hooks)) {
             const remaining = entry.hooks.filter((hook: unknown) => !managed(hook));
+            if (remaining.length === entry.hooks.length) return [entry];
             return remaining.length ? [{ ...entry, hooks: remaining }] : [];
           }
           return managed(entry) ? [] : [entry];

@@ -11,7 +11,6 @@ description-agent: "Canonical map — every doc/skill/tool reachable via this in
 | Current product direction | `docs/project/PRODUCT-DIRECTION.md` | Plug-in companion for existing tools (supersedes owned-CLI spec); read before feature planning |
 | Measured status | `docs/EVIDENCE.md` | Current evidence and verification limits; local handoffs may be private |
 | AGENTS router | `AGENTS.md` | ≤400tok entry point; retrieval-gated S-01 |
-| Plan | `docs/PLAN.md` | Phases M1–M4 + hackathon scope |
 | Locked decisions | `docs/research/synthesis/FINAL-v4.md` | S-01…S-15, C-01…C-10, GEM patches |
 | Bibliography | `docs/research/SOURCES.md` | 186 entries A–H, paper-grade; not all re-verified |
 | Claim status | `docs/research/CLAIMS.md` | What is supported, a project decision, corrected or still unverified |
@@ -32,7 +31,7 @@ description-agent: "Canonical map — every doc/skill/tool reachable via this in
 | vibe-continuity | `src/skills/vibe-continuity/SKILL.md` | Advisory resume/handoff skill (git-grounded, unknowns explicit) |
 | Evidence | `docs/EVIDENCE.md` | Measured gates + per-suite claims + limits on a pinned revision |
 | Eval ladder | `docs/EVALUATION-LADDER.md` | Claim/audience/failure/assumptions per suite (+ `tests/evals/ladder.json`) |
-| Scoreboard | `docs/project/BENCH-SCOREBOARD.md` | Running loop results incl. paid-provider artefacts (out-of-tree) |
+| Reviewer guide | `docs/REVIEW.md` | Reproduce the project checks and Muse integration |
 | Maintainer | `docs/MAINTAINER.md` | Maintainer checklist for the public tree |
 | Generator | `tools/generate.ts` | src→dist copy + PROVENANCE |
 | Validator | `tools/validate.ts` | AGENTS ≤400tok + SKILL + schema gates |

@@ -88,6 +88,18 @@ it("reports a configured Codex hook outside a Git repository", async () => {
   expect(status.toolGate.next).toContain("real Codex session");
 });
 
+it("reports a configured Muse Code hook as unverified", async () => {
+  const { mkdirSync } = await import("node:fs");
+  const { installMuseAdapter } = await import("../adapters/muse");
+  const root = makeRepo();
+  installMuseAdapter(root);
+  mkdirSync(join(root, ".fence/bin"), { recursive: true });
+  writeFileSync(join(root, ".fence/bin/vibe-fence"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  const status = getProtectionStatus(root, "muse");
+  expect(status.toolGate.state).toBe("configured-unverified");
+  expect(status.toolGate.next).toContain("Muse Code");
+});
+
 it("reports local Git hooks degraded when Node is missing", async () => {
   const { mkdirSync } = await import("node:fs");
   const { installGitHooks } = await import("./git-hooks");

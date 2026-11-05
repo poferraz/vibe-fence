@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Compare views: https://github.com/poferraz/vibe-fence/compare/
 
+## [0.4.0] — 2026-11-04
+
+### Added
+- A project-local Muse Code `PreToolUse` adapter, including status, local probes, uninstall preservation, and a real-host synthetic write rehearsal. Trust the project and restart Muse after installation.
+
+### Changed
+- `init --profile=muse` now selects the native Muse Code adapter. Use `--adapters=claude` for the previous Claude-only behavior.
+
+### Fixed
+- SEC-01 no longer suppresses a live public-secret reference merely because an unrelated comment or string contains a placeholder word.
+- Muse Code's `read_file` tool is routed through the credential-path check, including nested `.env` paths.
+- Muse find/replace edits are checked in their existing file context, allowing removal of a finding and blocking a dangerous reference assembled across the edit boundary. Incomplete edits block with a clear message.
+- The Muse hook is bound to its installed project instead of loading hooks or runtimes from nested directories.
+
 ## [0.3.0] — 2026-11-03
 
 ### Added
@@ -84,7 +98,8 @@ First public scaffold — M1–M4 land on `main`.
 ### Research
 - Phase 0 locked: `docs/research/synthesis/FINAL-v4.md` (221 lines, 15 settled S-01…S-15+ S-06a/S-11a, 10 contested C-01…C-10+3) + `SOURCES.md` (186 entries) + deep-read vault (14 docs, 4 clusters)
 
-[0.3.0]: https://github.com/poferraz/vibe-fence/compare/ce56fa1...HEAD
+[0.4.0]: https://github.com/poferraz/vibe-fence/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/poferraz/vibe-fence/compare/ce56fa1...v0.3.0
 [0.2.1]: https://www.npmjs.com/package/vibe-fence/v/0.2.1
 [0.2.0]: https://github.com/poferraz/vibe-fence/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/poferraz/vibe-fence/releases/tag/v0.1.0

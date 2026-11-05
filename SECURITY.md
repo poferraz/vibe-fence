@@ -36,4 +36,3 @@ We follow coordinated disclosure with a 90-day embargo by default. Please do not
 - `src/framework/integrity.ts` — workspace-local drift detection; the workflow marker is not an independent authentication boundary (S-06)
 - `src/rules/` — bounded pattern checks (S-09); false positives and missed patterns remain possible
 - `src/framework/git.ts` — checkpoint + `fence undo` rollback invariant (S-10/S-11a)
-- `ECC-SECURITY-DEEPDIVE.md` and `ARGON-AUDIT-v2.md` in `docs/research/synthesis/`

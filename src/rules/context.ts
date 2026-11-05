@@ -58,7 +58,7 @@ export function isProsePath(filePath: string | undefined): boolean {
 }
 
 /** Tool-name classes shared by the gate and path/command rules. */
-export const READ_LIKE_TOOL_RE = /^(read|view|open|cat|show|load)$/i;
+export const READ_LIKE_TOOL_RE = /^(read(?:_file)?|view|open|cat|show|load)$/i;
 export const SHELL_LIKE_TOOL_RE = /^(bash|shell|sh|exec|run|command)$/i;
 
 const WRITE_LIKE_TOKENS = new Set(["write", "edit", "create", "apply", "patch", "multiedit"]);
@@ -186,6 +186,8 @@ export function isQuotedAt(line: string, index: number): boolean {
 export function isQuotedOrCommented(line: string, index: number): boolean {
   if (/^\s*\*(?!\/)/.test(line) && !line.includes("*/")) return true;
   let quote: string | null = null;
+  let template = false;
+  let interpolationDepth = 0;
   let i = 0;
   while (i < index && i < line.length) {
     const c = line[i]!;
@@ -195,6 +197,24 @@ export function isQuotedOrCommented(line: string, index: number): boolean {
       } else if (c === quote) {
         quote = null;
       }
+      i++;
+      continue;
+    }
+    // Apostrophes, quotes and comment markers in raw template text are data.
+    // Expressions inside ${...} are still scanned as code.
+    if (template && interpolationDepth === 0) {
+      if (c === "\\") { i += 2; continue; }
+      if (c === "`") { template = false; i++; continue; }
+      if (c === "$" && line[i + 1] === "{") { interpolationDepth = 1; i += 2; continue; }
+      i++;
+      continue;
+    }
+    if (template && interpolationDepth > 0) {
+      if (c === "{") { interpolationDepth++; i++; continue; }
+      if (c === "}") { interpolationDepth--; i++; continue; }
+    }
+    if (c === "`" && !template) {
+      template = true;
       i++;
       continue;
     }

@@ -27,6 +27,7 @@ import { execSync, execFileSync } from "node:child_process";
 import { installClaudeAdapter, buildAgentsFenceBlock } from "./adapters/claude.js";
 import { installCursorAdapter } from "./adapters/cursor.js";
 import { installCodexAdapter } from "./adapters/codex.js";
+import { installMuseAdapter } from "./adapters/muse.js";
 import { installOpenCodeAdapter } from "./adapters/opencode.js";
 import { installAntigravityAdapter } from "./adapters/antigravity.js";
 import { installHermesAdapter } from "./adapters/hermes.js";
@@ -68,6 +69,7 @@ export type AdapterInstaller = (projectRoot: string, opts: { modelMode?: string 
 // produced installOpencodeAdapter ≠ installOpenCodeAdapter and silently skipped
 // the OpenCode adapter (Oct 28 fix).
 export const ADAPTERS: Record<string, AdapterInstaller> = {
+  muse: installMuseAdapter,
   claude: installClaudeAdapter,
   cursor: installCursorAdapter,
   codex: installCodexAdapter,
@@ -313,7 +315,7 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
     ...DEFAULT_ADAPTER_IDS.map(id => `.fence/adapters/${id}.json`),
     "AGENTS.md", "CLAUDE.md", ".agents/skills", ".agents/memory/MEMORY.md", ".agents/rules/antigravity.md",
     ".claude/settings.json", ".claude/hooks/fence-gate.sh", ".claude/hooks/fence-gate.cjs", ".cursor/hooks.json", ".cursor/hooks/fence-gate.sh", ".cursor/hooks/fence-gate.cjs", ".cursor/rules/vibe-fence-router.mdc", ".cursor/skills",
-    ".codex/hooks.json", ".codex/hooks/fence-gate.cjs", ".codex/config.json", ".opencode/plugins/fence-guard.js", "opencode.json", ".hermes/config.json",
+    ".codex/hooks.json", ".codex/hooks/fence-gate.cjs", ".codex/config.json", ".muse/hooks.json", ".muse/hooks/fence-gate.cjs", ".opencode/plugins/fence-guard.js", "opencode.json", ".hermes/config.json",
   ];
   const skillSource = join(hereDir(), "skills");
   if (existsSync(skillSource)) for (const name of readdirSync(skillSource)) managedPaths.push(`.agents/skills/${name}/SKILL.md`);

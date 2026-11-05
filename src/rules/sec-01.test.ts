@@ -20,6 +20,32 @@ describe("SEC-01", () => {
     expect(v.reason).toContain("NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY");
   });
 
+  it("does not suppress live references because of unrelated placeholder words", () => {
+    for (const content of [
+      "const key = process.env.NEXT_PUBLIC_STRIPE_SECRET_KEY; // example payment route",
+      "const key = process.env.NEXT_PUBLIC_STRIPE_SECRET_KEY; // sample integration",
+      'const label = "dummy"; const key = process.env.NEXT_PUBLIC_STRIPE_SECRET_KEY;',
+      "VITE_PAYMENT_SECRET=live-value # example deployment",
+    ]) {
+      expect(check({ content, filePath: "app.ts" }).verdict).toBe("fail");
+    }
+  });
+
+  it("recognizes live references around apostrophes in template literals", () => {
+    expect(check({ content: "const message = `here's an example`; const key = process.env.NEXT_PUBLIC_STRIPE_SECRET_KEY;", filePath: "app.ts" }).verdict).toBe("fail");
+    expect(check({ content: "const key = `it's ${process.env.NEXT_PUBLIC_STRIPE_SECRET_KEY}`;", filePath: "app.ts" }).verdict).toBe("fail");
+  });
+
+  it("suppresses only actual placeholder assignment values", () => {
+    for (const content of [
+      "NEXT_PUBLIC_API_TOKEN=your-token-here",
+      'VITE_PRIVATE_KEY="changeme" # safe placeholder',
+    ]) {
+      expect(check({ content, filePath: ".env" }).verdict).toBe("pass");
+    }
+    expect(check({ content: "VITE_PRIVATE_KEY=live-secret # example", filePath: ".env" }).verdict).toBe("fail");
+  });
+
   it("fails on VITE_ / PUBLIC_ / EXPO_PUBLIC_ secret pairings", () => {
     for (const name of ["VITE_STRIPE_SECRET", "PUBLIC_API_PRIVATE", "EXPO_PUBLIC_AUTH_SECRET"]) {
       expect(check({ content: `${name}=sk-live-abc` }).verdict).toBe("fail");

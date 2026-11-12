@@ -8,10 +8,12 @@ description-agent: "Canonical map — every doc/skill/tool reachable via this in
 
 | Doc | Path | Why |
 |-----|------|-----|
+| Post-hackathon product research | [Direction and pilot](../research/2026-11-11-product-direction.md) | Research recommendation, first-run observations, host coverage, and a beginner trial |
 | Current product direction | `docs/project/PRODUCT-DIRECTION.md` | Plug-in companion for existing tools (supersedes owned-CLI spec); read before feature planning |
 | Measured status | `docs/EVIDENCE.md` | Current evidence and verification limits; local handoffs may be private |
 | AGENTS router | `AGENTS.md` | ≤400tok entry point; retrieval-gated S-01 |
-| Locked decisions | `docs/research/synthesis/FINAL-v4.md` | S-01…S-15, C-01…C-10, GEM patches |
+| Plan | `docs/PLAN.md` | Phases M1–M4 + hackathon scope |
+| Hackathon decisions | `docs/research/synthesis/FINAL-v4.md` | Historical S-01…S-15 and C-01…C-10; current product direction supersedes retired model choices |
 | Bibliography | `docs/research/SOURCES.md` | 186 entries A–H, paper-grade; not all re-verified |
 | Claim status | `docs/research/CLAIMS.md` | What is supported, a project decision, corrected or still unverified |
 | Research index | `docs/research/INDEX.md` | 6 streams + prompts + contributors |
@@ -22,8 +24,6 @@ description-agent: "Canonical map — every doc/skill/tool reachable via this in
 | Circuit breaker | `src/framework/circuit-breaker.ts` | S-04 2-attempt → read-only |
 | Teaching dial | `src/framework/dial.ts` | S-11 max→silent, goal-blind |
 | Git helpers | `src/framework/git.ts` | Checkpoint + undo |
-| SAM guard | `src/framework/sam.ts` | SAM contract, geometry not semantics |
-| Meta client | `src/framework/meta-client.ts` | Spark/Wonder routing S-13 |
 | vibe-init | `src/skills/vibe-init/SKILL.md` | Scaffolding + init |
 | vibe-guard | `src/skills/vibe-guard/SKILL.md` | Advice on actual checks and their limitations |
 | vibe-plan | `src/skills/vibe-plan/SKILL.md` | Contract-pinned planning S-08 |
@@ -31,13 +31,13 @@ description-agent: "Canonical map — every doc/skill/tool reachable via this in
 | vibe-continuity | `src/skills/vibe-continuity/SKILL.md` | Advisory resume/handoff skill (git-grounded, unknowns explicit) |
 | Evidence | `docs/EVIDENCE.md` | Measured gates + per-suite claims + limits on a pinned revision |
 | Eval ladder | `docs/EVALUATION-LADDER.md` | Claim/audience/failure/assumptions per suite (+ `tests/evals/ladder.json`) |
-| Reviewer guide | `docs/REVIEW.md` | Reproduce the project checks and Muse integration |
+| Scoreboard | `docs/project/BENCH-SCOREBOARD.md` | Running loop results incl. paid-provider artefacts (out-of-tree) |
 | Maintainer | `docs/MAINTAINER.md` | Maintainer checklist for the public tree |
 | Generator | `tools/generate.ts` | src→dist copy + PROVENANCE |
 | Validator | `tools/validate.ts` | AGENTS ≤400tok + SKILL + schema gates |
 | Installer | `tools/install.ts` | npx vibe-fence init + WebContainer probe |
 | Charter | `docs/project/AGENT-CHARTER.md` | Agent behavioral charter |
-| Ops glossary | `src/config/ops-terms.json` | Local vocabulary; explanation requests use fixed rule categories |
+| Ops glossary | `src/config/ops-terms.json` | Local vocabulary; local vocabulary; explanations use fixed rule categories |
 | ECC appendix | `docs/project/APPENDIX-ECC.md` | ECC deep-dive |
 
 ## L1 disclosure note (S-02/S-03)

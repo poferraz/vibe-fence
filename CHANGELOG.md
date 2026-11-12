@@ -7,19 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Compare views: https://github.com/poferraz/vibe-fence/compare/
 
-## [0.4.0] — 2026-11-04
-
-### Added
-- A project-local Muse Code `PreToolUse` adapter, including status, local probes, uninstall preservation, and a real-host synthetic write rehearsal. Trust the project and restart Muse after installation.
+## [0.5.0] — 2026-11-11
 
 ### Changed
-- `init --profile=muse` now selects the native Muse Code adapter. Use `--adapters=claude` for the previous Claude-only behavior.
 
-### Fixed
-- SEC-01 no longer suppresses a live public-secret reference merely because an unrelated comment or string contains a placeholder word.
-- Muse Code's `read_file` tool is routed through the credential-path check, including nested `.env` paths.
-- Muse find/replace edits are checked in their existing file context, allowing removal of a finding and blocking a dangerous reference assembled across the edit boundary. Incomplete edits block with a clear message.
-- The Muse hook is bound to its installed project instead of loading hooks or runtimes from nested directories.
+- One `init --host=<tool>` sets up the selected integration, local runtime, Git checks and a local diagnostic. Auto-detection uses the current project only and asks for one tool when ambiguous.
+- Commit hooks inspect staged blobs only; push hooks inspect outgoing history only. Unrelated unstaged or untracked files no longer block those operations; explicit `check` still reviews the whole folder.
+- Upgrades refresh unchanged managed guidance while preserving customized files. Incomplete setup reports failure and retains a removal record.
+
+### Removed
+
+- Meta model requests, model routing, provider preferences and keys, remote database probes, demo profiles, and paid evaluation connections. Local finding explanations and offline evaluation remain available.
+- The required separate diagnostic step and four-editor fallback. Existing coding-tool trust or restart requirements still apply.
 
 ## [0.3.0] — 2026-11-03
 
@@ -98,8 +97,7 @@ First public scaffold — M1–M4 land on `main`.
 ### Research
 - Phase 0 locked: `docs/research/synthesis/FINAL-v4.md` (221 lines, 15 settled S-01…S-15+ S-06a/S-11a, 10 contested C-01…C-10+3) + `SOURCES.md` (186 entries) + deep-read vault (14 docs, 4 clusters)
 
-[0.4.0]: https://github.com/poferraz/vibe-fence/compare/v0.3.0...HEAD
-[0.3.0]: https://github.com/poferraz/vibe-fence/compare/ce56fa1...v0.3.0
+[0.3.0]: https://github.com/poferraz/vibe-fence/compare/ce56fa1...HEAD
 [0.2.1]: https://www.npmjs.com/package/vibe-fence/v/0.2.1
 [0.2.0]: https://github.com/poferraz/vibe-fence/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/poferraz/vibe-fence/releases/tag/v0.1.0

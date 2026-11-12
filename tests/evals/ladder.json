@@ -1,18 +1,30 @@
 {
   "version": 1,
-  "updated": "2026-11-02",
+  "updated": "2026-11-11",
   "rule": "Every retained run carries a decision and is reported on its own; numbers from different suites are never combined into one figure.",
   "suites": [
     {
-      "id": "M-bounded-explanation",
-      "suite": "src/framework/explain.test.ts",
-      "command": "bun test src/framework/explain.test.ts",
-      "claim": "Mocked requests test fixed-category prompts, one request, token and time bounds, and rejection of invalid terminal output.",
-      "audience": "maintainer",
-      "failure": "Do not claim the optional explanation is bounded until these checks pass.",
-      "assumptions": ["mocked fetch, no paid provider request", "dirty working tree based on the recorded revision"],
-      "blindSpots": ["does not verify live provider behavior or output usefulness", "token limits do not establish a dollar spending cap"],
-      "lastResult": { "status": "pass", "revision": "5189213", "date": "2026-11-03" }
+      "id": "L-local-CLI",
+      "suite": "src/cli.test.ts",
+      "command": "bun test src/cli.test.ts",
+      "claim": "One selected tool is configured by a single init command; blocking findings include fixed local repair text without a network request or API key, including the legacy --explain flag.",
+      "audience": "user",
+      "failure": "Do not claim simple, local-only setup or explanations until these checks pass.",
+      "assumptions": [
+        "synthetic temporary projects and a network-rejecting preload for the offline check",
+        "working tree based on 5189213; full release verification pending",
+        "November 11 uncommitted working tree; revision identifies its base, not an exact release candidate"
+      ],
+      "blindSpots": [
+        "does not prove real editor trust, startup or execution",
+        "does not measure unaided beginner setup or repair time"
+      ],
+      "lastResult": {
+        "status": "pass",
+        "revision": "5189213",
+        "date": "2026-11-11",
+        "workingTree": true
+      }
     },
     {
       "id": "P-offline-runtime",
@@ -21,9 +33,28 @@
       "claim": "An offline local tarball installs a project runtime that blocks a synthetic staged leak and an oversized staged file, and allows a clean commit.",
       "audience": "maintainer",
       "failure": "Do not claim the packaged Git journey works until the test passes.",
-      "assumptions": ["macOS environment with Node, npm and Git", "test uses a dirty working tree based on the recorded revision"],
-      "blindSpots": ["does not prove any real agent host executes its hook", "does not prove all upgrade and platform cases"],
-      "lastResult": { "status": "pass", "revision": "5189213", "date": "2026-11-02" }
+      "assumptions": [
+        "macOS environment with Node, npm and Git",
+        "test uses a dirty working tree based on the recorded revision",
+        "November 11 uncommitted working tree; revision identifies its base, not an exact release candidate"
+      ],
+      "blindSpots": [
+        "does not prove any real agent host executes its hook",
+        "does not prove all upgrade and platform cases"
+      ],
+      "lastResult": {
+        "status": "pass",
+        "revision": "5189213",
+        "date": "2026-11-11",
+        "workingTree": true
+      },
+      "historicalResults": [
+        {
+          "status": "pass",
+          "revision": "5189213",
+          "date": "2026-11-02"
+        }
+      ]
     },
     {
       "id": "A-hostile",
@@ -32,9 +63,28 @@
       "claim": "11 rule benches, each with at least 6 labelled attack shapes; every shape is caught on at least one real surface (gate or tree scan), and a cold control stays uncaught.",
       "audience": "maintainer",
       "failure": "A miss becomes a KNOWN-GAPS entry or a rule fix; it is never relabelled benign to keep the suite green.",
-      "assumptions": ["fixtures are hand-written, not sampled from real incidents", "each case exercises an intended surface"],
-      "blindSpots": ["shapes not listed in the fixtures are not measured", "does not show that a host enforced any block"],
-      "lastResult": { "status": "pass", "revision": "5189213", "date": "2026-11-02" }
+      "assumptions": [
+        "fixtures are hand-written, not sampled from real incidents",
+        "each case exercises an intended surface",
+        "November 11 uncommitted working tree; revision identifies its base, not an exact release candidate"
+      ],
+      "blindSpots": [
+        "shapes not listed in the fixtures are not measured",
+        "does not show that a host enforced any block"
+      ],
+      "lastResult": {
+        "status": "pass",
+        "revision": "5189213",
+        "date": "2026-11-11",
+        "workingTree": true
+      },
+      "historicalResults": [
+        {
+          "status": "pass",
+          "revision": "5189213",
+          "date": "2026-11-02"
+        }
+      ]
     },
     {
       "id": "B-benign",
@@ -43,20 +93,56 @@
       "claim": "11 rule benches, each with at least 10 legitimate shapes, fire zero times and produce no scorer error.",
       "audience": "user",
       "failure": "A firing is a false-positive defect: fix the rule or record a deliberate exception; never delete the fixture to pass.",
-      "assumptions": ["fixtures represent ordinary work, not every possible legitimate shape"],
-      "blindSpots": ["fits the fixture set only; a shape outside it can still be blocked", "one adjudicated exception is documented in the scoreboard"],
-      "lastResult": { "status": "pass", "revision": "5189213", "date": "2026-11-02" }
+      "assumptions": [
+        "fixtures represent ordinary work, not every possible legitimate shape",
+        "November 11 uncommitted working tree; revision identifies its base, not an exact release candidate"
+      ],
+      "blindSpots": [
+        "fits the fixture set only; a shape outside it can still be blocked",
+        "one adjudicated exception is documented in the scoreboard"
+      ],
+      "lastResult": {
+        "status": "pass",
+        "revision": "5189213",
+        "date": "2026-11-11",
+        "workingTree": true
+      },
+      "historicalResults": [
+        {
+          "status": "pass",
+          "revision": "5189213",
+          "date": "2026-11-02"
+        }
+      ]
     },
     {
       "id": "C-scenario",
       "suite": "tests/benches/scenario.test.ts",
       "command": "bun test tests/benches/scenario.test.ts",
-      "claim": "install, block, offline explanation, checkpoint and undo run end-to-end through the packed CLI with the intended exit codes, and init stays under the 3 s budget.",
+      "claim": "One selected tool installs, then a finding includes a fixed local explanation; checkpoint and undo run end-to-end through the packed CLI with intended exit codes, and init stays under the 3 s budget.",
       "audience": "user",
       "failure": "A failure means the user-facing path is not ready; fix the integration before shipping.",
-      "assumptions": ["runs on this machine with Bun and Git available"],
-      "blindSpots": ["does not exercise a real host session", "timing is machine-specific"],
-      "lastResult": { "status": "pass", "revision": "5189213", "date": "2026-11-02" }
+      "assumptions": [
+        "runs on this machine with Bun and Git available",
+        "November 11 uncommitted working tree; revision identifies its base, not an exact release candidate"
+      ],
+      "blindSpots": [
+        "does not exercise a real host session",
+        "timing is machine-specific"
+      ],
+      "lastResult": {
+        "status": "pass",
+        "revision": "5189213",
+        "date": "2026-11-11",
+        "workingTree": true
+      },
+      "historicalResults": [
+        {
+          "status": "pass",
+          "revision": "5189213",
+          "date": "2026-11-02"
+        }
+      ]
     },
     {
       "id": "D-explanation-rubric",
@@ -65,9 +151,27 @@
       "claim": "A coarse 0-4 structural rubric scores explanation text offline (presence of plain-language reason and fix), with no model call.",
       "audience": "reviewer",
       "failure": "A regression means the rubric broke; it does not mean explanation quality improved or degraded in a live call.",
-      "assumptions": ["structure is a weak proxy for usefulness"],
-      "blindSpots": ["cannot judge correctness or tone", "no live provider output is involved"],
-      "lastResult": { "status": "pass", "revision": "5189213", "date": "2026-11-02" }
+      "assumptions": [
+        "structure is a weak proxy for usefulness",
+        "November 11 uncommitted working tree; revision identifies its base, not an exact release candidate"
+      ],
+      "blindSpots": [
+        "cannot judge correctness or tone",
+        "no live provider output is involved"
+      ],
+      "lastResult": {
+        "status": "pass",
+        "revision": "5189213",
+        "date": "2026-11-11",
+        "workingTree": true
+      },
+      "historicalResults": [
+        {
+          "status": "pass",
+          "revision": "5189213",
+          "date": "2026-11-02"
+        }
+      ]
     },
     {
       "id": "E-corpus",
@@ -76,9 +180,28 @@
       "claim": "Per-rule precision and recall floors hold against a pinned baseline over a held-out corpus, with an unknown ceiling and no lost true negatives.",
       "audience": "maintainer",
       "failure": "A regression or lost TN fails the run; a new TN requires review and an explicit baseline update.",
-      "assumptions": ["corpus is hand-built and small", "floors are project policy, not measured generality"],
-      "blindSpots": ["not a general-world rate", "an unknown case is counted separately and never as a pass"],
-      "lastResult": { "status": "pass", "revision": "5189213", "date": "2026-11-02" }
+      "assumptions": [
+        "corpus is hand-built and small",
+        "floors are project policy, not measured generality",
+        "November 11 uncommitted working tree; revision identifies its base, not an exact release candidate"
+      ],
+      "blindSpots": [
+        "not a general-world rate",
+        "an unknown case is counted separately and never as a pass"
+      ],
+      "lastResult": {
+        "status": "pass",
+        "revision": "5189213",
+        "date": "2026-11-11",
+        "workingTree": true
+      },
+      "historicalResults": [
+        {
+          "status": "pass",
+          "revision": "5189213",
+          "date": "2026-11-02"
+        }
+      ]
     },
     {
       "id": "F-sweep",
@@ -87,20 +210,57 @@
       "claim": "Labelled adversarial scenarios S1-S8b behave as recorded, including a no-bypass check on the CLI surface.",
       "audience": "maintainer",
       "failure": "Any S-label regression blocks the change.",
-      "assumptions": ["one scenario per label, with a fixed payload"],
-      "blindSpots": ["does not cover refusal behaviour, which lives outside deterministic tests"],
-      "lastResult": { "status": "pass", "revision": "5189213", "date": "2026-11-02" }
+      "assumptions": [
+        "one scenario per label, with a fixed payload",
+        "November 11 uncommitted working tree; revision identifies its base, not an exact release candidate"
+      ],
+      "blindSpots": [
+        "does not cover refusal behaviour, which lives outside deterministic tests"
+      ],
+      "lastResult": {
+        "status": "pass",
+        "revision": "5189213",
+        "date": "2026-11-11",
+        "workingTree": true
+      },
+      "historicalResults": [
+        {
+          "status": "pass",
+          "revision": "5189213",
+          "date": "2026-11-02"
+        }
+      ]
     },
     {
       "id": "G-proof-beats",
       "suite": "tests/proof-beats.test.ts",
       "command": "bun test tests/proof-beats.test.ts",
-      "claim": "Five user-facing proof beats hold: leak stopped, harmful operations blocked while benign work proceeds, a failing check yields a fail verdict, undo restores, and a real hook blocks an unsafe commit.",
+      "claim": "Leak detection, harmful-operation blocks, a failing-test verdict, checkpoint history reversal with working edits preserved, and real Git blocking of unsafe staged blobs hold on the listed fixtures.",
       "audience": "user",
       "failure": "A failing beat means a user-facing claim is false; correct the claim or the product before shipping.",
-      "assumptions": ["Git and Bun are available", "hooks run through the installed path"],
-      "blindSpots": ["does not prove host trust or execution", "one platform"],
-      "lastResult": { "status": "pass", "revision": "5189213", "date": "2026-11-02" }
+      "assumptions": [
+        "Git and Bun are available",
+        "hooks run through the installed path",
+        "November 11 uncommitted working tree; revision identifies its base, not an exact release candidate"
+      ],
+      "blindSpots": [
+        "does not prove host trust or execution",
+        "one platform",
+        "undo does not restore earlier working-file contents or external state"
+      ],
+      "lastResult": {
+        "status": "pass",
+        "revision": "5189213",
+        "date": "2026-11-11",
+        "workingTree": true
+      },
+      "historicalResults": [
+        {
+          "status": "pass",
+          "revision": "5189213",
+          "date": "2026-11-02"
+        }
+      ]
     },
     {
       "id": "H-workflows",
@@ -109,9 +269,28 @@
       "claim": "20 recorded real-world scenario snapshots replay offline: good episodes finish, bad episodes fail for their documented reason, and any provider touch fails loudly (network stubbed to throw).",
       "audience": "reviewer",
       "failure": "A replay mismatch means the scenario runner or the fence drifted; fix before relying on replay evidence.",
-      "assumptions": ["recorded scripts stand in for live episodes", "W08 live episodes need postgres and skip without it"],
-      "blindSpots": ["replay proves determinism, not live-model behaviour", "skipped postgres cases are assertion-covered only by stubs"],
-      "lastResult": { "status": "pass", "revision": "5189213", "date": "2026-11-02" }
+      "assumptions": [
+        "recorded scripts stand in for live episodes",
+        "W08 live episodes need postgres and skip without it",
+        "November 11 uncommitted working tree; revision identifies its base, not an exact release candidate"
+      ],
+      "blindSpots": [
+        "replay proves determinism, not live-model behaviour",
+        "skipped postgres cases are assertion-covered only by stubs"
+      ],
+      "lastResult": {
+        "status": "pass",
+        "revision": "5189213",
+        "date": "2026-11-11",
+        "workingTree": true
+      },
+      "historicalResults": [
+        {
+          "status": "pass",
+          "revision": "5189213",
+          "date": "2026-11-02"
+        }
+      ]
     }
   ],
   "skipped": [
@@ -140,6 +319,31 @@
     {
       "id": "N-approval-scope-control",
       "reason": "Depends on host approval UX and user response; no deterministic fixture exists."
+    }
+  ],
+  "retired": [
+    {
+      "id": "M-bounded-explanation",
+      "suite": "src/framework/explain.test.ts",
+      "command": "bun test src/framework/explain.test.ts",
+      "claim": "Mocked requests test fixed-category prompts, one request, token and time bounds, and rejection of invalid terminal output.",
+      "audience": "maintainer",
+      "failure": "Do not claim the optional explanation is bounded until these checks pass.",
+      "assumptions": [
+        "mocked fetch, no paid provider request",
+        "dirty working tree based on the recorded revision"
+      ],
+      "blindSpots": [
+        "does not verify live provider behavior or output usefulness",
+        "token limits do not establish a dollar spending cap"
+      ],
+      "lastResult": {
+        "status": "pass",
+        "revision": "5189213",
+        "date": "2026-11-03"
+      },
+      "retiredOn": "2026-11-11",
+      "reason": "Remote model explanation has been removed from the product; its lastResult is historical only."
     }
   ]
 }

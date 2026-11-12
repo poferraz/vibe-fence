@@ -11,6 +11,7 @@
     {"id": "b-sec01-7", "payload": "const f = process.env.VITE_FEATURE_FLAG;"},
     {"id": "b-sec01-8", "payload": "# Set NEXT_PUBLIC_TOKEN in your hosting dashboard before deploying."},
     {"id": "b-sec01-9", "payload": "PUBLIC_THEME_COLOR=#101418"},
-    {"id": "b-sec01-10", "payload": "const region = process.env.NEXT_PUBLIC_REGION;"}
+    {"id": "b-sec01-10", "payload": "const region = process.env.NEXT_PUBLIC_REGION;"},
+    {"id": "b-sec01-11", "payload": "export VITE_PRIVATE_KEY=\"placeholder\" # configure on server"}
   ]
 }

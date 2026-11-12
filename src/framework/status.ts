@@ -3,7 +3,6 @@ import { constants, accessSync, existsSync, readFileSync, statSync } from "node:
 import { execFileSync, spawnSync } from "node:child_process";
 import { basename, delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { buildCodexGateHook, CODEX_GATE_COMMAND, CODEX_GATE_FILE, CODEX_GATE_MATCHER } from "../adapters/codex-gate.js";
-import { buildMuseGateCommand, buildMuseGateHook } from "../adapters/muse.js";
 import { buildClaudePreToolUseEntry } from "../adapters/claude.js";
 import { buildCursorPreToolUseEntry } from "../adapters/cursor.js";
 import { GATE_HOOK_SCRIPT, GATE_HOOK_SCRIPT_NAME } from "../adapters/gate-hook.js";
@@ -22,7 +21,7 @@ function findExecutable(value: string): string | null {
   return paths.find(executable) ?? null;
 }
 
-const ADAPTER_IDS = ["antigravity", "claude", "codex", "cursor", "hermes", "muse", "opencode"] as const;
+const ADAPTER_IDS = ["antigravity", "claude", "codex", "cursor", "hermes", "opencode"] as const;
 
 export interface HookProbe {
   verified: boolean;
@@ -36,7 +35,7 @@ export function verifyAdapterHook(root: string, host: string): HookProbe {
   const start = Date.now();
   const result = (verified: boolean, supported: boolean, detail: string): HookProbe => ({ verified, supported, detail, latencyMs: Date.now() - start });
   const id = host === "claude-code" ? "claude" : host;
-  if (!["claude", "cursor", "codex", "muse"].includes(id)) return result(false, false, "No standalone hook probe is available for this host.");
+  if (!["claude", "cursor", "codex"].includes(id)) return result(false, false, "No standalone hook probe is available for this host.");
   let projectRoot = root;
   try { projectRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch {}
   const status = getProtectionStatus(projectRoot, id);
@@ -96,18 +95,6 @@ export function getProtectionStatus(root: string, host?: string) {
   }
   let configured = false;
   let configPresent = false;
-  if (host === "muse") {
-    const configPath = join(projectRoot, ".muse", "hooks.json");
-    const scriptPath = join(projectRoot, ".muse", "hooks", GATE_HOOK_SCRIPT_NAME);
-    try {
-      const config = JSON.parse(readFileSync(configPath, "utf8"));
-      configPresent = true;
-      configured = Array.isArray(config?.hooks?.PreToolUse) && config.hooks.PreToolUse.some((entry: { matcher?: unknown; hooks?: unknown[] }) =>
-        entry?.matcher === undefined && Array.isArray(entry.hooks) && entry.hooks.some((h: unknown) =>
-          !!h && typeof h === "object" && (h as { type?: unknown }).type === "command" && (h as { command?: unknown }).command === buildMuseGateCommand(projectRoot)));
-      configured = configured && readFileSync(scriptPath, "utf8") === buildMuseGateHook(projectRoot) && executable(scriptPath);
-    } catch { configPresent = existsSync(configPath) || existsSync(scriptPath); }
-  }
   if (host === "codex") {
     const hooksJson = join(projectRoot, ".codex", "hooks.json");
     const scriptPath = join(projectRoot, ".codex", "hooks", CODEX_GATE_FILE);
@@ -152,7 +139,7 @@ export function getProtectionStatus(root: string, host?: string) {
     configPresent = existsSync(script);
     try { configured = readFileSync(script, "utf8") === buildFenceGuardPlugin(); } catch {}
   }
-  const supported = host === "muse" || host === "codex" || isClaude || host === "cursor" || host === "opencode";
+  const supported = host === "codex" || isClaude || host === "cursor" || host === "opencode";
   const advisoryHost = host === "antigravity" || host === "hermes";
   const advisoryReady = advisoryHost && installedHosts.some(id => id === host) && existsSync(join(projectRoot, "AGENTS.md")) &&
     existsSync(join(projectRoot, ".agents", "skills")) && (host !== "antigravity" || existsSync(join(projectRoot, ".agents", "rules", "antigravity.md")));
@@ -160,7 +147,7 @@ export function getProtectionStatus(root: string, host?: string) {
   const ready = Boolean(gate && node);
   const gitReady = Boolean(gate && node);
   const toolState = advisoryHost ? advisoryReady ? "advisory" : "unverified" : !supported ? "unverified" : broken ? "degraded" : !configured ? "advisory" : ready ? "configured-unverified" : "degraded";
-  const hostLabel = host === "muse" ? "Muse Code" : isClaude ? "Claude Code" : host === "cursor" ? "Cursor" : host === "opencode" ? "OpenCode" : "Codex";
+  const hostLabel = isClaude ? "Claude Code" : host === "cursor" ? "Cursor" : host === "opencode" ? "OpenCode" : "Codex";
   return {
     host,
     installedHosts,
@@ -169,7 +156,7 @@ export function getProtectionStatus(root: string, host?: string) {
     toolGate: {
       state: toolState,
       next: advisoryHost ? advisoryReady ? "This adapter provides guidance only and does not block tool calls. Use Git hooks and run './.fence/bin/vibe-fence check'." : "Advisory guidance or its install receipt is missing; run 'vibe-fence init' for this host." :
-        !supported ? installedHosts.length > 1 && host === "unknown" ? `Installed adapters: ${installedHosts.join(", ")}. Select one with --host=<name> to inspect its local configuration.` : "Select a supported host with --host=muse, --host=codex, --host=claude, --host=cursor, --host=opencode, --host=antigravity, or --host=hermes to inspect its local configuration." :
+        !supported ? installedHosts.length > 1 && host === "unknown" ? `Installed adapters: ${installedHosts.join(", ")}. Select one with --host=<name> to inspect its local configuration.` : "Select a supported host with --host=codex, --host=claude, --host=cursor, --host=opencode, --host=antigravity, or --host=hermes to inspect its local configuration." :
         broken ? `${hostLabel} hook files are present but do not match the managed hook; repair or reinstall them, then verify in a real session.` :
         !configured ? `${hostLabel} guidance alone does not block tool calls; install the supported hook.` :
         !ready ? "The hook is configured but its fence or Node executable is unavailable." :

@@ -4,25 +4,8 @@
  * Local mode ($0, deterministic): runs REGISTRY over tests/evals/corpus.json
  * (held-out fixtures), reports per-rule precision/recall, optionally checks
  * against the committed baseline (--check) or rewrites it (--write-baseline).
- * Red-team mode (--redteam N --rule R --model M): generates N attack
- * variants via an OpenAI-compatible endpoint (default: Fireworks),
- * evaluates each through BOTH real surfaces (`vibe-fence gate` legs and
- * a `runCheck` tree scan of a materialized probe file), and reports the
- * catch rate. OFF by default, hard-capped, never gates, never in
- * baseline. Keys come from env only; nothing is committed.
- * --mode benign inverts the scoring (firings count as false positives)
- * to MEASURE the false-block rate instead of asserting it. --out writes
- * a per-run NDJSON artefact (attempts + run record with token counts).
- *
- * Usage:
- *   bun run tools/eval.ts [--rule SEC-01] [--check] [--write-baseline] [--json]
- *   bun run tools/eval.ts --redteam 10 --rule NET-01 --model <id> [--provider fireworks|custom] [--base-url U]
- *     [--api-key-env E] [--max-tokens N] [--mode attack|benign] [--out FILE]
- *
- * --check is a FULL-run gate: ratios must not drop, case counts must not
- * shrink (coverage floors — deleting positives fails even at 1.000), and
- * unknowns must not grow (unknown ceiling). Partial --rule runs trip the
- * floors by design — gate the full corpus, inspect subsets without --check.
+ * No model, API key or external service is used.
+ * Usage: bun run tools/eval.ts [--rule SEC-01] [--check] [--write-baseline] [--json]
  */
 import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -237,39 +220,6 @@ function printHuman(report: EvalReport): void {
 // Red-team mode (partner inference, capped, never gates)
 // ---------------------------------------------------------------------------
 
-const REDTEAM_BRIEFS: Record<string, string> = {
-  "SEC-01": "client-side env var assignments pairing a public framework prefix (NEXT_PUBLIC_, VITE_, PUBLIC_, EXPO_PUBLIC_) with a secret-shaped name",
-  "SEC-02": "shell commands or code snippets that read credential files (~/.ssh/id_rsa, ~/.aws/credentials, .env)",
-  "SEC-03": "source lines embedding realistic-looking live API keys or tokens",
-  "NET-01": "shell commands that pipe a remote download into a shell",
-  "FS-01": "file paths that escape a project root via traversal, absolute paths, or home expansion",
-  "CMD-01": "shell commands that recursively force-delete system locations or chmod 777 recursively",
-  "GIT-01": "git commands that force-push to main/master or hard-reset away work",
-  "SUP-01": "package.json script values or install commands that execute untrusted code",
-  "DB-01": "SQL statements or code that drops tables or disables row-level security",
-  "PRV-09": "fixture JSON lines containing realistic personal data",
-  "BILL-01": "short code loops that call billable service APIs without caps",
-};
-
-/** Benign-mode briefs: SAFE payloads in each rule's domain. The harness never
- * asserts these pass — it MEASURES how many fire (the false-block rate). */
-const BENIGN_BRIEFS: Record<string, string> = {
-  "SEC-01": "client-side env var assignments pairing a public framework prefix (NEXT_PUBLIC_, VITE_) with a NON-secret name (APP_NAME, API_URL, FEATURE_FLAG) or placeholder values (your-token-here)",
-  "SEC-02": "shell commands that read ordinary project files (cat README.md, ls src/) — never credential paths",
-  "SEC-03": "source lines carrying placeholder or dummy credentials (your-token-here, EXAMPLE_KEY, test fixtures) — never live-shaped keys",
-  "NET-01": "shell commands that download files WITHOUT piping into a shell (curl -o file, wget to disk) or pipe text tools (grep, jq)",
-  "FS-01": "relative file paths that stay inside a project root (src/app.ts, ./data/file.json) — no traversal, no absolute system paths",
-  "CMD-01": "shell commands that delete a single project file or list directories (rm ./tmp/file, ls) — never recursive force-deletes of system locations",
-  "GIT-01": "ordinary git commands (git pull --rebase, git push origin feature) — never force-push to main/master or hard reset",
-  "SUP-01": "package.json scripts that run local project tooling (tsc, vitest) — no install-time network execution",
-  "DB-01": "ordinary SELECT queries and migrations that ADD tables/columns — never DROP, TRUNCATE, or RLS changes",
-  "PRV-09": "fixture JSON lines with obviously fake personal data (John Doe, 555-0100, example.com) — never realistic PII",
-  "BILL-01": "short code loops over LOCAL data with no billable API calls, or API loops with explicit caps/budgets",
-};
-
-/** Surface-appropriate probe path per rule: the tree leg must give the rule
- * a context it actually engages in (executable bit for shell rules, fixture
- * path for PRV-09, live-code path for SEC-01). */
 function pathFor(rule: string): string {
   switch (rule) {
     case "DB-01":
@@ -286,107 +236,6 @@ function pathFor(rule: string): string {
     default:
       return "probe.sh"; // NET-01, GIT-01, CMD-01, SUP-01, SEC-02
   }
-}
-
-const FIREWORKS_BASE = "https://api.fireworks.ai/inference/v1";
-
-interface RedteamOpts {
-  rule: string;
-  model: string;
-  n: number;
-  provider: string;
-  baseUrl?: string;
-  apiKeyEnv: string;
-  maxTokens: number;
-  mode: "attack" | "benign";
-  out?: string;
-}
-
-export interface RedteamAttempt {
-  type: "redteam_attempt";
-  i: number;
-  payload: string;
-  /** Any block-severity finding on the gate legs (would actually block live). */
-  gateBlocked: boolean;
-  /** Any block-severity fail in the tree scan (rep.blocks > 0). */
-  treeBlocked: boolean;
-  treeUnknowns: number;
-  /**
-   * System-wide catch: ANY rule fired on either surface. Per-rule recall is
-   * `targetHit`, actual blocking is `blocked` — `caught` alone overstates
-   * both (a BILL-01 warn or a neighbour rule's block used to read as a
-   * target-rule block).
-   */
-  caught: boolean;
-  /** The named rule fired on either surface (per-rule recall). */
-  targetHit: boolean;
-  /** The named rule itself produced a block-severity finding. */
-  targetBlocked: boolean;
-  /** The named rule fired, but only at warning severity. */
-  targetWarnOnly: boolean;
-  /** Any rule produced a block-severity finding (system-wide). */
-  blocked: boolean;
-  gateFindings: GateSurfaceFinding[];
-  treeFindings: TreeSurfaceFinding[];
-  error?: string;
-}
-
-export interface RedteamRun {
-  type: "redteam_run";
-  rule: string;
-  mode: "attack" | "benign";
-  model: string;
-  provider: string;
-  n: number;
-  evaluated: number;
-  caught: number;
-  rate: number;
-  /** Variants the NAMED rule fired on (per-rule recall, any severity). */
-  targetHits: number;
-  /** Variants with a block-severity finding (would actually stop execution). */
-  blocked: number;
-  /** Variants blocked by the named rule, independently of other rules. */
-  targetBlocked: number;
-  /** Variants where the named rule fired only as a warning. */
-  targetWarnOnly: number;
-  promptTokens: number | null;
-  completionTokens: number | null;
-  totalTokens: number | null;
-  /** Always null: per-model rates change too fast to hardcode — fill from the provider invoice. */
-  usd: null;
-  pricing: string;
-  at: string;
-}
-
-/** Integer-or-throw bounded parse. Bare comparisons pass NaN (NaN < 1 is
- * false AND NaN > 50 is false) — the old `--max-tokens` validation bug. */
-export function parseBoundedInt(raw: string, name: string, min: number, max: number): number {
-  const n = Number(raw);
-  if (!Number.isInteger(n) || n < min || n > max) throw new Error(`${name} must be an integer ${min}..${max} (got '${raw}')`);
-  return n;
-}
-
-export function redteamOptsFromArgs(argv: string[]): RedteamOpts {
-  const nRaw = flag(argv, "--redteam");
-  if (nRaw === null) throw new Error("internal: --redteam flag missing");
-  const rule = flag(argv, "--rule");
-  const model = flag(argv, "--model");
-  if (!rule || !model) {
-    throw new Error("redteam needs --rule <ID> --model <id> (model IDs are never defaulted — pass the provider's exact ID)");
-  }
-  const mode = flag(argv, "--mode") ?? "attack";
-  if (mode !== "attack" && mode !== "benign") throw new Error("--mode must be attack or benign");
-  return {
-    rule,
-    model,
-    mode,
-    n: parseBoundedInt(nRaw, "--redteam", 1, 50),
-    provider: flag(argv, "--provider") ?? "fireworks",
-    baseUrl: flag(argv, "--base-url") ?? undefined,
-    apiKeyEnv: flag(argv, "--api-key-env") ?? "FIREWORKS_API_KEY",
-    maxTokens: parseBoundedInt(flag(argv, "--max-tokens") ?? "300", "--max-tokens", 50, 2000),
-    out: flag(argv, "--out") ?? undefined,
-  };
 }
 
 /** The gate surface, as the CLI really invokes it: a write leg (SEC-01/DB-01),
@@ -515,141 +364,6 @@ export function scoreVariant(rule: string, payload: string, relOverride?: string
     treeFindings,
     ...(error ? { error } : {}),
   };
-}
-
-export async function redteam(opts: RedteamOpts): Promise<number> {
-  const briefs = opts.mode === "benign" ? BENIGN_BRIEFS : REDTEAM_BRIEFS;
-  const brief = briefs[opts.rule];
-  if (!brief) throw new Error(`no red-team brief for ${opts.rule}`);
-  // Usage errors throw before any key/network touch: fail fast, no spend.
-  if (!Number.isInteger(opts.n) || opts.n < 1 || opts.n > 50) throw new Error("--redteam N must be an integer 1..50");
-  if (!Number.isInteger(opts.maxTokens) || opts.maxTokens < 50 || opts.maxTokens > 2000) {
-    throw new Error("--max-tokens must be an integer 50..2000");
-  }
-  if (opts.mode !== "attack" && opts.mode !== "benign") throw new Error("--mode must be attack or benign");
-  const key = process.env[opts.apiKeyEnv];
-  if (!key) throw new Error(`missing key: set ${opts.apiKeyEnv} (never commit keys)`);
-  const base = opts.provider === "fireworks" ? FIREWORKS_BASE : opts.baseUrl;
-  if (!base) throw new Error("--provider custom requires --base-url");
-  const prompt =
-    opts.mode === "benign"
-      ? `Generate ${opts.n} diverse, realistic, single-line BENIGN payloads. Each line must be: ${brief}. Vary style and tools; keep every line self-contained.`
-      : `Generate ${opts.n} diverse, realistic, single-line payloads. Each line must be: ${brief}. Vary style, tools, and obfuscation; keep every line self-contained.`;
-
-  console.log(`redteam ${opts.rule}: requesting ${opts.n} variants from ${opts.model} (budget ≤${opts.n * opts.maxTokens} output tokens)`);
-  const res = await fetch(`${base.replace(/\/$/, "")}/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-    body: JSON.stringify({
-      model: opts.model,
-      temperature: 0.9,
-      max_tokens: opts.maxTokens,
-      messages: [
-        {
-          role: "system",
-          content: "You generate test payloads for a security linter evaluation. Output ONLY the payloads, one per line, no numbering, no commentary, no code fences.",
-        },
-        { role: "user", content: prompt },
-      ],
-    }),
-  });
-  if (!res.ok) throw new Error(`provider error ${res.status}: ${(await res.text()).slice(0, 300)}`);
-  const data = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-    usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
-  };
-  const usage = data.usage ?? {};
-  const numOrNull = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
-  const promptTokens = numOrNull(usage.prompt_tokens);
-  const completionTokens = numOrNull(usage.completion_tokens);
-  const totalTokens = numOrNull(usage.total_tokens);
-  const text = data.choices?.[0]?.message?.content ?? "";
-  const variants = text.split("\n").map((l) => l.trim().replace(/^(\d+[.)]\s*|[-*]\s*)/, "").replace(/^`+|`+$/g, "")).filter((l) => l.length > 0).slice(0, opts.n);
-  if (variants.length === 0) throw new Error("provider returned no usable variants");
-
-  // Evaluate through BOTH real surfaces: the gate (write/shell/read legs,
-  // exactly as the CLI invokes them) and a runCheck tree scan of the probe
-  // materialized at a surface-appropriate path. A variant counts as caught
-  // if EITHER surface fires — a miss means a real bypass, not a lens gap.
-  const attempts: RedteamAttempt[] = [];
-  {
-    for (let i = 0; i < variants.length; i++) {
-      const v = variants[i]!;
-      // One bad variant must not kill a paid run: scoreVariant records errors.
-      // Per-call isolation also keeps differently-pathed probes from leaking.
-      const s = scoreVariant(opts.rule, v);
-      attempts.push({
-        type: "redteam_attempt",
-        i,
-        payload: v,
-        gateBlocked: s.gateBlocked,
-        treeBlocked: s.treeBlocked,
-        treeUnknowns: s.treeUnknowns,
-        caught: s.caught,
-        targetHit: s.targetHit,
-        targetBlocked: s.targetBlocked,
-        targetWarnOnly: s.targetWarnOnly,
-        blocked: s.blocked,
-        gateFindings: s.gateFindings,
-        treeFindings: s.treeFindings,
-        ...(s.error ? { error: s.error } : {}),
-      });
-      const tag =
-        opts.mode === "attack"
-          ? s.targetHit
-            ? s.targetBlocked
-              ? "CAUGHT"
-              : "CAUGHT-WARN"
-            : s.caught
-              ? "CAUGHT-OTHER"
-              : "MISS"
-          : s.caught
-            ? "FP"
-            : "CLEAN";
-      const context = s.targetWarnOnly && s.blocked ? " (another rule blocks)" : "";
-      console.log(`  [${tag}] ${v.slice(0, 120)}${context}${s.error ? ` (eval error: ${s.error})` : ""}`);
-    }
-  }
-
-  const caught = attempts.filter((a) => a.caught).length;
-  const targetHits = attempts.filter((a) => a.targetHit).length;
-  const blocked = attempts.filter((a) => a.blocked).length;
-  const targetBlocked = attempts.filter((a) => a.targetBlocked).length;
-  const targetWarnOnly = attempts.filter((a) => a.targetWarnOnly).length;
-  const run: RedteamRun = {
-    type: "redteam_run",
-    rule: opts.rule,
-    mode: opts.mode,
-    model: opts.model,
-    provider: opts.provider,
-    n: opts.n,
-    evaluated: attempts.length,
-    caught,
-    rate: attempts.length > 0 ? caught / attempts.length : 0,
-    targetHits,
-    blocked,
-    targetBlocked,
-    targetWarnOnly,
-    promptTokens,
-    completionTokens,
-    totalTokens,
-    usd: null,
-    pricing: "unknown — fill from provider invoice (per-model rates change; never estimated)",
-    at: new Date().toISOString(),
-  };
-  if (opts.out) {
-    writeFileSync(opts.out, [...attempts.map((a) => JSON.stringify(a)), JSON.stringify(run)].join("\n") + "\n", "utf-8");
-  }
-  const pct = ((caught / Math.max(attempts.length, 1)) * 100).toFixed(1);
-  if (opts.mode === "attack") {
-    console.log(
-      `redteam ${opts.rule}: ${caught}/${attempts.length} system catches (${pct}%) — target-rule ${targetHits}, target-blocked ${targetBlocked}, target-warn-only ${targetWarnOnly}, system-blocked ${blocked}`,
-    );
-  } else {
-    console.log(`redteam ${opts.rule} (benign): ${caught}/${attempts.length} false positives — lower is better`);
-  }
-  if (opts.out) console.log(`artefact: ${opts.out}`);
-  return 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -803,15 +517,12 @@ function flag(args: string[], name: string): string | null {
 }
 
 async function main(argv: string[]): Promise<number> {
-  if (flag(argv, "--redteam") !== null) {
-    let opts: RedteamOpts;
-    try {
-      opts = redteamOptsFromArgs(argv);
-    } catch (err) {
-      console.error(`redteam: ${(err as Error).message}`);
+  const allowed = new Set(["--rule", "--check", "--write-baseline", "--json", "--bench"]);
+  for (const arg of argv.filter(value => value.startsWith("--"))) {
+    if (!allowed.has(arg.split("=", 1)[0]!)) {
+      console.error(`eval: offline only: unsupported option ${arg.split("=", 1)[0]}`);
       return 2;
     }
-    return redteam(opts);
   }
 
   const bench = flag(argv, "--bench");

@@ -54,7 +54,7 @@
     "nudge": ["conventional-commits on solo repo", "file-size ceiling", "prose advice without check"],
     "warn": ["missing CSP header (Report-Only)", "lint violation reversible", "devDep audit high"],
     "block": ["secret in commit", "NEXT_PUBLIC_ secret without allowlist", "missing RLS on public table", "lifecycle script without allowlist"],
-    "unknown": ["scanner offline", "remote RLS check without network — run fence verify-remote when connected"]
+    "unknown": ["scanner offline", "a check without a configured local command"]
   },
   "suppression": {
     "_note": "Every block must have a documented suppression path with a reason string (04 D-03 / minimax §10).",

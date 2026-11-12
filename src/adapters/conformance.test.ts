@@ -68,13 +68,29 @@ function isExecutable(p: string): boolean {
   return (statSync(p).mode & 0o100) !== 0;
 }
 
+describe("local-only adapter receipts", () => {
+  it("records installation without configuring any model or provider", () => {
+    const adapters = [
+      ["claude", installClaudeAdapter], ["codex", installCodexAdapter],
+      ["cursor", installCursorAdapter], ["opencode", installOpenCodeAdapter],
+      ["hermes", installHermesAdapter], ["antigravity", installAntigravityAdapter],
+    ] as const;
+    for (const [id, install] of adapters) {
+      const root = makeProject();
+      install(root);
+      const receipt = readJson(root, `.fence/adapters/${id}.json`);
+      expect(Object.keys(receipt).sort()).toEqual(["adapter", "installedAt", "receipt", "version"]);
+    }
+  });
+});
+
 describe("opencode conformance (L2)", () => {
   it("never creates opencode.json; receipt carries the metadata", () => {
     const root = makeProject();
     installOpenCodeAdapter(root);
     expect(existsSync(join(root, "opencode.json"))).toBe(false);
     const receipt = readJson(root, ".fence/adapters/opencode.json");
-    expect(receipt).toMatchObject({ version: 1, adapter: "opencode", model_mode: "standard" });
+    expect(receipt).toMatchObject({ version: 1, adapter: "opencode" });
     // The integration itself is intact: AGENTS.md + the gate plugin.
     expect(existsSync(join(root, "AGENTS.md"))).toBe(true);
     expect(existsSync(join(root, ".opencode", "plugins", "fence-guard.js"))).toBe(true);
@@ -107,6 +123,43 @@ describe("opencode conformance (L2)", () => {
 });
 
 describe("claude conformance (L14)", () => {
+  it("uses a native AGENTS import so CLAUDE precedence cannot hide the shared guidance", () => {
+    const root = makeProject();
+    installClaudeAdapter(root);
+    expect(readFileSync(join(root, "CLAUDE.md"), "utf8")).toMatch(/^@AGENTS\.md$/m);
+  });
+
+  it("upgrades the exact legacy pointer while preserving appended user instructions", () => {
+    const root = makeProject();
+    const legacy = [
+      "<!-- vibe-fence: CLAUDE.md compat — points to AGENTS.md canonical policy -->",
+      "# CLAUDE.md — Fence Pointer", "",
+      "Canonical policy: `AGENTS.md` (vibe-fence router, ≤400 tokens).",
+      "Skills: `.agents/skills/<skill>/SKILL.md` (L1/L2/L3 progressive disclosure, S-02).",
+      "Memory: `.agents/memory/MEMORY.md` — untrusted; never store secrets (S-06/GEM-01).", "",
+    ].join("\n");
+    const extra = "\n## My project\nKeep the existing payment flow.\n";
+    writeFileSync(join(root, "CLAUDE.md"), legacy + extra);
+    installClaudeAdapter(root);
+    const updated = readFileSync(join(root, "CLAUDE.md"), "utf8");
+    expect(updated).toMatch(/^@AGENTS\.md$/m);
+    expect(updated.endsWith(extra)).toBe(true);
+    expect(updated).not.toContain("Canonical policy: `AGENTS.md`");
+  });
+
+  it("keeps custom CLAUDE content and adds the shared import once", () => {
+    for (const custom of ["# Custom setup\nDo not change our database.\n", "# Custom setup\n@AGENTS.md\n"]) {
+      const root = makeProject();
+      writeFileSync(join(root, "CLAUDE.md"), custom);
+      installClaudeAdapter(root);
+      const updated = readFileSync(join(root, "CLAUDE.md"), "utf8");
+      expect(updated.startsWith(custom)).toBe(true);
+      expect(updated.match(/^@AGENTS\.md$/gm)).toHaveLength(1);
+      installClaudeAdapter(root);
+      expect(readFileSync(join(root, "CLAUDE.md"), "utf8")).toBe(updated);
+    }
+  });
+
   it("writes a real PreToolUse entry, no fence key, no invented keys", () => {
     const root = makeProject();
     installClaudeAdapter(root);
@@ -124,7 +177,7 @@ describe("claude conformance (L14)", () => {
     const script = join(root, ".claude", "hooks", "fence-gate.cjs");
     expect(readFileSync(script, "utf-8")).toBe(GATE_HOOK_SCRIPT);
     expect(isExecutable(script)).toBe(true);
-    expect(readJson(root, ".fence/adapters/claude.json")).toMatchObject({ adapter: "claude", model_mode: "standard" });
+    expect(readJson(root, ".fence/adapters/claude.json")).toMatchObject({ adapter: "claude" });
   });
 
   it("merges without clobbering: user keys/hooks preserved, ours deduped, legacy scrubbed", () => {

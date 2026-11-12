@@ -114,7 +114,7 @@ describe("git-hooks", () => {
     expect(output).toContain("blocked");
   });
 
-  it("pre-commit runs staged + worktree scans; pre-push runs push + worktree scans", () => {
+  it("pre-commit scans only staged blobs; pre-push scans only outgoing history", () => {
     if (!gitAvailable()) return;
     const cases = [
       ["pre-commit", "check --staged"],
@@ -128,8 +128,39 @@ describe("git-hooks", () => {
       writeFileSync(recorder, `#!/bin/sh\necho "$@" >> "${log}"\nexit 0\n`, "utf-8");
       chmodSync(recorder, 0o755);
       execFileSync(join(root, ".git", "hooks", hook), [], { cwd: root, env: gitEnv({ FENCE_BIN: recorder }) });
-      expect(readFileSync(log, "utf-8").trim().split("\n")).toEqual([first, "check"]);
+      expect(readFileSync(log, "utf-8").trim().split("\n")).toEqual([first]);
     }
+  });
+
+  it("permits a harmless commit with unrelated unsafe tracked and untracked drafts", () => {
+    const root = makeRepo();
+    const run = (args: string[], env = gitEnv()) => execFileSync("git", args, { cwd: root, env, encoding: "utf8", stdio: "pipe" }).trim();
+    const commit = (message: string, env = gitEnv()) => run(["-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false", "commit", "-qm", message], env);
+    writeFileSync(join(root, "draft.ts"), "export const draft = 1;\n");
+    run(["add", "draft.ts"]);
+    commit("base draft");
+    installGitHooks(root, gitEnv());
+    const bin = join(root, "fence-cli.sh");
+    const cli = join(import.meta.dir, "..", "cli.ts");
+    writeFileSync(bin, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(cli)} "$@"\n`);
+    chmodSync(bin, 0o755);
+    const env = gitEnv({ FENCE_BIN: bin });
+    const unsafe = "export const value = process.env.NEXT_PUBLIC_STRIPE_SECRET_KEY;\n";
+    writeFileSync(join(root, "draft.ts"), unsafe);
+    writeFileSync(join(root, "untracked.ts"), unsafe);
+    writeFileSync(join(root, "label.ts"), "export const label = 'Subscribe';\n");
+    run(["add", "label.ts"]);
+    expect(() => commit("harmless label", env)).not.toThrow();
+    expect(run(["show", "HEAD:draft.ts"])).toBe("export const draft = 1;");
+    expect(run(["show", "HEAD:label.ts"])).toBe("export const label = 'Subscribe';");
+    expect(readFileSync(join(root, "draft.ts"), "utf8")).toBe(unsafe);
+    expect(readFileSync(join(root, "untracked.ts"), "utf8")).toBe(unsafe);
+
+    // Inspect the staged blob even if its working copy was subsequently fixed.
+    run(["add", "draft.ts"]);
+    writeFileSync(join(root, "draft.ts"), "export const draft = 2;\n");
+    expect(() => commit("staged unsafe draft", env)).toThrow();
+    expect(run(["log", "-1", "--format=%s"])).toBe("harmless label");
   });
 
   it("blocks a real push of a fixed historical leak and permits a clean branch", () => {
@@ -158,6 +189,8 @@ describe("git-hooks", () => {
     run(["checkout", "-qb", "clean", base]);
     writeFileSync(join(root, "ok.ts"), "export const ok = 1;\n");
     run(["add", "ok.ts"]);
+    // These local drafts are not part of the commit or the outgoing history.
+    writeFileSync(join(root, "app.tsx"), "const k = process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY;\n");
     execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false", "commit", "-qm", "clean"], { cwd: root, env });
     execFileSync("git", ["push", "-q", "origin", "HEAD:refs/heads/clean"], { cwd: root, env });
     expect(run(["--git-dir", remote, "rev-parse", "refs/heads/clean"])).toBe(run(["rev-parse", "HEAD"]));

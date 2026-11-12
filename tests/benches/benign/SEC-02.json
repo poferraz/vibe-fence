@@ -53,6 +53,10 @@
     {
       "id": "b-sec02-13",
       "payload": "cp -x README.md /tmp/docs/"
+    },
+    {
+      "id": "b-sec02-14",
+      "payload": "cat config/.env.example"
     }
   ]
 }

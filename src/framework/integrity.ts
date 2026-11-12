@@ -23,6 +23,7 @@ export interface IntegrityRecord {
   generatedAt: string; // ISO-8601
   generatedBy: string; // "fence init" | "fence sync" + FENCE_SYNC_TOKEN hash prefix
   files: Record<string, string>; // relative path → hex SHA-256
+  selectedHosts?: string[]; // Absent on legacy records, which retain all-host checks.
 }
 
 /** Result of a verification pass. */
@@ -48,10 +49,19 @@ export const FENCE_OWNED_FILES: readonly string[] = [
   ".cursor/hooks/fence-gate.cjs",
   ".codex/hooks.json",
   ".codex/hooks/fence-gate.cjs",
-  ".muse/hooks.json",
-  ".muse/hooks/fence-gate.cjs",
   ".opencode/plugins/fence-guard.js",
 ] as const;
+
+const ATTESTATION_HOSTS = ["claude", "cursor", "codex", "opencode", "antigravity", "hermes"] as const;
+
+function validSelectedHosts(hosts: unknown): hosts is string[] {
+  return Array.isArray(hosts) && hosts.every(host => typeof host === "string" && (ATTESTATION_HOSTS as readonly string[]).includes(host));
+}
+
+function includedForHosts(path: string, hosts?: readonly string[]): boolean {
+  const host = /^\.(claude|cursor|codex|opencode)\//.exec(path)?.[1];
+  return hosts === undefined || !host || hosts.includes(host);
+}
 
 export function isAttestedPath(path: string): boolean {
   if (FENCE_OWNED_FILES.includes(path)) return true;
@@ -81,9 +91,11 @@ export function sha256Hex(content: string | Buffer): string {
  * Compute attestation map for all fence-owned files present on disk.
  * Returns { path → hash } for files that exist; skips missing with warning.
  */
-export function computeAttestation(projectRoot: string): Record<string, string> {
+export function computeAttestation(projectRoot: string, selectedHosts?: readonly string[]): Record<string, string> {
+  if (selectedHosts !== undefined && !validSelectedHosts(selectedHosts)) throw new Error("invalid attestation host selection");
   const out: Record<string, string> = {};
   for (const rel of FENCE_OWNED_FILES) {
+    if (!includedForHosts(rel, selectedHosts)) continue;
     if (!adapterPathsSafe(projectRoot, [rel])) throw new Error("unsafe attested path");
     const abs = join(projectRoot, rel);
     if (!existsSync(abs)) {
@@ -119,12 +131,12 @@ export function computeAttestation(projectRoot: string): Record<string, string> 
  * The marker is a workflow guard, not authentication: the same user or agent
  * can modify this record or set the marker.
  */
-export function persistAttestation(projectRoot: string): void {
+export function persistAttestation(projectRoot: string, selectedHosts?: readonly string[]): void {
   if (!process.env[FENCE_SYNC_TOKEN_ENV]) {
     throw new Error(`refusing to (re-)attest without ${FENCE_SYNC_TOKEN_ENV} workflow marker; run init`);
   }
   // TODO: write atomically (tmp + rename) to avoid torn reads during concurrent fence validate
-  const files = computeAttestation(projectRoot);
+  const files = computeAttestation(projectRoot, selectedHosts);
   const record: IntegrityRecord = {
     version: 1,
     generatedAt: new Date().toISOString(),
@@ -132,6 +144,7 @@ export function persistAttestation(projectRoot: string): void {
       ? `fence-sync:${process.env[FENCE_SYNC_TOKEN_ENV]!.slice(0, 8)}`
       : "fence-init",
     files,
+    ...(selectedHosts === undefined ? {} : { selectedHosts: [...selectedHosts] }),
   };
   const fencePath = join(projectRoot, ".fence");
   if (lstatSync(fencePath).isSymbolicLink()) throw new Error("refusing symlinked integrity directory");
@@ -167,7 +180,8 @@ export function verifyAttestation(projectRoot: string): IntegrityVerdict {
       Object.entries(record.files).some(([path, hash]) => !isAttestedPath(path) || typeof hash !== "string" || !/^[a-f0-9]{64}$/.test(hash))) {
       return { status: "unknown", reason: "invalid attestation record" };
     }
-    current = computeAttestation(projectRoot);
+    if (record.selectedHosts !== undefined && !validSelectedHosts(record.selectedHosts)) return { status: "unknown", reason: "invalid attestation host selection" };
+    current = computeAttestation(projectRoot, record.selectedHosts);
   } catch { return { status: "unknown", reason: "cannot read attestation record or files" }; }
   const mismatched: string[] = [];
 

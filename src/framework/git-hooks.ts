@@ -1,7 +1,8 @@
 /**
  * src/framework/git-hooks.ts — Guarded tier git hooks (Oct 29).
- * init installs managed pre-commit/pre-push hooks that run the index-aware
- * check (`check --staged` / `check --push`) plus the worktree `check`.
+ * init installs managed pre-commit/pre-push hooks that inspect staged blobs
+ * (`check --staged`) or outgoing history (`check --push`), respectively.
+ * Unstaged and untracked drafts are checked only by an explicit worktree scan.
  * Binary resolution: $FENCE_BIN wins, else `vibe-fence` on PATH, else loud
  * skip (never block when the tool itself is missing). A failing check blocks
  * before any chained user hook runs. Existing user hooks are moved aside to
@@ -21,8 +22,8 @@ const BACKUP_SUFFIX = ".pre-fence";
 
 export function buildHookScript(hookName: HookName): string {
   // Index-aware: pre-commit gates staged blobs (closes the L1 smuggle), pre-push
-  // gates outgoing commits (stdin ranges parsed CLI-side); the worktree scan
-  // runs after as defense in depth. Fail fast on the first failing scan.
+  // gates outgoing commits (stdin ranges parsed CLI-side). Each hook checks
+  // only the content that its Git operation is about to record or share.
   // Pre-push: Git sends ref updates on stdin. Buffer them once so both the
   // fence check and any chained pre-existing hook receive the same input —
   // consuming stdin in the fence check must not starve the chained hook.
@@ -31,7 +32,7 @@ export function buildHookScript(hookName: HookName): string {
   return [
     "#!/bin/sh",
     `${HOOK_MARKER} (${hookName}) — safe to delete; reinstall via \`vibe-fence init\`.`,
-    `# Runs the fence check (staged/outgoing + worktree), then chains the pre-existing user hook if one was present.`,
+    `# Checks only staged blobs or outgoing history, then chains any pre-existing user hook.`,
     `HOOK_NAME="${hookName}"`,
     `HOOKS_DIR="$(git rev-parse --git-path hooks 2>/dev/null || echo .git/hooks)"`,
     ...(isPush
@@ -48,7 +49,7 @@ export function buildHookScript(hookName: HookName): string {
     '  fi',
     '  if [ -z "$BIN" ] && command -v vibe-fence >/dev/null 2>&1; then BIN="vibe-fence"; fi',
     '  if [ -z "$BIN" ]; then echo "vibe-fence: binary not found — check skipped; rerun init." >&2; return 0; fi',
-    `  "$BIN" ${indexScan} && "$BIN" check`,
+    `  "$BIN" ${indexScan}`,
     "}",
     isPush
       ? `run_check < "$TMP_STDIN" || { echo "vibe-fence: $HOOK_NAME blocked — fix findings or run 'vibe-fence check'." >&2; rm -f "$TMP_STDIN"; exit 1; }`

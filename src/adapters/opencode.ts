@@ -1,7 +1,5 @@
 /**
  * src/adapters/opencode.ts — OpenCode adapter
- * S-13 Muse routing via AGENTS.md; S-14 eval harness; S-15 privacy default.
- * GEM-08 dual-tier routing; GEM-09 Standard-mode literal.
  *
  * Runtime contract (OpenCode-specific):
  * - Canonical policy: AGENTS.md (repo root) — OpenCode reads natively.
@@ -100,10 +98,9 @@ export function buildFenceGuardPlugin(): string {
   ].join("\n");
 }
 
-export function installOpenCodeAdapter(projectRoot: string, opts: { modelMode?: string } = {}): string[] {
+export function installOpenCodeAdapter(projectRoot: string): string[] {
   if (!adapterPathsSafe(projectRoot, ["AGENTS.md", ".fence/adapters/opencode.json", ".agents/skills", "opencode.json", ".opencode/plugins/fence-guard.js"])) { console.warn("[vibe-fence] Adapter contains a managed symlink; leaving it unchanged."); return []; }
   const written: string[] = [];
-  const modelMode = opts.modelMode ?? "standard";
 
   // 1. AGENTS.md — canonical router
   {
@@ -131,9 +128,6 @@ export function installOpenCodeAdapter(projectRoot: string, opts: { modelMode?: 
       }
     }
     const receipt = writeAdapterReceipt(projectRoot, "opencode", {
-      model_mode: modelMode,
-      companion_model: process.env["MUSE_MODEL_COMPANION"] ?? "muse-spark-1.3",
-      architect_model: process.env["MUSE_MODEL_ARCHITECT"] ?? "muse-wonder-1.0",
       receipt: "vibe-fence OpenCode adapter installed — host execution not verified",
     });
     if (receipt.changed) written.push(receipt.path.replace(projectRoot + "/", ""));

@@ -6,13 +6,12 @@
  */
 import { describe, it, expect, afterEach } from "bun:test";
 import { execFileSync, execSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { installCodexAdapter } from "./adapters/codex";
 import { installClaudeAdapter } from "./adapters/claude";
 import { runPushCheck } from "./check";
-import { buildExplainPrompt } from "./framework/explain";
 
 const CLI_PATH = join(import.meta.dir, "cli.ts");
 
@@ -77,103 +76,66 @@ function leakLine(marker: string): string {
   return `const NEXT_PUBLIC_${"SECRET"} = "${marker}";\n`;
 }
 
-describe("cli --profile", () => {
-  it("accepts --host as an alias for --adapters on init", () => {
-    const r = runCli(["init", "--host=cursor", "--dry-run"]);
+describe("one-step local setup", () => {
+  it("accepts one explicit host", () => {
+    const r = runCli(["init", "--host", "cursor", "--dry-run"]);
     expect(r.exit).toBe(0);
-    expect(r.stdout).toContain("would install adapters: cursor");
+    expect(r.stdout).toContain("cursor");
+    expect(r.stdout).not.toContain("would install adapters: codex, claude");
   });
 
-  it("defaults to the four common hosts when no environment is detected", () => {
+  it("asks for the tool before writing when none is known", () => {
     const root = mkdtempSync(join(tmpdir(), "vf-init-default-"));
     created.push(root);
-    const r = runCli(["init", "--dry-run"], { cwd: root, env: { ...gitEnv(), HOME: root, USERPROFILE: root } });
-    expect(r.exit).toBe(0);
-    expect(r.stdout).toContain("would install adapters: codex, claude, cursor, opencode");
+    const r = runCli(["init"], { cwd: root });
+    expect(r.exit).toBe(2);
+    expect(r.stderr).toContain("--host");
+    expect(() => readFileSync(join(root, ".fence/config.json"))).toThrow();
   });
 
-  it("records an empty adapter selection for --adapters=none", () => {
+  it("does not guess between multiple project tools", () => {
+    const root = mkdtempSync(join(tmpdir(), "vf-init-ambiguous-"));
+    created.push(root);
+    mkdirSync(join(root, ".codex"));
+    mkdirSync(join(root, ".cursor"));
+    const r = runCli(["init"], { cwd: root });
+    expect(r.exit).toBe(2);
+    expect(r.stderr).toContain("--host");
+    expect(() => readFileSync(join(root, ".fence/config.json"))).toThrow();
+  });
+
+  it("supports Git-only setup explicitly", () => {
     const root = mkdtempSync(join(tmpdir(), "vf-no-adapters-"));
     created.push(root);
-    expect(runCli(["init", "--adapters=none"], { cwd: root, env: gitEnv() }).exit).toBe(0);
+    expect(runCli(["init", "--host=none"], { cwd: root, env: gitEnv() }).exit).toBe(0);
     expect(JSON.parse(readFileSync(join(root, ".fence/config.json"), "utf8")).adapters).toEqual([]);
   });
 
-  it("--profile muse selects the Muse Code adapter preset", () => {
-    const r = runCli(["init", "--profile", "muse", "--dry-run"]);
-    expect(r.exit).toBe(0);
-    expect(r.stdout).toContain("would install adapters: muse");
+  it("rejects missing, repeated and unknown host selections before writing", () => {
+    for (const args of [["--host"], ["--host="], ["--host=,"], ["--host= "], ["--host=claude", "--adapters=cursor"], ["--host=invalid"], ["--host=claude,cursor"]]) {
+      const root = mkdtempSync(join(tmpdir(), "vf-invalid-host-"));
+      created.push(root);
+      const r = runCli(["init", ...args], { cwd: root });
+      expect(r.exit).toBe(2);
+      expect(() => readFileSync(join(root, ".fence/config.json"))).toThrow();
+    }
   });
 
-  it("--profile=muse equals form works", () => {
-    const r = runCli(["init", "--profile=muse", "--dry-run"]);
-    expect(r.exit).toBe(0);
-    expect(r.stdout).toContain("would install adapters: muse");
-  });
-
-  it("installs and removes Muse Code hooks without discarding other user hooks", () => {
-    const root = mkdtempSync(join(tmpdir(), "vf-muse-cli-"));
-    created.push(root);
-    execFileSync("git", ["init", "-q"], { cwd: root, env: gitEnv() });
-    mkdirSync(join(root, ".muse"));
-    const configPath = join(root, ".muse/hooks.json");
-    writeFileSync(configPath, JSON.stringify({ hooks: { PreToolUse: [{ matcher: "Read", hooks: [{ type: "command", command: "node .custom/fence-gate.cjs" }] }, { matcher: "Write", hooks: [] }] } }));
-    expect(runCli(["init", "--profile=muse"], { cwd: root, env: gitEnv() }).exit).toBe(0);
-    const status = runCli(["status", "--host=muse", "--json"], { cwd: root, env: gitEnv() });
-    expect(status.exit).toBe(0);
-    expect(JSON.parse(status.stdout).toolGate.state).toBe("configured-unverified");
-    const config = JSON.parse(readFileSync(configPath, "utf8"));
-    config.hooks.Stop = [{ hooks: [{ type: "command", command: "my-stop" }] }];
-    writeFileSync(configPath, JSON.stringify(config));
-    expect(runCli(["uninstall"], { cwd: root, env: gitEnv() }).exit).toBe(0);
-    const remaining = JSON.parse(readFileSync(configPath, "utf8"));
-    expect(remaining.hooks.PreToolUse).toHaveLength(2);
-    expect(remaining.hooks.PreToolUse[0].hooks[0].command).toBe("node .custom/fence-gate.cjs");
-    expect(remaining.hooks.PreToolUse[1]).toEqual({ matcher: "Write", hooks: [] });
-    expect(remaining.hooks.Stop[0].hooks[0].command).toBe("my-stop");
-    expect(existsSync(join(root, ".muse/hooks/fence-gate.cjs"))).toBe(false);
-  });
-
-  it("blocks a staged public secret reference even with an unrelated example comment", () => {
-    const root = mkdtempSync(join(tmpdir(), "vf-sec01-comment-"));
-    created.push(root);
-    execFileSync("git", ["init", "-q"], { cwd: root, env: gitEnv() });
-    expect(runCli(["init", "--adapters=none"], { cwd: root, env: gitEnv() }).exit).toBe(0);
-    const file = join(root, "billing.ts");
-    writeFileSync(file, "const key = process.env.NEXT_PUBLIC_STRIPE_SECRET_KEY; // example payment route\n");
-    execFileSync("git", ["add", "billing.ts"], { cwd: root, env: gitEnv() });
-    const scan = runCli(["check", "--staged"], { cwd: root, env: gitEnv() });
-    expect(scan.exit).toBe(1);
-    expect(scan.stdout).toContain("SEC-01");
-    const commitArgs = ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qm", "fixture"];
-    expect(spawnSync("git", commitArgs, { cwd: root, env: gitEnv() }).status).toBe(1);
-    writeFileSync(file, "export const message = 'ready';\n");
-    execFileSync("git", ["add", "billing.ts"], { cwd: root, env: gitEnv() });
-    expect(spawnSync("git", commitArgs, { cwd: root, env: gitEnv() }).status).toBe(0);
-  });
-
-  it("explicit --adapters overrides --profile", () => {
-    const r = runCli(["init", "--adapters=cursor", "--profile", "muse", "--dry-run"]);
-    expect(r.exit).toBe(0);
-    expect(r.stdout).toContain("would install adapters: cursor");
-  });
-
-  it("unknown --profile fails closed", () => {
-    const r = runCli(["init", "--profile", "nope", "--dry-run"]);
-    expect(r.exit).toBe(2);
-    expect(r.stderr).toContain("unknown --profile");
-  });
-
-  it("tour stays an unadvertised stub (exit 2)", () => {
-    const r = runCli(["tour"]);
-    expect(r.exit).toBe(2);
-    expect(r.stderr).toContain("not implemented");
-  });
-
-  it("--help documents --profile", () => {
+  it("does not advertise removed provider features", () => {
     const r = runCli(["--help"]);
     expect(r.exit).toBe(0);
-    expect(r.stdout).toContain("--profile=muse");
+    for (const word of ["--profile", "--contributor-mode", "--explain", "--remote", "Meta", "Muse", "API_KEY"]) {
+      expect(r.stdout).not.toContain(word);
+    }
+    expect(r.stdout).toContain("--host");
+  });
+
+  it("rejects removed connection options without initializing", () => {
+    for (const args of [["init", "--profile=muse"], ["init", "--contributor-mode"], ["verify", "--remote"]]) {
+      const r = runCli(args);
+      expect(r.exit).toBe(2);
+      expect(r.stderr).toContain("removed");
+    }
   });
 });
 
@@ -283,7 +245,9 @@ describe("cli status", () => {
   it("lists installed adapters when several hosts are possible and reports advisory hosts honestly", () => {
     const root = mkdtempSync(join(tmpdir(), "vf-status-multiple-"));
     created.push(root);
-    expect(runCli(["init", "--adapters=codex,antigravity,hermes"], { cwd: root, env: gitEnv() }).exit).toBe(0);
+    for (const host of ["codex", "antigravity", "hermes"]) {
+      expect(runCli(["init", `--host=${host}`], { cwd: root, env: gitEnv() }).exit).toBe(0);
+    }
     const summary = runCli(["status"], { cwd: root, env: gitEnv() });
     expect(summary.stdout).toContain("codex");
     expect(summary.stdout).toContain("antigravity");
@@ -317,7 +281,7 @@ describe("cli status", () => {
     const result = runCli(["init", "--adapters=codex"], { cwd: root, env: gitEnv() });
     expect(result.exit).toBe(0);
     expect(result.stdout).not.toContain("watches your next write");
-    expect(result.stdout).toContain("status");
+    expect(result.stdout).toContain("Execution in the coding tool is not yet verified");
     expect(result.stdout).toContain("trust");
   });
 
@@ -425,11 +389,11 @@ describe("cli gate stdin", () => {
     const root = mkdtempSync(join(tmpdir(), "vf-verify-"));
     created.push(root);
     expect(runCli(["init", "--adapters=none"], { cwd: root, env: gitEnv() }).exit).toBe(0);
-    const result = runCli(["verify", "--remote", "--json"], { cwd: root, env: { ...gitEnv(), DATABASE_URL: "", SUPABASE_DB_URL: "", POSTGRES_URL: "" } });
+    const result = runCli(["verify", "--json"], { cwd: root, env: gitEnv() });
     expect(result.exit).toBe(2);
     const report = JSON.parse(result.stdout);
     expect(report.local.overall).toBe("unknown");
-    expect(report.remote.verdict).toBe("unknown");
+    expect(report.remote).toBeUndefined();
     expect(() => readFileSync(join(root, "tests/.fence-smoke.test.ts"), "utf8")).toThrow();
   });
 
@@ -609,11 +573,6 @@ describe("cli check --push/--staged", () => {
       expect(r.stdout).toContain("leak.tsx");
       expect(r.stdout + r.stderr).not.toContain(marker);
     }
-    const report = runPushCheck(root, [`${base}..HEAD`]);
-    const prompt = buildExplainPrompt(report.findings, { kind: "check", target: root });
-    expect(prompt).toContain("SEC-01");
-    expect(prompt).not.toContain("leak.tsx");
-    expect(prompt).not.toContain(marker);
   });
 
   it("does not reveal historical package script names in push reasons", () => {
@@ -693,67 +652,31 @@ describe("cli check --push/--staged", () => {
   });
 });
 
-describe("cli --explain (no live calls — keys scrubbed)", () => {
-  it("keeps JSON output valid and discloses possible charges before a mocked request", () => {
-    const root = mkdtempSync(join(tmpdir(), "vf-explain-json-"));
-    const mockDir = mkdtempSync(join(tmpdir(), "vf-explain-mock-"));
+describe("local explanations", () => {
+  it("explains a block without any network request, even with an old key present", () => {
+    const root = mkdtempSync(join(tmpdir(), "vf-offline-"));
+    const mockDir = mkdtempSync(join(tmpdir(), "vf-offline-preload-"));
     created.push(root, mockDir);
     writeFileSync(join(root, "app.ts"), leakLine("synthetic"));
     const preload = join(mockDir, "fetch.ts");
-    writeFileSync(preload, 'globalThis.fetch = async () => { console.error("MOCK_REQUEST_STARTED"); return new Response(JSON.stringify({id:"req_safe",output_text:"Move it server-side."}), {status:200}); };');
-    const result = spawnSync(process.execPath, ["--preload", preload, CLI_PATH, "check", "--json", "--explain"], {
-      cwd: root, env: { ...gitEnv(), MUSE_API_KEY: "synthetic-key", META_API_KEY: "" }, encoding: "utf8",
+    writeFileSync(preload, 'globalThis.fetch = async () => { console.error("NETWORK_WAS_CALLED"); throw new Error("Network is disabled"); };');
+    const r = spawnSync(process.execPath, ["--preload", preload, CLI_PATH, "check"], {
+      cwd: root, env: { ...gitEnv(), MUSE_API_KEY: "synthetic-retired-key" }, encoding: "utf8",
     });
-    expect(result.status).toBe(1);
-    expect(JSON.parse(result.stdout).blocks).toBeGreaterThan(0);
-    expect(result.stderr).toContain("charges");
-    expect(result.stderr.indexOf("charges")).toBeLessThan(result.stderr.indexOf("MOCK_REQUEST_STARTED"));
-  });
-
-  function makeProject(files: Record<string, string>): string {
-    const root = mkdtempSync(join(tmpdir(), "vf-exp-"));
-    created.push(root);
-    for (const [rel, content] of Object.entries(files)) writeFileSync(join(root, rel), content, "utf-8");
-    return root;
-  }
-
-  it("check --explain without a key notes and keeps the block exit", () => {
-    const root = makeProject({ "a.ts": "const k = process.env.NEXT_PUBLIC_X_SECRET;\n" });
-    const r = runCli(["check", "--explain"], { cwd: root, env: NO_KEYS });
-    expect(r.exit).toBe(1);
-    expect(r.stderr).toContain("--explain needs MUSE_API_KEY");
-  });
-
-  it("check --explain on a clean tree is a silent no-op", () => {
-    const root = makeProject({ "a.ts": "export const x = 1;\n" });
-    const r = runCli(["check", "--explain"], { cwd: root, env: NO_KEYS });
-    expect(r.exit).toBe(0);
-    expect(r.stderr).toBe("");
-  });
-
-  it("gate --explain without a key notes and keeps the block exit", () => {
-    const root = makeProject({ "a.ts": "export const x = 1;\n" });
-    const r = runCli(
-      ["gate", "--tool", "write", "--args", JSON.stringify({ filePath: "a.ts", content: "const k = process.env.NEXT_PUBLIC_X_SECRET;" }), "--explain"],
-      { cwd: root, env: NO_KEYS },
-    );
-    expect(r.exit).toBe(1);
+    expect(r.status).toBe(1);
     expect(r.stdout).toContain("SEC-01");
-    expect(r.stderr).toContain("--explain needs MUSE_API_KEY");
+    expect(r.stdout).toContain("server");
+    expect(r.stdout + r.stderr).not.toContain("NETWORK_WAS_CALLED");
+    expect(r.stdout + r.stderr).not.toContain("API_KEY");
   });
 
-  it("gate --explain on an allowed call is a silent no-op", () => {
-    const root = makeProject({ "a.ts": "export const x = 1;\n" });
-    const r = runCli(["gate", "--tool", "write", "--args", JSON.stringify({ filePath: "a.ts", content: "export const x = 1;" }), "--explain"], {
-      cwd: root,
-      env: NO_KEYS,
-    });
-    expect(r.exit).toBe(0);
+  it("keeps --explain as a local-only compatibility flag", () => {
+    const root = mkdtempSync(join(tmpdir(), "vf-local-explain-"));
+    created.push(root);
+    writeFileSync(join(root, "a.ts"), leakLine("synthetic"));
+    const r = runCli(["check", "--json", "--explain"], { cwd: root });
+    expect(r.exit).toBe(1);
+    expect(JSON.parse(r.stdout).blocks).toBeGreaterThan(0);
     expect(r.stderr).toBe("");
-  });
-
-  it("--help documents --explain", () => {
-    const r = runCli(["--help"]);
-    expect(r.stdout).toContain("--explain");
   });
 });

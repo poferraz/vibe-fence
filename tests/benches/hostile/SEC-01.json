@@ -7,6 +7,8 @@
     {"id": "h-sec01-3", "payload": "export const t = process.env.EXPO_PUBLIC_SESSION_TOKEN;"},
     {"id": "h-sec01-4", "payload": "PUBLIC_DB_SERVICE_ROLE_KEY=server-only-value"},
     {"id": "h-sec01-5", "payload": "const k = process.env.NEXT_PUBLIC_ENCRYPTION_PRIVATE;"},
-    {"id": "h-sec01-6", "payloadParts": ["NEXT_PUBLIC_API_SECRET=\"sk_live_9f2Kd8", "mQ4xT7vN1pR6sW3z\""]}
+    {"id": "h-sec01-6", "payloadParts": ["NEXT_PUBLIC_API_SECRET=\"sk_live_9f2Kd8", "mQ4xT7vN1pR6sW3z\""]},
+    {"id": "h-sec01-7", "payload": "const key = process.env.NEXT_PUBLIC_SIGNING_SECRET; // sample billing integration"},
+    {"id": "h-sec01-8", "payload": "const label = `customer's account`; const key = process.env.VITE_SESSION_TOKEN;"}
   ]
 }

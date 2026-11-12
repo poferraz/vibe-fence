@@ -15,6 +15,14 @@ describe("SEC-02 gate mode", () => {
     expect(check({ content: ".fence/uninstall.json", toolName: "read" }).verdict).toBe("fail");
   });
 
+  it("blocks reads of nested and absolute environment files", () => {
+    for (const filePath of ["src/.env.local", "/tmp/project/.env", "src\\.env.production"]) {
+      expect(check({ content: filePath, toolName: "read" }).verdict, filePath).toBe("fail");
+      expect(evaluateToolCall({ tool: "read", args: { filePath } }).some(f => f.ruleId === "SEC-02"), filePath).toBe(true);
+    }
+    expect(check({ content: "src/.env.example", toolName: "read" }).verdict).toBe("pass");
+  });
+
   it("passes on non-read tools (mention ≠ exfiltration)", () => {
     expect(check({ content: "~/.ssh/id_rsa", toolName: "write" }).verdict).toBe("pass");
   });

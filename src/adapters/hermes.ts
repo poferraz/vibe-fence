@@ -1,7 +1,5 @@
 /**
  * src/adapters/hermes.ts — Hermes Agent adapter
- * S-13 Muse routing: AGENTS.md canonical + Hermes skill system.
- * GEM-08 dual-tier routing; GEM-09 Standard-mode default.
  *
  * Runtime contract (Hermes-specific):
  * - Canonical policy: AGENTS.md — Hermes reads natively.
@@ -37,10 +35,9 @@ export const hermesAdapter: Adapter = {
 // NOTE: no merge function — .hermes/config.json is never written. Legacy
 // fence-managed keys are scrubbed by the installer (see below).
 
-export function installHermesAdapter(projectRoot: string, opts: { modelMode?: string } = {}): string[] {
+export function installHermesAdapter(projectRoot: string): string[] {
   if (!adapterPathsSafe(projectRoot, ["AGENTS.md", ".fence/adapters/hermes.json", ".agents/skills", ".hermes/config.json"])) { console.warn("[vibe-fence] Adapter contains a managed symlink; leaving it unchanged."); return []; }
   const written: string[] = [];
-  const modelMode = opts.modelMode ?? "standard";
 
   // 1. AGENTS.md — canonical router
   {
@@ -72,9 +69,6 @@ export function installHermesAdapter(projectRoot: string, opts: { modelMode?: st
       }
     }
     const receipt = writeAdapterReceipt(projectRoot, "hermes", {
-      model_mode: modelMode,
-      companion_model: process.env["MUSE_MODEL_COMPANION"] ?? "muse-spark-1.3",
-      architect_model: process.env["MUSE_MODEL_ARCHITECT"] ?? "muse-wonder-1.0",
       receipt: "vibe-fence Hermes adapter installed — host execution not verified",
     });
     if (receipt.changed) written.push(receipt.path.replace(projectRoot + "/", ""));

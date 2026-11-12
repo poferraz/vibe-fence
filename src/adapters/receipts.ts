@@ -1,7 +1,7 @@
 /**
  * src/adapters/receipts.ts — fence-owned install receipts (decision 5).
- * Host config files keep only vendor-supported keys; fence metadata (model
- * routing, install time) lives in `.fence/adapters/<id>.json`. This module
+ * Host config files keep only vendor-supported keys. Installation metadata
+ * lives in `.fence/adapters/<id>.json`. This module
  * writes receipts and scrubs legacy fence-managed `fence` keys out of host
  * files (recognized by the receipt marker — never touches user keys).
  */
@@ -11,9 +11,6 @@ import { join } from "node:path";
 export interface AdapterReceipt {
   version: 1;
   adapter: string;
-  model_mode: string;
-  companion_model: string;
-  architect_model: string;
   installedAt: string;
   receipt: string;
 }
@@ -41,7 +38,7 @@ export function scrubFenceKey(obj: Record<string, unknown>): boolean {
 export function writeAdapterReceipt(
   projectRoot: string,
   adapter: string,
-  fields: { model_mode: string; companion_model: string; architect_model: string; receipt: string },
+  fields: { receipt: string },
 ): { path: string; changed: boolean } {
   const dir = join(projectRoot, ".fence", "adapters");
   mkdirSync(dir, { recursive: true });
@@ -57,7 +54,7 @@ export function writeAdapterReceipt(
   } catch {
     // Corrupt receipt — fall through with a fresh timestamp.
   }
-  const receipt: AdapterReceipt = { version: 1, adapter, ...fields, installedAt };
+  const receipt: AdapterReceipt = { version: 1, adapter, receipt: fields.receipt, installedAt };
   const nextStr = JSON.stringify(receipt, null, 2);
   if (nextStr === prevStr) return { path: p, changed: false };
   writeFileSync(p, nextStr, "utf-8");

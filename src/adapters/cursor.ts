@@ -1,7 +1,5 @@
 /**
  * src/adapters/cursor.ts — Cursor adapter
- * S-13 Muse routing (Cursor consumes AGENTS.md); S-15 privacy default.
- * GEM-08 dual-tier routing via .cursor env; GEM-09 Standard-mode default.
  *
  * Runtime contract (Cursor-specific):
  * - Rules: .cursor/rules/<rule>.mdc  (Cursor Rules, MDC frontmatter)
@@ -72,14 +70,15 @@ export function serializeMdc(mdc: CursorRuleMdc): string {
 export function buildFenceRouterMdc(): CursorRuleMdc {
   return buildCursorRuleMdc({
     id: "vibe-fence-router",
-    description: "vibe-fence router — deterministic fence decides; model explains (S-05).",
+    description: "vibe-fence router — local checks and plain-language fixes.",
     body: [
       "# vibe-fence Router (Cursor)",
       "",
       "> Canonical: AGENTS.md (≤400 tokens). This file is a Cursor-native mirror.",
       "> Skills: .agents/skills/<skill>/SKILL.md — L1/L2/L3 progressive disclosure (S-02).",
-      "> Verification: Read→Think→Write→Check; trust ladder compile→lint→tests×2.",
-      "> Privacy: Review the local mode in .fence/config.json and provider terms before sending data.",
+      "> Verify the requested behavior; report which checks ran and what remains untested.",
+      "> Git hooks inspect staged content or outgoing history. Guidance alone does not prevent actions.",
+      "> Privacy: Fence checks stay local; the coding tool retains its own privacy settings.",
       "",
     ].join("\n"),
   });
@@ -135,12 +134,11 @@ export function mergeCursorHooks(existing: Record<string, unknown> | null): Reco
 // Filesystem install
 // ---------------------------------------------------------------------------
 
-export function installCursorAdapter(projectRoot: string, opts: { modelMode?: string } = {}): string[] {
+export function installCursorAdapter(projectRoot: string): string[] {
   if (!adapterPathsSafe(projectRoot, ["AGENTS.md", ".fence/adapters/cursor.json", ".cursor/rules/vibe-fence-router.mdc", ".cursor/hooks.json", ".cursor/hooks/fence-gate.sh", ".cursor/hooks/fence-gate.cjs", ".cursor/skills"])) { console.warn("[vibe-fence] Adapter contains a managed symlink; leaving it unchanged."); return []; }
   const nodeHook = join(projectRoot, ".cursor", "hooks", GATE_HOOK_SCRIPT_NAME);
   if (existsSync(nodeHook) && !readFileSync(nodeHook, "utf8").includes(GATE_HOOK_CONTENT_MARKER)) { console.warn("[vibe-fence] Cursor gate hook is user-managed; leaving the adapter unchanged."); return []; }
   const written: string[] = [];
-  const modelMode = opts.modelMode ?? "standard";
 
   // 1. AGENTS.md — canonical router (shared with Claude adapter)
   {
@@ -218,9 +216,6 @@ export function installCursorAdapter(projectRoot: string, opts: { modelMode?: st
   // 6. .fence/adapters/cursor.json — install receipt (host file keeps vendor keys only)
   {
     const receipt = writeAdapterReceipt(projectRoot, "cursor", {
-      model_mode: modelMode,
-      companion_model: process.env["MUSE_MODEL_COMPANION"] ?? "muse-spark-1.3",
-      architect_model: process.env["MUSE_MODEL_ARCHITECT"] ?? "muse-wonder-1.0",
       receipt: "vibe-fence Cursor adapter installed — host execution not verified",
     });
     if (receipt.changed) written.push(receipt.path.replace(projectRoot + "/", ""));

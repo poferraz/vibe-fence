@@ -1,7 +1,5 @@
 /**
  * src/adapters/claude.ts — Claude Code adapter (Anthropic)
- * S-13 Muse routing: canonical AGENTS.md + precedence; S-15 privacy default (standard).
- * GEM-08 dual-tier companion/architect; GEM-09 Standard-mode literal; GEM-07 SAM out-of-critical-path.
  *
  * Runtime contract:
  * - Canonical policy file: AGENTS.md (repo root, ≤400 tokens router)
@@ -10,9 +8,8 @@
  *   keys only; fence metadata lives in `.fence/adapters/claude.json`).
  * - Memory: .agents/memory/MEMORY.md  (untrusted — never secrets, S-06/GEM-01 trust gate)
  *
- * Install is file-writing only — Muse native trust chain (project-over-user,
+ * Install is file-writing only — host instruction precedence (project-over-user,
  * deeper-over-shallower) does the rest. No plugin install required.
- * S-14 eval: structure/secrets/git/deploy rows gated by deterministic checks; model only explains.
  */
 
 import { adapterPathsSafe } from "./safe-paths.js";
@@ -33,7 +30,7 @@ export const claudeAdapter: Adapter = {
   agentsMapping: {
     canonical: "AGENTS.md",
     runtimePaths: ["AGENTS.md", ".agents/AGENTS.md", "CLAUDE.md", ".agents/memory/MEMORY.md"],
-    precedence: "project-over-user, deeper-over-shallower (Muse native trust chain)",
+    precedence: "project-over-user, deeper-over-shallower (host instruction precedence)",
   },
   hookSurface: {
     hooks: ["PreToolUse"],
@@ -108,11 +105,12 @@ export const AGENTS_FENCE_BLOCK_END = "<!-- vibe-fence:end -->";
 export function buildAgentsFenceBlock(): string {
   return [
     AGENTS_FENCE_BLOCK_START,
-    "> 🛡️ vibe-fence guidance — checks depend on working hooks; model explanations are optional.",
-    "> Skills: .agents/skills/<skill>/SKILL.md — L1 name+description at startup, L2/L3 on match.",
-    "> Verification: Read→Think→Write→Check + trust ladder compile→lint→tests×2→generated.",
-    "> Containment: project-root realpath + git checkpoint + fence undo (≤3 gates/session).",
-    "> Privacy: Review the local mode in .fence/config.json and provider terms before sending data.",
+    "> 🛡️ vibe-fence guidance — checks depend on working hooks; findings and fixes stay local.",
+    "> Check the behavior requested before calling a change done; report what ran and what could not be checked.",
+    "> Git hooks check staged content before a commit and outgoing history before a push. Other files need a separate check.",
+    "> Follow the installed host hook's result for supported actions. Guidance alone does not prevent actions.",
+    "> Skills: .agents/skills/<skill>/SKILL.md — read the relevant skill when needed.",
+    "> Privacy: Fence checks stay local; the coding tool retains its own privacy settings.",
     AGENTS_FENCE_BLOCK_END,
   ].join("\n");
 }
@@ -142,14 +140,21 @@ function escapeRegExp(s: string): string {
 // CLAUDE.md — legacy compat pointer (Anthropic)
 // ---------------------------------------------------------------------------
 
-export function buildClaudeMd(): string {
-  return [
+const LEGACY_CLAUDE_POINTER = [
     "<!-- vibe-fence: CLAUDE.md compat — points to AGENTS.md canonical policy -->",
     "# CLAUDE.md — Fence Pointer",
     "",
     "Canonical policy: `AGENTS.md` (vibe-fence router, ≤400 tokens).",
     "Skills: `.agents/skills/<skill>/SKILL.md` (L1/L2/L3 progressive disclosure, S-02).",
     "Memory: `.agents/memory/MEMORY.md` — untrusted; never store secrets (S-06/GEM-01).",
+    "",
+].join("\n");
+
+export function buildClaudeMd(): string {
+  return [
+    "<!-- vibe-fence:claude-import:start -->",
+    "@AGENTS.md",
+    "<!-- vibe-fence:claude-import:end -->",
     "",
   ].join("\n");
 }
@@ -166,12 +171,11 @@ export function buildSkillsManifest(skillNames: string[]): string {
 // Filesystem install (called by tools/install.ts)
 // ---------------------------------------------------------------------------
 
-export function installClaudeAdapter(projectRoot: string, opts: { modelMode?: string } = {}): string[] {
+export function installClaudeAdapter(projectRoot: string): string[] {
   if (!adapterPathsSafe(projectRoot, ["AGENTS.md", ".fence/adapters/claude.json", "CLAUDE.md", ".agents/skills", ".claude/settings.json", ".claude/hooks/fence-gate.sh", ".claude/hooks/fence-gate.cjs"])) { console.warn("[vibe-fence] Adapter contains a managed symlink; leaving it unchanged."); return []; }
   const nodeHook = join(projectRoot, ".claude", "hooks", GATE_HOOK_SCRIPT_NAME);
   if (existsSync(nodeHook) && !readFileSync(nodeHook, "utf8").includes(GATE_HOOK_CONTENT_MARKER)) { console.warn("[vibe-fence] Claude gate hook is user-managed; leaving the adapter unchanged."); return []; }
   const written: string[] = [];
-  const modelMode = opts.modelMode ?? "standard";
 
   // 1. AGENTS.md — merge fence block
   {
@@ -181,10 +185,16 @@ export function installClaudeAdapter(projectRoot: string, opts: { modelMode?: st
     if (next !== existing) { writeFileSync(p, next, "utf-8"); written.push("AGENTS.md"); }
   }
 
-  // 2. CLAUDE.md — compat pointer (only if not user-managed with real content)
+  // 2. CLAUDE.md takes precedence over AGENTS.md, so import the shared guidance.
+  // Replace only the exact former template; retain customized instructions.
   {
     const p = join(projectRoot, "CLAUDE.md");
-    if (!existsSync(p)) { writeFileSync(p, buildClaudeMd(), "utf-8"); written.push("CLAUDE.md"); }
+    const existing = existsSync(p) ? readFileSync(p, "utf8") : null;
+    let next = existing === null ? buildClaudeMd() : existing.replace(LEGACY_CLAUDE_POINTER, buildClaudeMd());
+    if (!/^@(?:\.\/)?AGENTS\.md\r?$/m.test(next)) {
+      next += `${next.endsWith("\n") ? "\n" : "\n\n"}${buildClaudeMd()}`;
+    }
+    if (next !== existing) { writeFileSync(p, next, "utf8"); written.push("CLAUDE.md"); }
   }
 
   // 3. .agents/skills/ — ensure dir exists (skills copied by installer)
@@ -244,9 +254,6 @@ export function installClaudeAdapter(projectRoot: string, opts: { modelMode?: st
   // 6. .fence/adapters/claude.json — install receipt (host file keeps vendor keys only)
   {
     const receipt = writeAdapterReceipt(projectRoot, "claude", {
-      model_mode: modelMode,
-      companion_model: process.env["MUSE_MODEL_COMPANION"] ?? "muse-spark-1.3",
-      architect_model: process.env["MUSE_MODEL_ARCHITECT"] ?? "muse-wonder-1.0",
       receipt: "vibe-fence Claude Code adapter installed — host execution not verified",
     });
     if (receipt.changed) written.push(receipt.path.replace(projectRoot + "/", ""));

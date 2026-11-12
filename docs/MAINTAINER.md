@@ -53,3 +53,10 @@ publish without explicit authorization.
   block). Findings show paths and commits, never historical file contents.
 
 Checkpoint events include `scanStatus` (`clear`, `blocked`, or `incomplete`) and `blockingFindings`, which is null when inspection is incomplete. A checkpoint remains an undo point, not a security approval.
+
+
+## Local-only product changes (November 11, 0.5.0)
+
+Setup now takes one `--host=<tool>` and performs local diagnostics; it never chooses several editors from the user's home directory. Automatic Git checks inspect only staged blobs or outgoing history. Re-run setup to update an existing project's runtime and hook scripts.
+
+The installed product has no model client, remote database probe, API-key configuration or paid evaluation commands. Historical research and evidence may describe removed features; they do not describe this build. Before publishing, run typecheck, build, validate, the full tests and offline evaluation, and rehearse the packed package in a disposable project. Confirm benign unrelated drafts do not block Git, staged and historical leaks still do, and no retired provider modules occur in the tarball.

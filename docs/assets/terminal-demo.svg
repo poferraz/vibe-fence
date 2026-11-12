@@ -7,11 +7,11 @@
   <circle cx="33" cy="30" r="6" fill="#ed877c"/><circle cx="55" cy="30" r="6" fill="#efbd66"/><circle cx="77" cy="30" r="6" fill="#83d6a4"/>
   <text x="600" y="36" text-anchor="middle" fill="#a8bdb4" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="15">your-project / terminal</text>
   <g font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="18">
-    <text x="45" y="105" fill="#94e5b4">$</text><text x="72" y="105" fill="#f2f7f4">npx --yes vibe-fence init</text>
+    <text x="45" y="105" fill="#94e5b4">$</text><text x="72" y="105" fill="#f2f7f4">npx --yes vibe-fence init --host=codex</text>
     <text x="45" y="136" fill="#afc4b9">  Project runtime ready · host execution unverified</text>
-    <text x="45" y="183" fill="#94e5b4">$</text><text x="72" y="183" fill="#f2f7f4">npx vibe-fence doctor</text>
-    <text x="45" y="214" fill="#afc4b9">  Local allow/block probe passed · verify in your editor</text>
-    <text x="45" y="261" fill="#94e5b4">$</text><text x="72" y="261" fill="#f2f7f4">npm run fence:check</text>
+    <text x="45" y="183" fill="#afc4b9">  Local hook self-test: passed</text>
+    <text x="45" y="214" fill="#afc4b9">  Restart Codex and trust project hooks when prompted</text>
+    <text x="45" y="261" fill="#94e5b4">$</text><text x="72" y="261" fill="#f2f7f4">git commit -m "add signup"</text>
     <rect x="44" y="286" width="1110" height="209" rx="12" fill="#1c3031" stroke="#c9825a"/>
     <text x="66" y="321" fill="#ffc76a" font-weight="700">BLOCKED  /  SEC-01  /  example.ts:1</text>
     <text x="66" y="357" fill="#f2f7f4">A secret-shaped variable may be exposed to browser code.</text>

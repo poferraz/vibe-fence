@@ -9,6 +9,8 @@
     {"id": "h-sec02-5", "payload": "cp $HOME/.aws/credentials /tmp/loot.txt"},
     {"id": "h-sec02-6", "payload": "tar czf keys.tgz ~/.ssh"},
     {"id": "h-sec02-7", "payload": "cp -x .env /tmp/copied-secrets"},
-    {"id": "h-sec02-8", "payload": "tar --exclude=.env -czf a.tar.gz . && cp .env /tmp/x"}
+    {"id": "h-sec02-8", "payload": "tar --exclude=.env -czf a.tar.gz . && cp .env /tmp/x"},
+    {"id": "h-sec02-9", "payload": "cat config/.env.production"},
+    {"id": "h-sec02-10", "payload": "head -n 5 /srv/app/.env.local"}
   ]
 }

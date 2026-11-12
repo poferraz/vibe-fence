@@ -14,60 +14,31 @@
 
 vibe-fence checks selected risky patterns in coding-agent actions and Git changes, then explains findings in plain language. It runs locally, and its deterministic checks don't require an AI model.
 
-**Hackathon scope.** I started with a personal scaffold containing research, adapter scaffolds, Git helpers and preliminary rules. After the reported kickoff I expanded the checks and Git scanning, added the opt-in Muse Spark explanation, and built later hardening, evaluation and the Muse Code integration. The [provenance matrix](docs/BUILD-PROVENANCE.md) separates the dates and their limits.
-
-**How Meta fits.** The local rules make the block decision; Muse Code can use its own Muse model to help the builder understand and repair a blocked action. Separately, opt-in `--explain` uses Muse Spark to explain fixed finding categories without sending source code, filenames or tool arguments. Your coding agent handles its own context separately. A failed explanation does not change the local decision.
-
 <img src="docs/assets/terminal-demo.svg" alt="Illustrative terminal showing initialization, a local diagnostic and an SEC-01 finding with a copyable fix prompt" width="1200">
 
 ## Get started
 
-The public default branch contains the current Muse Code candidate. To test it, install **Git**, **Bun 1.3.14**, and **Node.js 20 or newer**. This example creates separate temporary folders for the source and a synthetic test project; it contains no real credential:
+You need **Node.js 20 or newer** and Git. Choose the coding tool you use and run one command in your project:
 
 ```sh
-(
-  set -eu
-  VF_FENCE_SOURCE=$(mktemp -d "${TMPDIR:-/tmp}/vibe-fence-source.XXXXXX")
-  git clone https://github.com/poferraz/vibe-fence.git "$VF_FENCE_SOURCE"
-  (cd "$VF_FENCE_SOURCE" && bun install --frozen-lockfile && bun run build)
-  VF_REVIEW_DIR=$(mktemp -d "${TMPDIR:-/tmp}/vibe-fence-review.XXXXXX")
-  cd "$VF_REVIEW_DIR"
-  git init -q
-  git config --local core.hooksPath .git/hooks
-  node "$VF_FENCE_SOURCE/dist/cli.js" init --profile=muse
-  node ./.fence/bin/vibe-fence.cjs doctor --host=muse
-  printf '%s\n' 'const paymentKey = process.env.NEXT_PUBLIC_STRIPE_SECRET_KEY;' > example.tsx
-  git add example.tsx
-  if node ./.fence/bin/vibe-fence.cjs check --staged; then
-    printf '%s\n' 'Expected a synthetic SEC-01 block.' >&2
-    exit 1
-  else
-    VF_SCAN_EXIT=$?
-    [ "$VF_SCAN_EXIT" -eq 1 ] || exit "$VF_SCAN_EXIT"
-    printf 'Review the SEC-01 output above. Scratch project: %s\n' "$VF_REVIEW_DIR"
-  fi
-)
+npx --yes vibe-fence@latest init --host=codex
 ```
 
-The scan should identify **SEC-01** and return the expected block. The local `doctor` probe does not prove a host invoked the hook. To use the later command examples, first `cd` to the scratch project path printed above. For a real Muse Code session, requirements and steps are in the [reviewer guide](docs/REVIEW.md). The earlier [demo prerelease](https://github.com/poferraz/vibe-fence/releases/tag/muse-demo-2026-11-04) is a separate snapshot; use the source build above to test the default branch.
+Replace `codex` with `claude`, `cursor`, `opencode`, `antigravity`, or `hermes`. Use `none` for Git checks alone. If exactly one tool is already configured in the project, `init` can detect it; otherwise it asks you to name it before writing anything. Global editor installations do not select a project tool.
 
-The installer looks for coding tools in the project and then your home directory. When none are detected, it selects Codex, Claude Code, Cursor and OpenCode. Choose explicitly if you prefer:
+Setup installs the selected integration and project-local runtime, adds Git checks, and runs the available local hook self-test. Follow your tool's restart and project trust prompt. The self-test checks the installed script; actual editor execution remains unverified until observed. Antigravity and Hermes provide guidance only. No account, API key, model selection, service connection, or separate diagnostic command is required.
+
+For a reproducible install, use `npx --yes vibe-fence@0.5.0 init --host=codex`. See the source-build instructions below for development.
+
+Commits inspect **staged content only**. Pushes inspect **outgoing history only**, including a leak removed in a later outgoing commit. Unrelated untracked files and unstaged drafts cannot block those operations. To review the whole project explicitly, run:
 
 ```sh
-node ./.fence/bin/vibe-fence.cjs init --adapters=claude,cursor,codex
+node ./.fence/bin/vibe-fence.cjs check
 ```
 
-When your project has a `package.json`, init adds these shortcuts if their names aren't already in use:
+The runtime stays in the project, so checks do not depend on the `npx` cache. In projects with a `package.json`, setup adds `fence:check`, `fence:status`, and `fence:undo` scripts unless the names already exist. Use `--no-package-scripts` to skip these shortcuts.
 
-```sh
-npm run fence:check
-npm run fence:status
-npm run fence:undo
-```
-
-Use `--no-package-scripts` to leave `package.json` alone. A project-local runtime keeps the hooks usable after the `npx` cache is cleared. You can also run it on macOS, Linux, or Windows with `node ./.fence/bin/vibe-fence.cjs check`.
-
-**Check the integration in your editor.** `doctor` tests the installed script with safe synthetic inputs, but that cannot prove your editor loaded or invoked it. Some integrations warn and allow an action when the gate is unavailable; Git hooks can be bypassed. Use a disposable project to verify the real host before relying on it.
+`status` shows what is configured; optional `doctor` reruns local diagnostics. Neither can prove the editor loaded a hook. Some integrations allow an action when the checker is unavailable; Git hooks can be bypassed. A new clone or machine needs its own setup.
 
 ## What it looks for
 
@@ -93,7 +64,6 @@ The pre-tool gate evaluates a subset of rules for supported tool calls; worktree
 
 | Host | Integration | What to verify |
 |---|---|---|
-| Muse Code | Project `PreToolUse` hook | Trust the project, restart Muse, and exercise the hook in a real session |
 | Claude Code | Project `PreToolUse` hook | Trust and exercise the hook in a real session |
 | Cursor | Project `preToolUse` hook | Exercise the hook in a real session |
 | Codex | Project pre-tool hook for supported actions | Enable and exercise the hook in a real session |
@@ -101,25 +71,23 @@ The pre-tool gate evaluates a subset of rules for supported tool calls; worktree
 | Antigravity | Project guidance and skills | Advisory only; no tool-call block is claimed |
 | Hermes | Project guidance and skills | Advisory only; no tool-call block is claimed |
 
-Muse Code, Claude Code, Cursor and Codex hook scripts use Node.js; `jq` is not required. The hooks do not cover every action or tool. Git checks depend on the effective hooks directory and the availability of the local runtime.
-
-For Muse's `edit_file` find/replace calls, the gate inspects the affected lines and widens inspection to the bounded reconstructed file when multiline delimiters may change. If the file cannot be safely read, is larger than 64 KiB, or the match is missing or ambiguous, it blocks that edit as incomplete. Other tool shapes retain their documented limits. Re-run `init --profile=muse` after moving the project so its hook points to the new location.
+Claude Code, Cursor and Codex hook scripts use Node.js; `jq` is not required. The hooks do not cover every action or tool. Git checks depend on the effective hooks directory and the availability of the local runtime.
 
 <img src="docs/assets/architecture.svg" alt="Supported agent actions pass through a pre-tool gate; Git commits and pushes pass through hooks and local checks" width="1200">
 
 ## Recover and learn
 
-When a finding blocks a change, the terminal shows what happened, a suggested fix and a prompt you can copy into your coding assistant. Adjust the amount of offline guidance with:
+When a finding blocks a change, the terminal shows what happened, a suggested fix and a prompt you can copy into your coding assistant. The repair text is generated locally without a model. For advanced control over its length:
 
 ```sh
-node ./.fence/bin/vibe-fence.cjs dial max       # also: medium, min, silent, status
+npx vibe-fence dial max       # also: medium, min, silent, status
 ```
 
 Before a larger change, save a local checkpoint and undo it if needed:
 
 ```sh
-node ./.fence/bin/vibe-fence.cjs checkpoint --action "before changing the database"
-node ./.fence/bin/vibe-fence.cjs undo
+npx vibe-fence checkpoint --action "before changing the database"
+npx vibe-fence undo
 ```
 
 Checkpoints perform a bounded secret pre-check before staging. A detected secret blocks the checkpoint; `--allow-secrets-in-checkpoint` is an explicit override. Detection is not exhaustive: concurrent edits or Git clean filters can still put a blob into local object storage before the staged check rejects the commit. Never rely on a checkpoint to safely store credentials.
@@ -130,7 +98,7 @@ Checkpoints perform a bounded secret pre-check before staging. A detected secret
 
 | Command | Purpose |
 |---|---|
-| `init [--adapters=a,b] [--host=a] [--no-package-scripts] [--dry-run]` | Install project files and hooks |
+| `init [--host=tool] [--no-package-scripts] [--dry-run]` | Set up one tool and Git checks; run local diagnostics |
 | `status [--host=name] [--adapters=a,b] [--json]` | Inspect configuration, local integrity and Git hooks |
 | `doctor [--host=name] [--json]` | Run local allow/block probes and report their limits |
 | `check [--json] [--staged] [--push [range] \| --all]` | Scan the worktree, index, or outgoing history |
@@ -139,7 +107,7 @@ Checkpoints perform a bounded secret pre-check before staging. A detected secret
 | `undo [--steps N]` | Undo checkpoint commits without a force push |
 | `dial [max\|medium\|min\|silent\|status]` | Set or inspect teaching level |
 | `reset` | Reset the circuit breaker and observed network-command counter |
-| `verify [--remote] [--json]` | Run configured local checks; optionally probe remote RLS |
+| `verify [--json]` | Run configured local project checks |
 | `uninstall [--dry-run]` | Restore unchanged managed files and earlier Git hooks; `remove` is an alias |
 | `gate --tool <name> --args-stdin [--root <dir>]` | Evaluate one host tool call |
 
@@ -154,7 +122,7 @@ The network-command guard counts selected shell invocations in a local rolling w
 
 1. Revoke or rotate the credential with its provider immediately.
 2. Remove it from source and store a replacement in a Git-ignored, server-only location.
-3. Before pushing, run `node ./.fence/bin/vibe-fence.cjs check --push --all` and review the affected history.
+3. Before pushing, run `npx vibe-fence check --push --all` and review the affected history.
 
 Deleting a file or running `undo` does not erase an existing Git object or reverse an exposure. The scanner detects selected token shapes; it can miss credentials. Follow the provider's incident guidance.
 
@@ -167,16 +135,16 @@ Deleting a file or running `undo` does not erase an existing Git object or rever
 
 The integrity manifest detects local changes to selected instructions, host configuration, launchers and the active runtime. An agent or user who can write the project can also change the manifest, so it is not an independent trust boundary. Scan limits, unsupported inputs, excluded files and fail-open integrations remain important boundaries.
 
-`verify` runs the project's configured lint, test and build scripts and stores their output under `.fence/verdicts/`; review those scripts and logs. `--remote` can connect using `DATABASE_URL`, `SUPABASE_DB_URL` or `POSTGRES_URL` when an optional `pg` driver is available. It checks a narrow set of public-table RLS conditions and is **not** a complete authorization audit. A missing driver, connection or result is `unknown`, not a pass.
+`verify` runs the project's configured lint, test and build scripts and stores their output under `.fence/verdicts/`; review those scripts and logs. A missing command or result is `unknown`, not a pass. Running application scripts can have their own effects; Fence's own checks make no service requests.
 
-`--explain` is optional and uses Meta Muse Spark only when requested and configured. Requests contain fixed rule categories and severity, not source contents, filenames or raw tool arguments. Provider charges may apply. `--contributor-mode` records a local preference; review provider terms and account settings separately.
+Model clients, API keys, contributor settings, demo profiles and remote database probes have been removed. Re-run `init --host=<tool>` to refresh an existing project's runtime, hooks and managed configuration. Existing host integrations and user edits are preserved; setup does not silently remove previously installed adapters. The old `--explain` option is accepted for local compatibility and makes no additional request.
 
 </details>
 
 <details>
 <summary>Uninstalling vibe-fence</summary>
 
-Run `node ./.fence/bin/vibe-fence.cjs uninstall --dry-run` to review the planned removals, then `node ./.fence/bin/vibe-fence.cjs uninstall`. The command restores unchanged files from its local install record, removes managed hooks and restores `.pre-fence` backups. It preserves later edits and unknown files, and reports anything that needs manual review. Older installations without a safe removal record are left unchanged.
+Run `npx vibe-fence uninstall --dry-run` to review the planned removals, then `npx vibe-fence uninstall`. The command restores unchanged files from its local install record, removes managed hooks and restores `.pre-fence` backups. It preserves later edits and unknown files, and reports anything that needs manual review. Older installations without a safe removal record are left unchanged.
 
 The private, Git-ignored `.fence/uninstall.json` record may contain prior contents of files changed during installation. The installer avoids copying settings that appear to contain credentials, but that heuristic is not exhaustive. Review the record before sharing the project. Removing vibe-fence does not remove credentials from Git history.
 

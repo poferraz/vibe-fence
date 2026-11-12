@@ -1,7 +1,5 @@
 /**
  * src/adapters/codex.ts — Codex CLI adapter (OpenAI)
- * S-13 Muse routing: AGENTS.md canonical + .agents/memory/ trust gate.
- * GEM-08 dual-tier routing; GEM-09 Standard-mode default (no Contributor).
  *
  * Runtime contract (Codex-specific):
  * - Canonical policy: AGENTS.md (repo root) — Codex reads natively per Codex docs.
@@ -40,10 +38,9 @@ export const codexAdapter: Adapter = {
 // NOTE: no merge function — .codex/config.json is never written. Legacy
 // fence-managed keys are scrubbed by the installer (see below).
 
-export function installCodexAdapter(projectRoot: string, opts: { modelMode?: string } = {}): string[] {
+export function installCodexAdapter(projectRoot: string): string[] {
   if (!adapterPathsSafe(projectRoot, ["AGENTS.md", ".fence/adapters/codex.json", ".agents/memory/MEMORY.md", ".agents/skills", ".codex/config.json", ".codex/hooks.json", ".codex/hooks/fence-gate.cjs"])) { console.warn("[vibe-fence] Adapter contains a managed symlink; leaving it unchanged."); return []; }
   const written: string[] = [];
-  const modelMode = opts.modelMode ?? "standard";
   const codexDir = join(projectRoot, ".codex");
   const isSymlink = (path: string): boolean => {
     try { return lstatSync(path).isSymbolicLink(); } catch { return false; }
@@ -142,9 +139,6 @@ export function installCodexAdapter(projectRoot: string, opts: { modelMode?: str
       }
     }
     const receipt = writeAdapterReceipt(projectRoot, "codex", {
-      model_mode: modelMode,
-      companion_model: process.env["MUSE_MODEL_COMPANION"] ?? "muse-spark-1.3",
-      architect_model: process.env["MUSE_MODEL_ARCHITECT"] ?? "muse-wonder-1.0",
       receipt: "vibe-fence Codex adapter installed — hook trust and execution not verified",
     });
     if (receipt.changed) written.push(receipt.path.replace(projectRoot + "/", ""));

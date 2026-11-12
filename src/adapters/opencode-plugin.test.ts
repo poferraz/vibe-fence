@@ -84,13 +84,13 @@ describe("fence-guard plugin", () => {
   it("adapter installs the plugin idempotently and never clobbers unmanaged files", () => {
     const root = mkdtempSync(join(tmpdir(), "vf-oc-"));
     created.push(root);
-    const written = installOpenCodeAdapter(root, {});
+    const written = installOpenCodeAdapter(root);
     expect(written).toContain(`.opencode/plugins/${OPENCODE_PLUGIN_NAME}`);
     const p = join(root, ".opencode", "plugins", OPENCODE_PLUGIN_NAME);
     const before = readFileSync(p, "utf-8");
     expect(before).toContain(OPENCODE_PLUGIN_MARKER);
     expect(before).toContain("tool.execute.before");
-    const again = installOpenCodeAdapter(root, {});
+    const again = installOpenCodeAdapter(root);
     expect(again.filter((f) => f.includes(OPENCODE_PLUGIN_NAME))).toEqual([]);
     expect(readFileSync(p, "utf-8")).toBe(before);
     // Unmanaged occupant wins.
@@ -98,7 +98,7 @@ describe("fence-guard plugin", () => {
     created.push(other);
     mkdirSync(join(other, ".opencode", "plugins"), { recursive: true });
     writeFileSync(join(other, ".opencode", "plugins", OPENCODE_PLUGIN_NAME), "// user's own plugin\n", "utf-8");
-    installOpenCodeAdapter(other, {});
+    installOpenCodeAdapter(other);
     expect(readFileSync(join(other, ".opencode", "plugins", OPENCODE_PLUGIN_NAME), "utf-8")).toBe("// user's own plugin\n");
   });
 });

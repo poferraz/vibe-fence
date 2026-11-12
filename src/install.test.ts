@@ -6,12 +6,13 @@
  */
 import { describe, it, expect, afterEach } from "bun:test";
 import { spawnSync, execSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { verifyAttestation } from "./framework/integrity";
 import { chmodSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { install, loadPostinstallGuard, ensureGitignore, trackedEnvFiles, isWithinProjectRoot, GITIGNORE_ENTRIES } from "./install";
 import { runUninstall } from "./uninstall";
-import { defaultFenceConfig } from "./framework/meta-client";
 
 const created: string[] = [];
 afterEach(() => {
@@ -41,17 +42,49 @@ describe("install version and timing", () => {
     expect(scripts["fence:undo"]).toBe("my-undo");
   });
 
-  it("does not promise provider training behavior in contributor-mode guidance", async () => {
+  it("asks for one host before writing when no project tool is detected", async () => {
     const root = makeProject();
-    await install(root, { contributorMode: true, adapters: ["codex", "cursor"] });
-    const config = JSON.parse(readFileSync(join(root, ".fence", "config.json"), "utf8"));
-    expect(config.model_mode).toBe("contributor");
-    expect(readFileSync(join(root, "AGENTS.md"), "utf8")).not.toContain("vibe-fence active");
-    for (const path of ["AGENTS.md", ".cursor/rules/vibe-fence-router.mdc"]) {
-      const guidance = readFileSync(join(root, path), "utf8");
-      expect(guidance).not.toContain("code never trains Meta");
-      expect(guidance).toContain("provider terms");
+    await expect(install(root)).rejects.toThrow(/--host/);
+    expect(existsSync(join(root, ".fence"))).toBe(false);
+    expect(existsSync(join(root, "AGENTS.md"))).toBe(false);
+  });
+
+  it("asks for one host before writing when project tools are ambiguous", async () => {
+    const root = makeProject();
+    mkdirSync(join(root, ".codex"));
+    mkdirSync(join(root, ".cursor"));
+    await expect(install(root)).rejects.toThrow(/--host/);
+    expect(existsSync(join(root, ".fence"))).toBe(false);
+  });
+
+  it("rejects multiple or unknown explicit hosts before changing the project", async () => {
+    for (const adapters of [["claude", "cursor"], ["unknown"]]) {
+      const root = makeProject();
+      await expect(install(root, { adapters })).rejects.toThrow();
+      expect(existsSync(join(root, ".fence"))).toBe(false);
     }
+  });
+
+  it("installs only the selected tool and runs its local self-test in the same command", async () => {
+    const root = makeProject();
+    const output: string[] = [];
+    const saved = console.log;
+    console.log = (...args: unknown[]) => { output.push(args.join(" ")); };
+    try {
+      const receipt = await install(root, { adapters: ["cursor"] });
+      expect(receipt.adaptersInstalled).toEqual(["cursor"]);
+      expect(receipt.hookProbe?.verified).toBe(true);
+      expect(output.join("\n")).toContain("Cursor");
+      expect(output.join("\n")).not.toContain("--host=codex");
+      expect(output.join("\n")).not.toContain("Next steps:");
+      expect(existsSync(join(root, ".claude"))).toBe(false);
+      expect(existsSync(join(root, ".codex"))).toBe(false);
+      const receiptText = readFileSync(join(root, ".fence/adapters/cursor.json"), "utf8");
+      expect(receiptText).not.toMatch(/model_mode|companion_model|architect_model|muse-/);
+      const config = JSON.parse(readFileSync(join(root, ".fence/config.json"), "utf8"));
+      expect(config.model_mode).toBeUndefined();
+      expect(JSON.parse(readFileSync(join(root, ".fence/app-profile.json"), "utf8")).block_counts).toBeUndefined();
+    } finally { console.log = saved; }
   });
 
   it("measures an install from its own start, even after a long process delay", async () => {
@@ -67,13 +100,12 @@ describe("install version and timing", () => {
     }
   });
 
-  it("uses the installed package version for new and fallback configurations", async () => {
+  it("uses the installed package version for new configurations", async () => {
     const root = makeProject();
     const packageVersion = (JSON.parse(readFileSync(join(import.meta.dir, "..", "package.json"), "utf8")) as { version: string }).version;
     await install(root, { adapters: [] });
     const config = JSON.parse(readFileSync(join(root, ".fence", "config.json"), "utf8"));
     expect(config.fence_version).toBe(packageVersion);
-    expect(defaultFenceConfig().fence_version).toBe(packageVersion);
   });
 
   it("upgrades an old config without losing user settings and remains idempotent", async () => {
@@ -81,14 +113,15 @@ describe("install version and timing", () => {
     const packageVersion = (JSON.parse(readFileSync(join(import.meta.dir, "..", "package.json"), "utf8")) as { version: string }).version;
     const configPath = join(root, ".fence", "config.json");
     mkdirSync(join(root, ".fence"), { recursive: true });
-    writeFileSync(configPath, JSON.stringify({ version: 1, fence_version: "0.1.0", model_mode: "contributor", companion: { enabled: false } }));
+    writeFileSync(configPath, JSON.stringify({ version: 1, fence_version: "0.1.0", model_mode: "contributor", companion: { enabled: false }, provider: { api_key: "legacy" }, custom: { keep: true } }));
     const receipt = await install(root, { adapters: [] });
     const updated = readFileSync(configPath, "utf8");
     const config = JSON.parse(updated);
     expect(config.fence_version).toBe(packageVersion);
-    expect(config.model_mode).toBe("contributor");
-    expect(receipt.modelMode).toBe("contributor");
-    expect(config.companion).toEqual({ enabled: false });
+    expect(config.model_mode).toBeUndefined();
+    expect(config.companion).toBeUndefined();
+    expect(config.provider).toBeUndefined();
+    expect(config.custom).toEqual({ keep: true });
     await install(root, { adapters: [] });
     expect(readFileSync(configPath, "utf8")).toBe(updated);
   });
@@ -416,7 +449,8 @@ it("refuses managed-file symlinks before modifying external files", async () => 
     mkdirSync(join(target, ".."), { recursive: true });
     writeFileSync(sentinel, '{"runtime":"other"}');
     symlinkSync(sentinel, target);
-    await expect(install(root)).rejects.toThrow();
+    const host = rel.startsWith(".claude") ? "claude" : rel.startsWith(".cursor") ? "cursor" : rel.startsWith(".opencode") ? "opencode" : rel.startsWith(".hermes") ? "hermes" : "none";
+    await expect(install(root, { adapters: [host] })).rejects.toThrow(/symlink/);
     expect(readFileSync(sentinel, "utf8")).toBe('{"runtime":"other"}');
   }
 });
@@ -430,4 +464,80 @@ it("refuses dangling managed symlinks without creating their targets", async () 
     await expect(install(root, { adapters: [] })).rejects.toThrow();
     expect(existsSync(missing)).toBe(false);
   }
+});
+
+describe("setup completion", () => {
+  it("does not call an unavailable selected integration installed", async () => {
+    const root = makeProject();
+    mkdirSync(join(root, ".opencode/plugins"), { recursive: true });
+    const plugin = join(root, ".opencode/plugins/fence-guard.js");
+    writeFileSync(plugin, "// user-owned plugin, keep me\n");
+    const logs: string[] = [], saved = console.log;
+    console.log = (...args: unknown[]) => { logs.push(args.join(" ")); };
+    try {
+      await expect(install(root, { adapters: ["opencode"] })).rejects.toThrow(/incomplete/i);
+      expect(logs.join("\n")).not.toContain("installed for OpenCode");
+      expect(readFileSync(plugin, "utf8")).toBe("// user-owned plugin, keep me\n");
+      expect(existsSync(join(root, ".fence/uninstall.json"))).toBe(true);
+      runUninstall(root);
+      expect(readFileSync(plugin, "utf8")).toBe("// user-owned plugin, keep me\n");
+    } finally { console.log = saved; }
+  });
+
+  it("keeps an existing launcher and reports incomplete when runtime installation fails", async () => {
+    const root = makeProject();
+    await install(root, { adapters: [] });
+    const launcher = join(root, ".fence/bin/vibe-fence");
+    writeFileSync(launcher, "#!/bin/sh\n# user-owned launcher\nexit 0\n");
+    const logs: string[] = [], saved = console.log;
+    console.log = (...args: unknown[]) => { logs.push(args.join(" ")); };
+    try {
+      await expect(install(root, { adapters: [] })).rejects.toThrow(/incomplete/i);
+      expect(logs.join("\n")).not.toContain("installed for Git");
+      expect(readFileSync(launcher, "utf8")).toContain("user-owned launcher");
+      expect(existsSync(join(root, ".fence/uninstall.json"))).toBe(true);
+    } finally { console.log = saved; }
+  });
+
+  it("ignores an unrelated tool's settings symlink", async () => {
+    const root = makeProject(), outside = makeProject();
+    const target = join(outside, "cursor-hooks");
+    writeFileSync(target, "user-owned cursor settings");
+    mkdirSync(join(root, ".cursor"));
+    symlinkSync(target, join(root, ".cursor/hooks.json"));
+    const receipt = await install(root, { adapters: ["codex"] });
+    expect(receipt.adaptersInstalled).toEqual(["codex"]);
+    expect(verifyAttestation(root).status).toBe("pass");
+    expect(readFileSync(target, "utf8")).toBe("user-owned cursor settings");
+  });
+
+  it("refreshes unchanged installed skills but retains a user's edits", async () => {
+    const root = makeProject();
+    await install(root, { adapters: [] });
+    const old = "---\nname: vibe-init\ndescription: Old installed skill\n---\nRun --profile=muse to connect Meta.\n";
+    const rel = ".agents/skills/vibe-init/SKILL.md";
+    const file = join(root, rel);
+    writeFileSync(file, old);
+    const journalPath = join(root, ".fence/uninstall.json");
+    const journal = JSON.parse(readFileSync(journalPath, "utf8"));
+    journal.files[rel].after = createHash("sha256").update(old).digest("hex");
+    writeFileSync(journalPath, JSON.stringify(journal));
+    const customRel = ".agents/skills/vibe-guard/SKILL.md";
+    const custom = readFileSync(join(root, customRel), "utf8") + "\nUser's own instructions.\n";
+    writeFileSync(join(root, customRel), custom);
+    await install(root, { adapters: [] });
+    expect(readFileSync(file, "utf8")).toBe(readFileSync(join(import.meta.dir, "skills/vibe-init/SKILL.md"), "utf8"));
+    expect(readFileSync(join(root, customRel), "utf8")).toBe(custom);
+  });
+});
+
+it("reports incomplete when the common integrity baseline cannot be created safely", async () => {
+  const root = makeProject(), outside = makeProject();
+  mkdirSync(join(root, ".fence"));
+  const sentinel = join(outside, "invariants");
+  writeFileSync(sentinel, "user-owned policy");
+  symlinkSync(sentinel, join(root, ".fence/invariants.md"));
+  await expect(install(root, { adapters: [] })).rejects.toThrow(/incomplete/i);
+  expect(readFileSync(sentinel, "utf8")).toBe("user-owned policy");
+  expect(existsSync(join(root, ".fence/uninstall.json"))).toBe(true);
 });

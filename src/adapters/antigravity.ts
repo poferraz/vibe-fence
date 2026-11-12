@@ -1,7 +1,5 @@
 /**
  * src/adapters/antigravity.ts — Antigravity adapter
- * S-13 Muse routing: AGENTS.md canonical + .agents/ overrides.
- * GEM-08 dual-tier routing; GEM-09 Standard-mode default.
  *
  * Runtime contract (Antigravity-specific):
  * - Overrides: .agents/rules/antigravity.md  — per-runtime overrides (Antigravity reads .agents/)
@@ -35,9 +33,6 @@ export const antigravityAdapter: Adapter = {
 
 export interface AntigravityFenceBlock {
   version: 1;
-  model_mode: "standard" | "contributor";
-  companion_model: string;
-  architect_model: string;
   installedAt: string;
   receipt: string;
 }
@@ -54,7 +49,7 @@ export function buildAntigravityOverrides(): string {
     "",
     "- Protection: advisory guidance only; no pre-action tool hook is installed. Use Git hooks and manual checks.",
     "- Skills: .agents/skills/<skill>/SKILL.md — L1/L2/L3 progressive disclosure (S-02).",
-    "- Privacy: Standard mode is the default; review provider terms before sending data.",
+    "- Privacy: Fence checks stay local; the coding tool retains its own privacy settings.",
     "",
   ].join("\n");
 }
@@ -75,7 +70,7 @@ const LEGACY_ANTIGRAVITY_OVERRIDES = [
   "",
 ].join("\n");
 
-export function installAntigravityAdapter(projectRoot: string, opts: { modelMode?: string } = {}): string[] {
+export function installAntigravityAdapter(projectRoot: string): string[] {
   if (!adapterPathsSafe(projectRoot, ["AGENTS.md", ".fence/adapters/antigravity.json", ".agents/skills", ".agents/rules/antigravity.md"])) { console.warn("[vibe-fence] Adapter contains a managed symlink; leaving it unchanged."); return []; }
   const written: string[] = [];
 
@@ -105,9 +100,6 @@ export function installAntigravityAdapter(projectRoot: string, opts: { modelMode
   }
 
   const receipt = writeAdapterReceipt(projectRoot, "antigravity", {
-    model_mode: opts.modelMode ?? "standard",
-    companion_model: process.env["MUSE_MODEL_COMPANION"] ?? "muse-spark-1.3",
-    architect_model: process.env["MUSE_MODEL_ARCHITECT"] ?? "muse-wonder-1.0",
     receipt: "vibe-fence Antigravity adapter installed — advisory guidance only",
   });
   if (receipt.changed) written.push(receipt.path.replace(projectRoot + "/", ""));

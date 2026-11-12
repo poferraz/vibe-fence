@@ -5,10 +5,9 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
-import { install, CONTRIBUTOR_DISCLOSURE, DEFAULT_ADAPTER_IDS, hereDir } from "./install.js";
+import { install, DEFAULT_ADAPTER_IDS } from "./install.js";
 import { publicImpact, publicRemediation, publicSummary } from "./framework/public-findings.js";
 import { runCheck, runIndexCheck, runPushCheck, exitCodeForReport, formatHuman, publicReport } from "./check.js";
-import { explainBlocking, type ExplainContext, type ExplainFinding } from "./framework/explain.js";
 import { checkpoint, fenceUndo } from "./framework/git.js";
 import { evaluateToolCall } from "./framework/gate.js";
 import { getProtectionStatus, verifyAdapterHook } from "./framework/status.js";
@@ -19,7 +18,6 @@ import { adapterPathsSafe } from "./adapters/safe-paths.js";
 import { resetCircuit } from "./framework/circuit-breaker.js";
 import { buildTeachingCard, loadDialState, setGlobalLevel, type DialLevel } from "./framework/dial.js";
 import { runTrustLadder } from "./framework/verifier.js";
-import { verifyRemote } from "./framework/verify-remote.js";
 import { resetNetworkBudget } from "./framework/billing-guard.js";
 import { appendEvent, formatStatusHeader } from "./framework/fence-look.js";
 
@@ -28,21 +26,21 @@ function help(): string {
     "vibe-fence — checks and guardrails for coding-agent workflows.",
     "",
     "Usage:",
-    "  vibe-fence init [--dry-run] [--contributor-mode] [--full] [--adapters=a,b]",
-    "  vibe-fence check [--json] [--staged] [--push [<range>|--all]] [--max-bytes N] [--max-files N] [--explain]",
+    "  vibe-fence init [--host=<tool>] [--dry-run]",
+    "  vibe-fence check [--json] [--staged] [--push [<range>|--all]] [--max-bytes N] [--max-files N]",
     "  vibe-fence checkpoint --action <label> [--include-untracked] [--allow-secrets-in-checkpoint]",
     "  vibe-fence undo [--steps N]",
-    "  vibe-fence gate --tool <name> (--args '<json>' | --args-stdin) [--root <dir>] [--explain]",
-    "  vibe-fence status [--host=muse|codex|claude|cursor|opencode|antigravity|hermes] [--json]",
+    "  vibe-fence gate --tool <name> (--args '<json>' | --args-stdin) [--root <dir>]",
+    "  vibe-fence status [--host=codex|claude|cursor|opencode|antigravity|hermes] [--json]",
     "  vibe-fence doctor [--host=<name>] [--json]",
     "  vibe-fence uninstall [--dry-run]",
     "  vibe-fence reset",
     "  vibe-fence dial [max|medium|min|silent|status]",
-    "  vibe-fence verify [--remote] [--json]",
+    "  vibe-fence verify [--json]",
     "  vibe-fence --help | --version",
     "",
     "Commands:",
-    "  init    Install the fence into the current project (AGENTS.md + .fence/ + skills + adapters)",
+    "  init    Set up local checks and one coding tool in the current project",
     "  check   Run bounded checks (exit 1 for a policy block, 2 for an incomplete scan)",
     "  checkpoint  Save tracked WIP after a bounded secret pre-check",
     "  undo    Soft-reset unpushed tip checkpoints (edits stay staged), or revert other checkpoints",
@@ -54,12 +52,10 @@ function help(): string {
     "",
     "Options (init):",
     "  --dry-run            Print what would change; write nothing",
-    "  --contributor-mode   Record a contributor preference locally; check provider settings separately",
     "  --full               Force native mode even on WebContainer-like runtimes",
-    `  --adapters=<list>    Subset of: ${DEFAULT_ADAPTER_IDS.join(", ")} (default: detected hosts)`,
-    "  --host=<list>        Alias for --adapters",
+    `  --host=<tool>       Choose one: ${DEFAULT_ADAPTER_IDS.join(", ")}; none for Git only`,
+    "                       Omit when exactly one tool is configured in this project.",
     "  --no-package-scripts Do not add convenience npm scripts",
-    "  --profile=muse        Preset: Muse Code adapter (overridden by --adapters)",
     "",
     "Options (check):",
     "  --staged             Scan staged blobs (what the next commit contains)",
@@ -68,7 +64,6 @@ function help(): string {
     "  --json               Emit the report as JSON",
     "  --max-bytes N        Maximum bytes per scanned file",
     "  --max-files N        Maximum number of eligible files to scan",
-    "  --explain            Ask Meta Muse Spark to explain blocking findings (needs MUSE_API_KEY; check + gate)",
     "",
     "More: https://github.com/poferraz/vibe-fence",
   ].join("\n");
@@ -85,26 +80,6 @@ function isValidPushRange(r: string): boolean {
   const parts = r.split("..");
   if (parts.length < 1 || parts.length > 2) return false;
   return parts.every((p) => p.length > 0 && /^[A-Za-z0-9_.@{}\/^~:-]+$/.test(p));
-}
-
-/**
- * --explain: one Spark call per blocking report (Phase 3a). Advisory only —
- * the caller's exit code never changes. With --json the text goes to stderr
- * so stdout stays parseable.
- */
-async function printExplanation(failures: ExplainFinding[], ctx: ExplainContext, json: boolean): Promise<void> {
-  const outcome = await explainBlocking(failures, ctx, { projectRoot: process.cwd() });
-  if (outcome.status === "skipped") {
-    if (outcome.code === "no-key") {
-      console.error("vibe-fence: --explain needs MUSE_API_KEY — skipping AI explanation (findings above are complete).");
-    } else if (outcome.code === "error") {
-      console.error(`vibe-fence: --explain unavailable (${outcome.reason}) — findings above are complete.`);
-    }
-    return;
-  }
-  const text = `\n${outcome.model} explanation (request ${outcome.requestId ?? "n/a"}):\n${outcome.text}`;
-  if (json) console.error(text);
-  else console.log(text);
 }
 
 function pushRangesFromStdinOrDefault(hookInput: boolean): string[] {
@@ -142,13 +117,17 @@ function recordLocalEvent(type: "check" | "status", fields: Record<string, numbe
 
 export async function main(argv: string[]): Promise<number> {
   const [cmd, ...rest] = argv;
+  if (rest.some(arg => /^(?:--profile|--contributor-mode|--remote)(?:=|$)/.test(arg))) {
+    console.error("vibe-fence: connection options were removed. Checks and explanations now run locally.");
+    return 2;
+  }
   if (cmd && ["check", "status", "undo", "checkpoint"].includes(cmd) && !process.env["VIBE_FENCE_DELEGATED"]) {
     let root = process.cwd();
     try { root = execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch {}
     const path = join(root, ".fence/bin/vibe-fence.cjs");
     try {
       if (adapterPathsSafe(root, [".fence/bin/vibe-fence.cjs"]) && readFileSync(path, "utf8").includes("vibe-fence managed project launcher")) {
-        const result = spawnSync(process.execPath, [path, ...argv], { stdio: "inherit", env: { ...process.env, VIBE_FENCE_DELEGATED: "1" } });
+        const result = spawnSync(process.execPath, [path, ...argv.filter(arg => arg !== "--explain")], { stdio: "inherit", env: { ...process.env, VIBE_FENCE_DELEGATED: "1" } });
         return result.status ?? 2;
       }
     } catch { /* No usable installed runtime: run this CLI directly. */ }
@@ -212,33 +191,31 @@ export async function main(argv: string[]): Promise<number> {
     return 0;
   }
   if (cmd === "init") {
-    const contributorMode = rest.includes("--contributor-mode");
-    if (contributorMode) console.log(CONTRIBUTOR_DISCLOSURE);
-    const adaptersArg = rest.find((a) => a.startsWith("--adapters=") || a.startsWith("--host="));
-    const profileArg = rest.find((a) => a.startsWith("--profile="));
-    const profileFlag = rest.indexOf("--profile");
-    const profile = profileArg
-      ? profileArg.slice("--profile=".length)
-      : profileFlag !== -1 && rest[profileFlag + 1] && !rest[profileFlag + 1]!.startsWith("--")
-        ? rest[profileFlag + 1]!
-        : null;
-    if (profile !== null && profile !== "muse") {
-      console.error(`vibe-fence: unknown --profile '${profile}' (known: muse).`);
+    const selections = rest.filter(arg => /^(?:--host|--adapters)(?:=|$)/.test(arg));
+    const missing = selections.some(arg => arg.endsWith("=")) ||
+      (hostFlag >= 0 && (!rest[hostFlag + 1] || rest[hostFlag + 1]!.startsWith("--")));
+    if (selections.length > 1 || missing || (selections.length > 0 && hosts.length === 0)) {
+      console.error("vibe-fence: select one tool with --host=<tool>.");
       return 2;
     }
-    // Explicit --adapters wins; --profile muse is a preset for the demo-hero path.
-    const adapters = adaptersArg || hostFlag >= 0
-      ? hosts
-      : profile === "muse"
-        ? ["muse"]
-        : undefined;
-    await install(process.cwd(), {
-      dryRun: rest.includes("--dry-run"),
-      contributorMode,
-      full: rest.includes("--full"),
-      noPackageScripts: rest.includes("--no-package-scripts"),
-      adapters,
-    });
+    for (let i = 0; i < rest.length; i++) {
+      const arg = rest[i]!;
+      if (arg === "--host" || arg === "--adapters") { i++; continue; }
+      if (/^(?:--host|--adapters)=/.test(arg) || ["--dry-run", "--full", "--no-package-scripts"].includes(arg)) continue;
+      console.error("vibe-fence: unknown setup option. Use init --host=<tool> or --help.");
+      return 2;
+    }
+    try {
+      await install(process.cwd(), {
+        dryRun: rest.includes("--dry-run"),
+        full: rest.includes("--full"),
+        noPackageScripts: rest.includes("--no-package-scripts"),
+        adapters: selections.length ? hosts : undefined,
+      });
+    } catch (error) {
+      console.error(`vibe-fence: ${(error as Error).message}`);
+      return 2;
+    }
     return 0;
   }
   if (cmd === "uninstall" || cmd === "remove") {
@@ -269,14 +246,12 @@ export async function main(argv: string[]): Promise<number> {
     if (!existsSync(join(root, ".fence/config.json"))) { console.error("vibe-fence: no initialized project found."); return 2; }
     if (!adapterPathsSafe(root, [".fence/verdicts", ...["compile", "lint", "tests", "tests-x2", "build"].map(tier => `.fence/verdicts/manual-${tier}.log`)])) { console.error("vibe-fence: unsafe verifier output path."); return 2; }
     const local = await runTrustLadder(root, "manual", { generateEphemeral: false });
-    const remote = rest.includes("--remote") ? await verifyRemote() : undefined;
-    if (rest.includes("--json")) console.log(JSON.stringify({ local, ...(remote ? { remote } : {}) }, null, 2));
+    if (rest.includes("--json")) console.log(JSON.stringify({ local }, null, 2));
     else {
       for (const tier of local.tiers) console.log(`${tier.tier}: ${tier.status}${tier.reason ? ` — ${tier.reason}` : ""}`);
       console.log(`Local verification: ${local.overall}.`);
-      if (remote) console.log(`Remote RLS probe: ${remote.verdict} — ${remote.reason}`);
     }
-    return local.overall === "fail" || remote?.verdict === "fail" ? 1 : local.overall === "unknown" || remote?.verdict === "unknown" ? 2 : 0;
+    return local.overall === "fail" ? 1 : local.overall === "unknown" ? 2 : 0;
   }
   if (cmd === "check") {
     const json = rest.includes("--json");
@@ -333,13 +308,6 @@ export async function main(argv: string[]): Promise<number> {
     }
     const exit = exitCodeForReport(report);
     recordLocalEvent("check", { filesScanned: report.filesScanned, blocks: report.blocks, unknowns: report.unknowns });
-    // Explain all fails when the report blocks (each command follows its own exit contract).
-    if (rest.includes("--explain") && report.blocks > 0) {
-      const failures = report.findings
-        .filter((f) => f.verdict === "fail")
-        .map((f) => ({ ruleId: f.ruleId, severity: f.severity, file: f.file, reason: f.reason }));
-      await printExplanation(failures, { kind: "check", target: process.cwd() }, json);
-    }
     return exit;
   }
   if (cmd === "checkpoint") {
@@ -417,15 +385,6 @@ export async function main(argv: string[]): Promise<number> {
           console.log(`Copy-paste this into your AI: vibe-fence blocked ${f.ruleId}. ${remediation ?? "Review and fix the issue."} Re-run vibe-fence check.`);
         }
       } catch { /* Teaching is optional and never changes a gate verdict. */ }
-    }
-    if (rest.includes("--explain")) {
-      const fileArg = (args as Record<string, unknown>)["filePath"];
-      const file = typeof fileArg === "string" ? fileArg : `tool:${tool}`;
-      await printExplanation(
-        findings.map((f) => ({ ruleId: f.ruleId, severity: f.severity, file, reason: f.reason })),
-        { kind: "gate", target: tool },
-        false,
-      );
     }
     return 1;
   }

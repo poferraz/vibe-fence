@@ -10,9 +10,9 @@
  * single call; full-file `check` covers the rest).
  */
 
-import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { isAbsolute, join, resolve, sep } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { CIRCUIT_STATE_PATH, loadCircuitState, recordFailure, recordSuccess } from "./circuit-breaker.js";
 import { recordNetworkCommand } from "./billing-guard.js";
 import { packageScriptBodies } from "./package-scripts.js";
@@ -31,7 +31,7 @@ export interface ToolCall {
   args: Record<string, unknown>;
   /** Project root for containment/branch resolution (CLI defaults to cwd). */
   projectRoot?: string;
-  /** Effective tool cwd; relative file paths are resolved here when supplied. */
+  /** Effective tool cwd for resolving relative file paths. */
   workingDirectory?: string;
 }
 
@@ -64,38 +64,6 @@ function joinedStrings(args: Record<string, unknown>): string {
   stringsOf(args, out, 0);
   const joined = out.join("\n");
   return joined.length > MAX_CONTENT ? joined.slice(0, MAX_CONTENT) : joined;
-}
-
-/** Reconstruct Muse edits; widen inspection when multiline delimiters can change. */
-function museEditContent(tool: string, args: Record<string, unknown>, filePath: string | undefined, root: string | undefined): { content?: string; incomplete: boolean } | null {
-  if (tool.toLowerCase() !== "edit_file" || typeof args.find !== "string" || typeof args.replace !== "string") return null;
-  if (!root || !filePath || !args.find) return { incomplete: true };
-  try {
-    const realRoot = realpathSync(root);
-    const target = realpathSync(filePath);
-    if (target !== realRoot && !target.startsWith(realRoot + sep)) return { incomplete: true };
-    const stat = statSync(target);
-    if (!stat.isFile() || stat.size > MAX_CONTENT) return { incomplete: true };
-    const original = readFileSync(target, "utf8");
-    if (original.includes("\0")) return { incomplete: true };
-    const start = original.indexOf(args.find);
-    if (start < 0 || original.indexOf(args.find, start + 1) !== -1) return { incomplete: true };
-    const end = start + args.find.length;
-    const reconstructed = original.slice(0, start) + args.replace + original.slice(end);
-    if (reconstructed.includes("\0") || Buffer.byteLength(reconstructed, "utf8") > MAX_CONTENT) return { incomplete: true };
-    // An edit may form or remove a delimiter across either splice boundary.
-    // Inspect the whole bounded file when that could change multiline context.
-    const before = original.slice(Math.max(0, start - 1), start);
-    const after = original.slice(end, Math.min(original.length, end + 1));
-    const delimiterBoundary = `${before}${args.find}${after}\n${before}${args.replace}${after}`;
-    if (/\/\*|\*\/|`/.test(delimiterBoundary)) return { content: reconstructed, incomplete: false };
-    const lineStart = original.lastIndexOf("\n", start - 1) + 1;
-    const nextLine = original.indexOf("\n", end);
-    const content = original.slice(lineStart, start) + args.replace + original.slice(end, nextLine < 0 ? original.length : nextLine);
-    return { content, incomplete: false };
-  } catch {
-    return { incomplete: true };
-  }
 }
 
 function firstString(args: Record<string, unknown>, keys: string[]): string | undefined {
@@ -185,12 +153,7 @@ function evaluateRules(call: ToolCall): GateFinding[] {
   }
 
   if (isWriteLikeTool(tool)) {
-    const edit = museEditContent(tool, args, filePath, projectRoot);
-    if (edit?.incomplete) {
-      findings.push({ ruleId: "EDIT-SCAN", severity: "block", reason: "The existing file could not be inspected for this edit." });
-      return findings;
-    }
-    const content = edit?.content ?? joinedStrings(args);
+    const content = joinedStrings(args);
     push(SEC01_ID, SEC01_SEVERITY, checkSec01({ content, filePath, projectRoot }));
     push(DB01_ID, DB01_SEVERITY, checkDb01({ content, filePath, projectRoot }));
     return findings;
@@ -198,7 +161,7 @@ function evaluateRules(call: ToolCall): GateFinding[] {
 
   if (READ_LIKE.test(tool)) {
     const content = `${filePath ?? ""}\n${joinedStrings(args)}`;
-    // The gate already classified the host-specific name (e.g. read_file).
+    // Host-specific names such as read_file were already classified as reads.
     push(SEC02_ID, SEC02_SEVERITY, checkSec02({ content, toolName: "read", projectRoot }));
     return findings;
   }

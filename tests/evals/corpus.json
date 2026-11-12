@@ -15,6 +15,9 @@
     {"rule": "SEC-01", "id": "s01-f5", "content": "// rotate NEXT_PUBLIC_SIGNING_TOKEN quarterly", "filePath": "rotate.sh", "expect": "pass", "note": "benign TOKEN mention in comment (R2 must-pass)"},
     {"rule": "SEC-01", "id": "s01-f6", "contentParts": ["EXPO_PUBLIC_OPENAI_API_KEY=\"sk", "-live-C7h2X9pQ4mVbN8sDfG3jK6T1wYz\""], "filePath": "app/page.tsx", "expect": "pass", "note": "redteam Oct 27 (Baseten): KEY suffix carries no secret keyword — intended pass, zero-FP boundary (fragmented)"},
     {"rule": "SEC-01", "id": "s01-f8", "contentParts": ["PUBLIC_OPENAI_API_KEY=\"sk-proj", "-9X2...\""], "filePath": "app/page.tsx", "expect": "pass", "note": "redteam Oct 27 (Baseten): PUBLIC_ + KEY suffix, no keyword — intended pass (fragmented)"},
+    {"rule": "SEC-01", "id": "s01-t6", "content": "const credential = process.env.EXPO_PUBLIC_SIGNING_SECRET; // placeholder label in UI", "filePath": "mobile/settings.ts", "expect": "fail", "note": "public 0.4.0 hardening: unrelated placeholder words do not disarm a live reference"},
+    {"rule": "SEC-01", "id": "s01-t7", "content": "const caption = `team's workspace`; const credential = process.env.PUBLIC_ADMIN_TOKEN;", "filePath": "web/settings.ts", "expect": "fail", "note": "public 0.4.0 hardening: apostrophe in template data does not hide following code"},
+    {"rule": "SEC-01", "id": "s01-f9", "content": "export PUBLIC_SIGNING_SECRET='insert-here' # set privately", "filePath": ".env", "expect": "pass", "note": "whole placeholder assignment remains allowed"},
 
     {"rule": "SEC-02", "id": "s02-t1", "content": "~/.aws/credentials", "toolName": "read", "expect": "fail", "note": "live read"},
     {"rule": "SEC-02", "id": "s02-t2", "content": "data = open(\"~/.ssh/id_rsa\").read()", "filePath": "steal.py", "expect": "fail", "note": "read sink in code"},
@@ -23,6 +26,9 @@
     {"rule": "SEC-02", "id": "s02-f3", "content": "tar --exclude=.env -czf build.tgz .", "filePath": "sync.sh", "expect": "pass", "note": "exclusion operands are not reads (review Oct 27)"},
     {"rule": "SEC-02", "id": "s02-f1", "content": "See ~/.ssh/config for host aliases", "filePath": "guide.md", "expect": "pass", "note": "prose mention"},
     {"rule": "SEC-02", "id": "s02-f2", "content": "~/.ssh/id_rsa", "toolName": "write", "expect": "pass", "note": "non-read tool"},
+    {"rule": "SEC-02", "id": "s02-t5", "content": "apps/site/.env.production", "toolName": "read", "expect": "fail", "note": "public 0.4.0 hardening: nested credential file"},
+    {"rule": "SEC-02", "id": "s02-t6", "content": "/srv/demo/.env.local", "toolName": "open", "expect": "fail", "note": "public 0.4.0 hardening: absolute credential path"},
+    {"rule": "SEC-02", "id": "s02-f4", "content": "apps/site/.env.example", "toolName": "read", "expect": "pass", "note": "nested environment example remains an allowed template"},
 
     {"rule": "SEC-03", "id": "s03-t1", "contentParts": ["api_key = \"sk_", "live_7h2k9m4p6q8r1t3v5x0zab7c9e2f4\""], "filePath": "pay.py", "expect": "fail", "note": "live stripe key (fragmented: no whole secret literal in repo)"},
     {"rule": "SEC-03", "id": "s03-t2", "contentParts": ["token: ghp_", "k9Lm2Qp7xT4vBn8M1cD6eF3hJ0lZ5aRs"], "filePath": "sync.yml", "expect": "fail", "note": "live github token (fragmented: no whole secret literal in repo)"},

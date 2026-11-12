@@ -1,39 +1,24 @@
 #!/usr/bin/env node
 /**
- * src/install.ts — vibe-fence installer core (authority; tools/install.ts is a thin shim).
- * Moved from tools/ Oct 28 so the packed CLI (dist/cli.js bundle) ships zero
- * tools/ dependency and runs on plain Node 20+ with no bun binary.
- * M4 installer, FINAL-v2 §4 M4; S-02 progressive disclosure; S-15 Standard-mode
- * default (P0 ethics gate); S-13 dual-tier routing (GEM-08).
- * GEM-02 WebContainer probe + FENCE_SYNC_TOKEN + file-only fallback.
- * GEM-09 Standard-mode default literal: Contributor only via --contributor-mode + disclosure.
- *
- * Contract (FINAL-v2 §4 M4 + §7 rubric):
- * - Idempotent <3s: init ×3 ⇒ zero churn, identical git status.
- * - Merge-not-clobber: AGENTS.md fence block appended/replaced; existing content preserved.
- * - Receipt + paved path: one-line receipt + 3-step path printed; fence tour is opt-in.
- * - WebContainer probe: detect process.versions.webcontainer / /.webcontainer / hook installability.
- * - FENCE_SYNC_TOKEN is a workflow marker, not an authentication boundary.
- * - Scope guard: Desktop CLIs v1; WebContainer/mobile out of scope (documented fail-open).
- * - Node-compatible: no bun-only APIs (no import.meta.dir/main) — this file is bundled.
+ * Project-local setup: one selected coding tool, offline checks and Git hooks.
+ * The installer preserves existing settings and tests managed hook code locally.
+ * A local self-test cannot prove the coding tool has loaded the hook.
  */
-
 import { chmodSync, existsSync, lstatSync, readFileSync, writeFileSync, mkdirSync, appendFileSync, readdirSync, unlinkSync } from "node:fs";
 import { basename, join, resolve, relative, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { randomBytes } from "node:crypto";
-import { homedir } from "node:os";
+import { createHash, randomBytes } from "node:crypto";
 import { execSync, execFileSync } from "node:child_process";
 import { installClaudeAdapter, buildAgentsFenceBlock } from "./adapters/claude.js";
 import { installCursorAdapter } from "./adapters/cursor.js";
 import { installCodexAdapter } from "./adapters/codex.js";
-import { installMuseAdapter } from "./adapters/muse.js";
 import { installOpenCodeAdapter } from "./adapters/opencode.js";
 import { installAntigravityAdapter } from "./adapters/antigravity.js";
 import { installHermesAdapter } from "./adapters/hermes.js";
 import { installProjectRuntime } from "./framework/project-runtime.js";
 import { packageVersion } from "./version.js";
-import { persistAttestation } from "./framework/integrity.js";
+import { getProtectionStatus, verifyAdapterHook, type HookProbe } from "./framework/status.js";
+import { persistAttestation, FENCE_SYNC_TOKEN_ENV } from "./framework/integrity.js";
 import { installGitHooks, inspectGitHooks, effectiveHooksDir, canonicalPath, commonHooksDir, hooksRepairCommand, hooksRepairNote } from "./framework/git-hooks.js";
 import { adapterPathsSafe } from "./adapters/safe-paths.js";
 import { captureInstallBaseline, recordInstallResult } from "./uninstall.js";
@@ -42,34 +27,27 @@ import { captureInstallBaseline, recordInstallResult } from "./uninstall.js";
 // Constants
 // ---------------------------------------------------------------------------
 
-export const FENCE_SYNC_TOKEN_ENV = "FENCE_SYNC_TOKEN";
-export const CONTRIBUTOR_DISCLOSURE =
-  "⚠️  Contributor preference is recorded locally; it does not change provider settings. Review Meta's terms and account settings before sending data: https://dev.meta.ai/legal/model-api-terms";
-
 export interface InstallOptions {
   dryRun?: boolean;
-  contributorMode?: boolean;
   full?: boolean; // WebContainer file-only → native full
-  adapters?: string[]; // subset; auto-detected when omitted
+  adapters?: string[]; // One selected tool; [] or ["none"] installs Git checks only.
   noPackageScripts?: boolean;
 }
 
 export interface InstallReceipt {
   elapsedMs: number;
   mode: "native" | "webcontainer";
-  modelMode: "standard" | "contributor";
   filesWritten: string[];
   adaptersInstalled: string[];
-  fenceSyncTokenPrefix: string;
+  hookProbe: HookProbe | null;
 }
 
-export type AdapterInstaller = (projectRoot: string, opts: { modelMode?: string }) => string[];
+export type AdapterInstaller = (projectRoot: string) => string[];
 
 // Explicit id → installer map. No name-mangling lookup: `capitalize("opencode")`
 // produced installOpencodeAdapter ≠ installOpenCodeAdapter and silently skipped
 // the OpenCode adapter (Oct 28 fix).
 export const ADAPTERS: Record<string, AdapterInstaller> = {
-  muse: installMuseAdapter,
   claude: installClaudeAdapter,
   cursor: installCursorAdapter,
   codex: installCodexAdapter,
@@ -80,13 +58,19 @@ export const ADAPTERS: Record<string, AdapterInstaller> = {
 
 export const DEFAULT_ADAPTER_IDS = Object.keys(ADAPTERS);
 
-/** Prefer project-specific hosts; use home markers only when the project has none. */
+/** Project markers identify candidates; a global installation does not identify the current tool. */
 export function detectAdapters(projectRoot: string): string[] {
-  const detect = (base: string) => DEFAULT_ADAPTER_IDS.filter(id => existsSync(join(base, `.${id}`)));
-  const local = detect(projectRoot);
-  if (local.length) return local;
-  const global = detect(homedir());
-  return global.length ? global : ["codex", "claude", "cursor", "opencode"];
+  return DEFAULT_ADAPTER_IDS.filter(id => existsSync(join(projectRoot, `.${id}`)));
+}
+
+function selectAdapter(projectRoot: string, requested?: string[]): string[] {
+  const candidates = [...new Set(requested ?? detectAdapters(projectRoot))];
+  if (requested && (candidates.length === 0 || (candidates.length === 1 && candidates[0] === "none"))) return [];
+  if (candidates.length !== 1 || !Object.hasOwn(ADAPTERS, candidates[0]!)) {
+    const detail = candidates.length ? `Found: ${candidates.join(", ")}. ` : "";
+    throw new Error(`${detail}Choose one coding tool with 'vibe-fence init --host=<tool>' (${DEFAULT_ADAPTER_IDS.join(", ")}), or --host=none for Git checks only. No project files were changed.`);
+  }
+  return candidates;
 }
 
 function addPackageScripts(projectRoot: string): boolean {
@@ -219,14 +203,6 @@ function assertWithinProjectRoot(projectRoot: string, target: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// FENCE_SYNC_TOKEN — workflow marker, not authentication
-// ---------------------------------------------------------------------------
-
-function mintFenceSyncToken(): string {
-  return randomBytes(16).toString("hex");
-}
-
-// ---------------------------------------------------------------------------
 // Safe project setup — .gitignore env coverage + tracked-env report
 // ---------------------------------------------------------------------------
 
@@ -304,18 +280,21 @@ export function trackedEnvFiles(projectRoot: string): string[] {
 export async function install(projectRoot: string, opts: InstallOptions = {}): Promise<InstallReceipt> {
   const startMs = Date.now();
   const elapsed = () => Date.now() - startMs;
-  let modelMode: "standard" | "contributor" = opts.contributorMode ? "contributor" : "standard";
-  const requestedAdapters = opts.adapters ?? detectAdapters(projectRoot);
-  const adapterIds = [...new Set(requestedAdapters.filter(id => Object.hasOwn(ADAPTERS, id)))];
-  for (const id of requestedAdapters) if (id !== "none" && !Object.hasOwn(ADAPTERS, id)) console.warn(`[vibe-fence] unknown adapter "${id}" — skipping (known: ${DEFAULT_ADAPTER_IDS.join(", ")})`);
+  const adapterIds = selectAdapter(projectRoot, opts.adapters);
 
   // Refuse an escaping managed root before probes or writes.
+  const integrationPaths: Record<string, string[]> = {
+    claude: ["CLAUDE.md", ".claude/settings.json", ".claude/hooks/fence-gate.sh", ".claude/hooks/fence-gate.cjs"],
+    cursor: [".cursor/hooks.json", ".cursor/hooks/fence-gate.sh", ".cursor/hooks/fence-gate.cjs", ".cursor/rules/vibe-fence-router.mdc", ".cursor/skills"],
+    codex: [".agents/memory/MEMORY.md", ".codex/hooks.json", ".codex/hooks/fence-gate.cjs", ".codex/config.json"],
+    opencode: [".opencode/plugins/fence-guard.js", "opencode.json"],
+    antigravity: [".agents/rules/antigravity.md"],
+    hermes: [".hermes/config.json"],
+  };
   const managedPaths = [
     ".fence/config.json", ".fence/app-profile.json", ".fence/state/dial.json", ".fence/hooks/postinstall-guard.sh", ".fence/.integrity.json", ".fence/uninstall.json", ".fence/events.ndjson", ".fence/rules", ".fence/runtime", ".fence/bin", ".fence/adapters",
-    ...DEFAULT_ADAPTER_IDS.map(id => `.fence/adapters/${id}.json`),
-    "AGENTS.md", "CLAUDE.md", ".agents/skills", ".agents/memory/MEMORY.md", ".agents/rules/antigravity.md",
-    ".claude/settings.json", ".claude/hooks/fence-gate.sh", ".claude/hooks/fence-gate.cjs", ".cursor/hooks.json", ".cursor/hooks/fence-gate.sh", ".cursor/hooks/fence-gate.cjs", ".cursor/rules/vibe-fence-router.mdc", ".cursor/skills",
-    ".codex/hooks.json", ".codex/hooks/fence-gate.cjs", ".codex/config.json", ".muse/hooks.json", ".muse/hooks/fence-gate.cjs", ".opencode/plugins/fence-guard.js", "opencode.json", ".hermes/config.json",
+    "AGENTS.md", ".agents/skills",
+    ...adapterIds.flatMap(id => [`.fence/adapters/${id}.json`, ...integrationPaths[id]!]),
   ];
   const skillSource = join(hereDir(), "skills");
   if (existsSync(skillSource)) for (const name of readdirSync(skillSource)) managedPaths.push(`.agents/skills/${name}/SKILL.md`);
@@ -330,19 +309,6 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
   }
   const uninstallBaseline = opts.dryRun ? null : captureInstallBaseline(projectRoot, [...managedPaths, ".gitignore", "package.json"]);
 
-  // Preserve a prior contributor preference in the receipt and adapter metadata.
-  if (!opts.contributorMode) {
-    try {
-      const previous = JSON.parse(readFileSync(join(projectRoot, ".fence", "config.json"), "utf8")) as { model_mode?: unknown };
-      if (previous?.model_mode === "contributor") modelMode = "contributor";
-    } catch { /* Missing or invalid config uses the standard default. */ }
-  }
-
-  // 0. Contributor disclosure gate — GEM-09 P0
-  if (modelMode === "contributor" && !opts.dryRun) {
-    console.log(CONTRIBUTOR_DISCLOSURE);
-  }
-
   // 1. WebContainer probe — GEM-02 P1
   const probe = probeRuntime(projectRoot, opts.dryRun);
   if (probe.runtime === "webcontainer" && !opts.full) {
@@ -350,12 +316,10 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
     console.log("Run 'npx vibe-fence init --full' on a local clone for hook enforcement.");
   }
 
-  // 2. Mint a workflow marker; same-user writers can also set it.
-  const token = mintFenceSyncToken();
-  process.env[FENCE_SYNC_TOKEN_ENV] = token;
-
   const filesWritten: string[] = [];
   const adaptersInstalled: string[] = [];
+  let setupFailure: string | null = null;
+  let runtimeAvailable = false;
 
   // 3. Ensure .fence/ tree — single-owner state (FINAL-v2 M1)
   const fenceDirs = [
@@ -369,75 +333,33 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
     filesWritten.push(".fence/");
   }
 
-  // 4. .fence/config.json — model_mode Standard default (GEM-09 P0, S-15)
+  // Keep local settings while removing obsolete provider/model configuration.
   {
     const p = join(projectRoot, ".fence", "config.json");
-    const existing = existsSync(p) ? (() => { try { return JSON.parse(readFileSync(p, "utf-8") as string) as Record<string, unknown>; } catch { return null; } })() : null;
-    // Never downgrade contributor → standard silently; respect explicit existing if no flag
-    const nextMode = modelMode;
-    const fenceVersion = packageVersion();
-    // Skip write when nothing changed — init ×3 must be zero-churn (FINAL-v2 §7).
-    const unchanged = existing?.["model_mode"] === nextMode && existing?.["fence_version"] === fenceVersion && existing?.["version"] === 1 && JSON.stringify(existing?.["adapters"]) === JSON.stringify(adapterIds);
-    if (!opts.dryRun && !unchanged) {
-      const config = {
-        ...existing,
-        version: 1,
-        model_mode: nextMode,
-        fence_version: fenceVersion,
-        adapters: adapterIds,
-        updatedAt: new Date().toISOString(),
-      };
+    let existing: Record<string, unknown> = {};
+    try { existing = JSON.parse(readFileSync(p, "utf8")); } catch {}
+    const local = { ...existing };
+    for (const key of ["model_mode", "companion", "architect", "provider", "models", "companion_model", "architect_model", "api_key", "api_base", "remote"]) delete local[key];
+    const config = { ...local, version: 1, fence_version: packageVersion(), adapters: adapterIds };
+    if (!opts.dryRun && JSON.stringify(config) !== JSON.stringify(existing)) {
       assertWithinProjectRoot(projectRoot, p);
-      writeFileSync(p, JSON.stringify(config, null, 2) + "\n", "utf-8");
+      writeFileSync(p, JSON.stringify({ ...config, updatedAt: new Date().toISOString() }, null, 2) + "\n", "utf8");
       filesWritten.push(".fence/config.json");
     }
   }
 
-  // 5. .fence/app-profile.json — copy canonical template + record runtime (Task 2 S-09, GEM-02)
+  // Record runtime availability, without aspirational tier or rule counts.
   {
     const p = join(projectRoot, ".fence", "app-profile.json");
-    const templatePath = join(hereDir(), "templates", "app-profile.json");
-    const loadTemplate = (): Record<string, unknown> | null => {
-      if (existsSync(templatePath)) {
-        try { return JSON.parse(readFileSync(templatePath, "utf-8") as string) as Record<string, unknown>; } catch {}
-      }
-      return null;
-    };
-    if (!existsSync(p) && !opts.dryRun) {
+    let existing: Record<string, unknown> = {};
+    try { existing = JSON.parse(readFileSync(p, "utf8")); } catch {}
+    const profile = { ...existing };
+    for (const key of ["tier", "profile", "block_counts", "_comment"]) delete profile[key];
+    const next = { ...profile, version: 1, runtime: probe.runtime };
+    if (!opts.dryRun && JSON.stringify(next) !== JSON.stringify(existing)) {
       assertWithinProjectRoot(projectRoot, p);
-      const tpl = loadTemplate();
-      const base = tpl ?? {
-        version: 1,
-        tier: "local",
-        block_counts: { local: 14, shared: 29, public: 55 },
-        _fallback: "inline — template not found",
-      };
-      const out: Record<string, unknown> = {
-        ...base,
-        version: (base["version"] as number) ?? 1,
-        tier: (base["tier"] as string) ?? (base["profile"] as string) ?? "local",
-        runtime: probe.runtime,
-        block_counts: (base["block_counts"] as unknown) ?? { local: 14, shared: 29, public: 55 },
-        updatedAt: new Date().toISOString(),
-      };
-      if (!out["profile"]) out["profile"] = out["tier"];
-      delete out["_fallback"];
-      delete out["_comment"];
-      writeFileSync(p, JSON.stringify(out, null, 2) + "\n", "utf-8");
+      writeFileSync(p, JSON.stringify({ ...next, updatedAt: new Date().toISOString() }, null, 2) + "\n", "utf8");
       filesWritten.push(".fence/app-profile.json");
-    } else if (existsSync(p) && !opts.dryRun) {
-      try {
-        const ex = JSON.parse(readFileSync(p, "utf-8") as string) as Record<string, unknown>;
-        let mutated = false;
-        if (ex["runtime"] !== probe.runtime) { ex["runtime"] = probe.runtime; mutated = true; }
-        if (!ex["tier"] && ex["profile"]) { ex["tier"] = ex["profile"]; mutated = true; }
-        if (!ex["profile"] && ex["tier"]) { ex["profile"] = ex["tier"]; mutated = true; }
-        if (!ex["block_counts"]) { ex["block_counts"] = { local: 14, shared: 29, public: 55 }; mutated = true; }
-        if (mutated) {
-          ex["updatedAt"] = new Date().toISOString();
-          writeFileSync(p, JSON.stringify(ex, null, 2) + "\n", "utf-8");
-        }
-      } catch {}
     }
   }
 
@@ -498,13 +420,12 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
     }
     try {
       if (!opts.dryRun) {
-        const written = fn(projectRoot, { modelMode });
+        const written = fn(projectRoot);
         filesWritten.push(...written);
       }
-      adaptersInstalled.push(id);
-    } catch (e) {
-      // Adapter optional — log but don't fail install (fail-open per GEM-07 spirit)
-      console.warn(`[vibe-fence] adapter ${id} not installed: ${(e as Error).message}`);
+      if (opts.dryRun) adaptersInstalled.push(id);
+    } catch {
+      setupFailure = `The ${id} integration could not be installed safely.`;
     }
   }
 
@@ -519,7 +440,14 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
         if (!existsSync(from)) continue;
         const toDir = join(skillsDst, entry);
         const to = join(toDir, "SKILL.md");
-        if (existsSync(to)) continue; // never clobber user/project skills
+        const relativeSkill = `.agents/skills/${entry}/SKILL.md`;
+        if (existsSync(to)) {
+          const previous = uninstallBaseline?.journal.files[relativeSkill];
+          const current = readFileSync(to);
+          const unchangedManaged = previous && !previous.preserve && previous.after === createHash("sha256").update(current).digest("hex");
+          if (!unchangedManaged) continue; // Preserve customized or unrecognized skills.
+          if (current.equals(readFileSync(from))) continue;
+        }
         assertWithinProjectRoot(projectRoot, to);
         mkdirSync(toDir, { recursive: true });
         writeFileSync(to, readFileSync(from, "utf-8"), "utf-8");
@@ -533,8 +461,8 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
     const moduleDir = hereDir();
     const distDir = basename(moduleDir) === "dist" ? moduleDir : join(dirname(moduleDir), "dist");
     const runtime = installProjectRuntime(projectRoot, distDir, join(dirname(distDir), "package.json"));
-    if (runtime.status === "unavailable") console.warn(`[vibe-fence] Runtime unavailable: ${runtime.reason} Build or reinstall the package.`);
-    else console.log("[vibe-fence] Project runtime ready: ./.fence/bin/vibe-fence");
+    runtimeAvailable = runtime.status !== "unavailable";
+    if (runtime.status === "unavailable") setupFailure = `The local runtime is unavailable. ${runtime.reason}`;
     if (!opts.noPackageScripts && addPackageScripts(projectRoot)) filesWritten.push("package.json");
   }
 
@@ -543,7 +471,7 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
   // core.hooksPath outside this project is never written to (global side
   // effect); the exact project-local repair is reported and hooks stay
   // degraded. Global config is never changed. Existing hooks are chained.
-  if (!opts.dryRun) {
+  if (!opts.dryRun && runtimeAvailable) {
     try {
       filesWritten.push(...installGitHooks(projectRoot));
       if (existsSync(join(projectRoot, ".git"))) {
@@ -586,39 +514,57 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
 
   // 11. Integrity attestation — SHA-256 of fence-owned files (GEM-01)
   // The marker is a workflow guard, not an independent authentication boundary.
-  if (!opts.dryRun) {
+  if (!opts.dryRun && runtimeAvailable) {
+    const previousMarker = process.env[FENCE_SYNC_TOKEN_ENV];
     try {
-      persistAttestation(projectRoot);
+      process.env[FENCE_SYNC_TOKEN_ENV] = randomBytes(16).toString("hex");
+      persistAttestation(projectRoot, adapterIds);
       filesWritten.push(".fence/.integrity.json");
-    } catch { console.warn("[vibe-fence] Integrity baseline unavailable; drift detection is degraded."); }
+    } catch { setupFailure ??= "The local integrity baseline could not be created safely."; }
+    finally {
+      if (previousMarker === undefined) delete process.env[FENCE_SYNC_TOKEN_ENV];
+      else process.env[FENCE_SYNC_TOKEN_ENV] = previousMarker;
+    }
   }
 
   // 12. Receipt + paved path — FINAL-v2 §7 rubric + 05 A-11/S-02
   const receipt: InstallReceipt = {
     elapsedMs: elapsed(),
     mode: probe.runtime === "webcontainer" && !opts.full ? "webcontainer" : "native",
-    modelMode,
     filesWritten,
     adaptersInstalled,
-    fenceSyncTokenPrefix: token.slice(0, 8),
+    hookProbe: !opts.dryRun && adapterIds[0] ? verifyAdapterHook(projectRoot, adapterIds[0]) : null,
   };
 
   if (!opts.dryRun) {
-    // Print receipt
-    console.log(`🛡️  vibe-fence installed — ${receipt.mode} mode — ${receipt.adaptersInstalled.length} adapters — ${receipt.elapsedMs}ms`);
-    console.log(`   Files: ${receipt.filesWritten.slice(0, 6).join(", ")}${receipt.filesWritten.length > 6 ? ` +${receipt.filesWritten.length - 6} more` : ""}`);
-    console.log(`   Protection depends on your host and working hooks; installation alone does not verify enforcement.`);
-    console.log("");
-    console.log("Next steps:");
-    console.log("  1. Run './.fence/bin/vibe-fence status --host=codex' for a configuration report.");
-    console.log("  2. Review and trust applicable host hooks, then verify them in a safe project.");
-    console.log("  3. Run './.fence/bin/vibe-fence check' and review the findings.");
-
-    // Scope guard note — Desktop CLIs v1 (GEM-02)
-    if (probe.runtime === "webcontainer") {
-      console.log("");
-      console.log("Scope: Desktop CLIs v1 — WebContainer/mobile are out of scope (file-only mode active).");
+    const host = adapterIds[0];
+    const labels: Record<string, string> = { claude: "Claude Code", cursor: "Cursor", codex: "Codex", opencode: "OpenCode", antigravity: "Antigravity", hermes: "Hermes" };
+    const status = getProtectionStatus(projectRoot, host);
+    const usableIntegration = !host || (["antigravity", "hermes"].includes(host) ? status.toolGate.state === "advisory" : status.toolGate.state === "configured-unverified");
+    if (!usableIntegration) setupFailure ??= `The ${host} integration is ${status.toolGate.state}; existing user files were preserved.`;
+    if (receipt.hookProbe?.supported && !receipt.hookProbe.verified) setupFailure ??= "The selected tool's local hook self-test failed.";
+    if (setupFailure) {
+      // An incomplete setup must remain removable without advertising a new installed adapter.
+      if (host) {
+        const rel = `.fence/adapters/${host}.json`;
+        const before = uninstallBaseline?.current[rel]?.bytes;
+        const path = join(projectRoot, rel);
+        if (before) writeFileSync(path, before);
+        else if (existsSync(path)) unlinkSync(path);
+      }
+      if (uninstallBaseline) recordInstallResult(projectRoot, uninstallBaseline);
+      throw new Error(`Setup incomplete. ${setupFailure} Resolve the conflict and rerun init; no successful setup is claimed.`);
     }
+    if (host) adaptersInstalled.push(host);
+    console.log(`vibe-fence installed for ${host ? labels[host] : "Git"} — local checks, no account or API key.`);
+    console.log(`Git checks: ${status.gitHooks.state === "configured-unverified" ? "installed before commits and pushes" : status.gitHooks.state}.`);
+    if (receipt.hookProbe?.supported) console.log(`Local hook self-test: ${receipt.hookProbe.verified ? "passed" : "failed — run vibe-fence doctor for details"}.`);
+    if (host && ["claude", "cursor", "codex", "opencode"].includes(host)) {
+      console.log(`Restart ${labels[host]} and trust project hooks when prompted. Execution in the coding tool is not yet verified.`);
+    } else if (host) {
+      console.log("This tool receives guidance only; tool actions are not blocked by this integration.");
+    }
+    if (receipt.mode === "webcontainer") console.log("This environment supports guidance only; Git hooks are unavailable.");
 
     // Append install event to events.ndjson (append-only, GEM-08 artefact)
     try {
@@ -627,7 +573,6 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
         type: "install",
         at: new Date().toISOString(),
         mode: receipt.mode,
-        model_mode: receipt.modelMode,
         adapters: receipt.adaptersInstalled,
         elapsedMs: receipt.elapsedMs,
       }) + "\n", "utf-8");
@@ -637,7 +582,7 @@ export async function install(projectRoot: string, opts: InstallOptions = {}): P
       catch { console.warn("[vibe-fence] Could not save the uninstall record; remove managed files manually."); }
     }
   } else {
-    console.log(`[dry-run] would install adapters: ${adapterIds.join(", ")} — mode ${probe.runtime} — ${elapsed()}ms`);
+    console.log(`[dry-run] would install adapters: ${adapterIds.join(", ") || "none (Git only)"} — mode ${probe.runtime} — ${elapsed()}ms`);
   }
 
   // Surface timing budget — <3s (FINAL-v2 §7 rubric #1)

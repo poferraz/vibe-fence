@@ -5,7 +5,7 @@
  * 100% of the curated set: a fixture that can't be caught is a rule gap
  * (fix the rule + add a corpus TP) or belongs in the benign set as a TN —
  * never tolerated here. Deliberately uncovered shapes live in
- * private review notes instead of being relabeled benign.
+ * tests/benches/KNOWN-GAPS.md instead of being relabeled benign.
  * Run: bun test tests/benches/hostile.test.ts
  */
 import { describe, it, expect } from "bun:test";

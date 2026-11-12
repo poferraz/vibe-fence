@@ -3,8 +3,7 @@
  *
  * Inline ADAPTERS array is the single source of truth; per-runtime YML files
  * in src/adapters/*.yml are REFERENCE overrides (tooling/inspection only).
- * YML mirrors: window, skillsDir, hookSurface, modelHint (C-03 frontier-conditional
- * surface). Spec: FINAL-v4 S-02 (Skills), S-03 (Context budget), S-13 (Muse routing).
+ * YML mirrors: window, skillsDir and hookSurface.
  *
  * See also: src/framework/context-budget.yml (budget buckets scaled per adapter window).
  */
@@ -14,7 +13,6 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export type AdapterRuntime =
-  | "muse"
   | "claude-code"
   | "codex"
   | "cursor"
@@ -50,18 +48,6 @@ export interface AdapterWindow {
   note?: string;
 }
 
-/**
- * C-03 frontier-conditional surface hint.
- * Frontier models (Claude/GPT-5/Gemini) use thin bash-only surface;
- * weaker/open-weight models use richer filtered tools (4× SWE-bench lift).
- */
-export interface ModelHint {
-  tier: "frontier" | "weak";
-  surface: "thin" | "rich";
-  description?: string;
-  fallback?: string;
-}
-
 export interface Adapter {
   name: AdapterRuntime;
   label: string;
@@ -71,19 +57,9 @@ export interface Adapter {
   skillsDir: string;
   /** Optional window override (S-03); present in YML profiles, absent in inline authority. */
   window?: AdapterWindow;
-  /** Optional C-03 model-tier hint (frontier-conditional surface). */
-  modelHint?: ModelHint;
 }
 
 export const ADAPTERS: Adapter[] = [
-  {
-    name: "muse",
-    label: "Muse Code",
-    runtime: "muse-code",
-    agentsMapping: { canonical: "AGENTS.md", runtimePaths: ["AGENTS.md", ".agents/AGENTS.md"] },
-    hookSurface: { hooks: ["PreToolUse"] },
-    skillsDir: ".agents/skills",
-  },
   {
     name: "claude-code",
     label: "Claude Code",
@@ -218,7 +194,7 @@ function parseSimpleYaml(text: string): Record<string, unknown> {
  *
  * Inline `ADAPTERS` in this file remains the canonical authority (GEM-03);
  * YML is optional data for tooling/inspection and may extend the adapter
- * with `window` and `modelHint` fields. Returns `undefined` if the YML
+ * with an optional `window` field. Returns `undefined` if the YML
  * file does not exist; callers should fall back to `getAdapter()`.
  *
  * @param name - Adapter runtime id (filename stem; e.g. "claude" → claude.yml).

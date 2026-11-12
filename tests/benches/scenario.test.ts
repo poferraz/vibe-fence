@@ -1,9 +1,9 @@
 /**
  * tests/benches/scenario.test.ts — Suite C scenario replay (plan 2026-10-27).
- * The demo/CUES.md beats (init → block → explain → checkpoint → undo)
+ * Local setup → block with a fixed explanation → checkpoint → undo
  * replayed against the PACKED CLI (node dist/cli.js) in a scratch repo,
  * with exit-code assertions and the init <3s budget (REHEARSAL rubric).
- * --explain runs key-scrubbed: no live calls, ever.
+ * The product path needs no provider or remote connection.
  * Run: bun test tests/benches/scenario.test.ts
  */
 import { describe, it, expect, afterAll } from "bun:test";
@@ -17,9 +17,6 @@ import { generate } from "../../tools/generate";
 const ROOT = resolve(import.meta.dir, "..", "..");
 const DIST_CLI = join(ROOT, "dist", "cli.js");
 const FIXTURE = join(ROOT, "demo", "leak-app");
-
-/** Scrubbed model keys: this bench must never make live calls. */
-const NO_KEYS = { MUSE_API_KEY: "", META_API_KEY: "" };
 
 const created: string[] = [];
 afterAll(() => {
@@ -40,7 +37,7 @@ function fence(cwd: string, args: string[]): { stdout: string; stderr: string; e
     const stdout = execFileSync("node", [DIST_CLI, ...args], {
       cwd,
       encoding: "utf-8",
-      env: { ...process.env, ...NO_KEYS, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" },
+      env: gitEnv(),
       stdio: ["ignore", "pipe", "pipe"],
     });
     return { stdout, stderr: "", exit: 0, ms: Date.now() - started };
@@ -50,8 +47,8 @@ function fence(cwd: string, args: string[]): { stdout: string; stderr: string; e
   }
 }
 
-describe("scenario replay (demo beats, packed CLI)", () => {
-  it("init → block → explain → checkpoint → undo, exit codes + budgets", async () => {
+describe("scenario replay (local journey, packed CLI)", () => {
+  it("one-tool setup → local fix → checkpoint → undo, exit codes + budgets", async () => {
     await generate(); // hermetic dist, like tools/generate.test.ts
     const root = mkdtempSync(join(tmpdir(), "vf-scenario-"));
     created.push(root);
@@ -61,10 +58,11 @@ describe("scenario replay (demo beats, packed CLI)", () => {
     sh(root, "git -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -qm base");
 
     // Beat 1: init inside the budget.
-    const init = fence(root, ["init"]);
+    const init = fence(root, ["init", "--host=codex"]);
     expect(init.exit).toBe(0);
     expect(init.ms, "init must stay under the 3s rubric budget").toBeLessThan(3000);
     expect(init.stdout + init.stderr).toContain("vibe-fence installed");
+    expect(JSON.parse(readFileSync(join(root, ".fence", "config.json"), "utf8")).adapters).toEqual(["codex"]);
 
     // Beat 2-3: activate the leak, expect the SEC-01 block.
     const cfg = join(root, "config.env");
@@ -73,12 +71,8 @@ describe("scenario replay (demo beats, packed CLI)", () => {
     const blocked = fence(root, ["check"]);
     expect(blocked.exit).toBe(1);
     expect(blocked.stdout).toContain("FAIL SEC-01");
-
-    // Beat 4: explain without a key degrades to a note, exits unchanged.
-    const explained = fence(root, ["check", "--explain"]);
-    expect(explained.exit).toBe(1);
-    expect(explained.stdout).toContain("FAIL SEC-01");
-    expect(explained.stderr).toMatch(/explain/i);
+    expect(blocked.stdout).toContain("Move the secret to a server-only variable");
+    expect(blocked.stdout).toContain("Copy-paste this into your AI");
 
     // Beat 5: leaky checkpoints require an explicit override.
     const beforeCheckpoint = sh(root, "git rev-parse HEAD");
